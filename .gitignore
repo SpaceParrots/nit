@@ -1,0 +1,5 @@
+node_modules/
+dist/
+nit-review/
+*.log
+.DS_Store

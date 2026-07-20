@@ -1,0 +1,24 @@
+{
+  "name": "nit",
+  "version": "0.0.0",
+  "description": "Point-and-click website annotation that hands small UI fixes to a coding agent.",
+  "type": "module",
+  "bin": {
+    "nit": "./src/cli/index.js"
+  },
+  "scripts": {
+    "build:overlay": "node scripts/build-overlay.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  },
+  "license": "MIT",
+  "private": true
+}
