@@ -229,3 +229,26 @@ Run `nit review https://<deployed-storefront>`, annotate a real element, close t
 Claude Code session point it at `nit-review/` and confirm it locates and fixes the referenced
 component from the annotation alone. If the selector/component reference doesn't survive to a
 successful fix, target resolution (§4) needs work — that's the highest-risk unit.
+
+Use an **external verifier**: run the fix in a *fresh* agent session with no memory of the build, so
+the code that generated the reference isn't the thing certifying the reference is good enough.
+
+---
+
+## 9. v2 — close the loop (out of scope for v1, but the schema supports it)
+
+Nit is loop infrastructure. Mapped onto the loop-engineering anatomy, v1 already has the **state layer**
+(`annotations.json` — a task list of `open` items that survives restarts) and the **human checkpoint**
+(you reviewing before an agent touches code). The loop is the agent walking `open → fixed`.
+
+The missing part is the **verifier**: v1 lets the agent flip `status: open → fixed` on its own claim —
+the model grading its own homework. v2 closes the loop:
+
+1. After the agent marks an item `fixed`, `nit verify` re-launches Chromium at the same route, re-shoots
+   the same element, and captures an **after** screenshot.
+2. The before/after pair is diffed and/or re-presented to a human (or a fresh agent) for a final
+   `verified` / `reopened` decision — the change only counts as done once an *external* check confirms it.
+
+Schema additions (backward-compatible): add `verifiedAt` and a second screenshot slot so an annotation
+carries `screenshot` (before) and `screenshotAfter`. Status gains `verified` and `reopened`. No v1 field
+changes — v2 is additive, and the same shape still feeds the eventual MCP server.
