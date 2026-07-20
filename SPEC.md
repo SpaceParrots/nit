@@ -1,119 +1,128 @@
 # Nit — Design Spec
 
-> Point-and-click annotation for websites, built to hand small UI fixes straight to a coding agent.
+> Point-and-click annotation for websites, built to hand small UI fixes to a coding agent.
 
-**Status:** design approved 2026-07-20 · **Author:** Kevin · **Codename:** `nit`
+**Status:** design approved 2026-07-20 (rev 2) · **Author:** Kevin · **Codename:** `nit`
 
 ---
 
 ## 1. Purpose
 
 While browsing any website — a live deployed site, a staging URL, or a local `ng serve` — you
-click UI elements, type short comments ("this badge should be yellow, not gray"), and Nit records
-each comment tied to a **stable reference to the element** (component name, CSS selector, XPath,
-screenshot). It writes those annotations to a structured file that a coding agent (Claude Code /
-Fable) reads to fix each item directly.
+click UI elements, type short comments, **categorize each as a change request or a comment**, and Nit
+records it tied to a **stable reference to the element** (component name, CSS selector, XPath,
+screenshot) plus the **viewport** it was made in. It writes those annotations to a structured file that
+a coding agent (Claude Code / Fable) reads to fix each change request directly. You can also **reload a
+feedback file and re-view the annotations pinned back onto the pages/routes** where they were made.
 
-The name is from code-review culture: reviewers prefix minor comments with `nit:`. Nit is a tool
-for capturing the little things and getting them fixed fast.
+The name is from code-review culture: reviewers prefix minor comments with `nit:`.
+
+### Priority rule
+
+Nit is meant to work on **any** website, but the **fainin Angular storefront is the priority target**.
+When a design or technical decision forces a trade-off, **optimize for the Angular storefront first.**
 
 ### Success criteria
 
-1. Run one command, a real browser opens at any URL, and an annotation overlay is available.
-2. Clicking an element + typing a comment produces an annotation with an element reference precise
-   enough for an agent to locate the source (component name at minimum; Angular class name when the
-   build exposes it) plus a cropped screenshot.
-3. The output is a plain `annotations.json` + a readable `review.md` that an agent fixes with no
-   extra tooling.
-4. A non-technical co-founder can annotate the **live** site via a bookmarklet (no install) and send
-   the exported file back.
-5. Zero backend, zero storefront changes, self-hosted, framework-agnostic (verified on an Angular
-   storefront).
+1. Run one command; a real browser opens at any URL with an annotation overlay. No changes to the site
+   under review.
+2. Clicking an element + typing a comment produces an annotation that has: a **type**
+   (`change-request` | `comment`), an element reference precise enough for an agent to locate the source
+   (component name at minimum; Angular class name when the build exposes it), a cropped screenshot, the
+   **route**, and the **viewport** it was captured in.
+3. Output is a plain `annotations.json` + a readable `review.md` that an agent fixes with no extra
+   tooling.
+4. **Co-founders use the same standalone tool** (no bookmarklet), produce a feedback file, and send it
+   back; Nit **consumes/merges** one or more feedback files into a single review.
+5. **Replay mode:** load a feedback file and re-view every annotation re-anchored on the pages/routes
+   where it was given.
+6. **Mobile + desktop:** switch viewport within a session; each annotation is scoped **general |
+   desktop | mobile**, and replay filters by the viewport currently in use.
+7. Self-hosted, open-source, framework-agnostic (verified on the Angular storefront). Zero backend.
 
 ### Non-goals (v1 — YAGNI)
 
-- No auth, no hosted server, no cloud account.
-- No real-time multi-user sync. Co-founder round-trip is file-based (export → send → merge).
-- No MCP server yet (the schema is designed so one can wrap the file later without rework).
+- No auth, no hosted server, no cloud account, no real-time multi-user sync.
+- No MCP server yet (schema is designed so one can wrap the file later without rework).
+- No automatic fix-verification (see §10, v2 "close the loop").
+
+### Known ergonomics trade-off
+
+Dropping the bookmarklet means co-founders run the standalone tool, which needs Node + a Chromium
+download (~1st run). Acceptable per Kevin. If that friction bites, the fast-follow is packaging Nit as a
+**single-file executable** (e.g. `pkg`/SEA + a pinned browser) so a co-founder double-clicks one app —
+tracked as a v1.1 idea, not v1 scope.
 
 ---
 
 ## 2. Architecture
 
-Five small units and **one shared overlay** delivered two ways.
+One delivery path (Playwright-launched Chromium), one overlay, and three verbs.
 
 ```
+nit review <url>          # capture: annotate a site, write a feedback file
+nit view <file> [--url]   # replay: reload a feedback file, re-anchor annotations across routes
+nit merge <file...>       # consume: combine co-founder feedback files into one review
+
 nit/
 ├─ src/
-│  ├─ overlay/      # the injected annotation UI — vanilla JS/CSS, NO framework
-│  ├─ cli/          # Node + Playwright: launch Chromium, inject overlay, bridge to disk
-│  ├─ capture/      # element → target reference (selector/xpath/component) + CDP screenshot
-│  ├─ store/        # write annotations.json, render review.md, save PNGs
-│  └─ bookmarklet/  # same overlay bundled for co-founders (localStorage + export button)
-└─ nit-review/      # OUTPUT (gitignored by default in consuming repos)
+│  ├─ overlay/     # injected annotation UI — vanilla JS/CSS in a Shadow DOM (capture AND replay)
+│  ├─ cli/         # arg parsing + the three verbs
+│  ├─ browser/     # Playwright: launch Chromium, bypassCSP, inject overlay, viewport switching, bridge
+│  ├─ capture/     # element → target reference (§4) + CDP element screenshot
+│  ├─ store/       # read/write annotations.json, render review.md, merge, screenshot files
+│  └─ anchor/      # re-anchor an annotation to a live element for replay (selector → xpath → text)
+└─ nit-review/     # OUTPUT
    ├─ annotations.json
    ├─ review.md
    └─ shots/*.png
 ```
 
-### The load-bearing idea
+### The overlay is one shared, framework-agnostic asset
 
-The **overlay is a single vanilla-JS asset**. It must run inside a stranger's page (the deployed
-storefront), so it cannot depend on Angular/React or any global the host page might not have. Two
-thin wrappers deliver it:
+It runs inside a stranger's page (the deployed storefront), so it is **vanilla JS/CSS in a Shadow DOM**
+— no Angular/React assumptions, no host-CSS collisions. The same overlay serves **capture** (pick +
+comment) and **replay** (show existing pins). It talks to Node through `page.exposeBinding`.
 
-- **CLI wrapper (Playwright):** the rich path for Kevin. Launches headed Chromium, injects the
-  overlay, persists to disk, captures crisp screenshots via CDP.
-- **Bookmarklet wrapper:** the co-founder path. The same overlay, but it stores annotations in
-  `localStorage` and adds an **Export** button that downloads `annotations.json` + a screenshots zip.
+### 2.1 `browser/` — Playwright launcher
 
-Build both from the same source with esbuild. Fix a bug in the overlay once, both paths get it.
-
-### 2.1 `cli/` — Playwright launcher
-
-```
-nit review <url> [--out ./nit-review] [--browser chromium] [--author Kevin]
-```
-
-- Launch **headed** Chromium via Playwright with a persistent context.
-- `browserContext({ bypassCSP: true })` — disables the page's Content-Security-Policy so the injected
-  overlay runs even on hardened production sites. **This is the key that makes live sites work.**
-- `page.addInitScript({ path: overlayBundle })` — injects the overlay **before** page scripts, on
-  every navigation, so it survives SPA route changes without re-injection glue.
-- `page.exposeBinding('__nitSave', handler)` — the overlay calls this to hand an annotation back to
-  Node; the handler resolves the target, triggers a CDP screenshot, and appends to the store.
-- On browser close (or a "Finish review" overlay button), flush the store and print the output path.
+- Launch **headed** Chromium, persistent context, `bypassCSP: true` (so the overlay runs on
+  CSP-hardened production sites), overlay injected via `page.addInitScript` (before page scripts, on
+  every navigation — survives SPA route changes).
+- **Viewport switching:** an overlay control (and a `--device` flag) flips **desktop ↔ mobile**. v1
+  switches viewport size (e.g. 1440×900 ↔ 390×844) via `page.setViewportSize`; full device emulation
+  (touch, UA via a new context from Playwright `devices[...]`) is a nice-to-have, not required.
+- **Bridge:** `page.exposeBinding('__nitSave', ...)`, plus `__nitLoad` (replay) and `__nitSetViewport`.
 
 ### 2.2 `overlay/` — the injected UI
 
-- **Element picker:** hover highlights the element under the cursor (outline + dimmed rest); click
-  selects it. `Esc` cancels. A modifier (e.g. hold `Alt`) toggles picking so normal page interaction
-  still works.
-- **Comment popover:** anchored near the selected element; textarea + Save/Cancel.
-- **Sidebar:** list of pending annotations for this session with delete; a "Finish review" button.
-- Must be **Shadow-DOM isolated** so the host page's CSS can't style the overlay and vice-versa.
-- On Save, gather the element handle's reference data (§4) locally, then call `__nitSave` (CLI) or
-  push to `localStorage` (bookmarklet).
+- **Capture mode:** hover highlights the element (Alt-to-toggle picking so the page stays usable,
+  Esc-cancels), click selects, a popover collects: the **comment text**, a **type** selector
+  (Change request / Comment), and a **viewport-scope** toggle (General / current viewport).
+- **Replay mode:** renders existing annotations as numbered pins anchored to their elements on the
+  current route, filtered by the active viewport; a sidebar lists them; clicking a pin shows the
+  comment, type, author, and screenshot. Unanchorable items (element gone) drop to a "couldn't place"
+  list in the sidebar, still showing their screenshot.
+- Sidebar always shows the running list with type badges; a filter toggles All / current-viewport-only.
 
 ### 2.3 `capture/` — target resolution + screenshot
 
-- Compute the **target reference** (§4) for the selected element.
-- Screenshot: CDP `Page.captureScreenshot` clipped to the element's bounding rect (+ small padding),
-  saved as `shots/<id>.png`. In the bookmarklet path, fall back to `html2canvas` or the element's
-  `getBoundingClientRect` + a full-frame capture (co-founder screenshots can be lower fidelity).
+- Compute the **target reference** (§4).
+- CDP `Page.captureScreenshot` clipped to the element rect (+ small padding) → `shots/<id>.png`.
 
-### 2.4 `store/` — persistence
+### 2.4 `anchor/` — replay re-anchoring (pure-ish, testable)
 
-- Append annotations to `annotations.json` (schema §3), stable incrementing ids (`a1`, `a2`, …).
-- Render `review.md` (§5) after each flush.
-- Idempotent: re-running `nit review` on the same `--out` appends a new review block, never clobbers.
+- Given an annotation + the live DOM, resolve the element: try `selector`, then `xpath`, then a
+  text-match heuristic on `target.text` scoped to `target.component`. Return the element or `null`.
+- Degrade gracefully: `null` → the annotation goes to the sidebar "couldn't place" list, never crashes.
 
-### 2.5 `bookmarklet/` — co-founder path
+### 2.5 `store/` — persistence, render, merge
 
-- `nit bookmarklet` prints/writes the `javascript:` bookmarklet (loads the hosted overlay bundle) and
-  a short "drag this to your bookmark bar" instruction page.
-- Overlay runs in the co-founder's own browser on the live site; **Export** downloads the same
-  `annotations.json` shape so Kevin merges it into his `nit-review/`.
+- Read/write `annotations.json` (§3), stable ids, idempotent append.
+- `review.md` renderer (§5).
+- **Merge:** combine N feedback files → one review; namespace ids by author to avoid collisions
+  (`kevin:a1`, `ann:a1`), copy screenshots into a shared `shots/`, preserve each annotation's `author`,
+  `route`, and `viewport`.
 
 ---
 
@@ -123,16 +132,20 @@ nit review <url> [--out ./nit-review] [--browser chromium] [--author Kevin]
 {
   "review": {
     "id": "2026-07-20-storefront",
-    "url": "https://storefront.fainin.com/products/xyz",
+    "url": "https://storefront.fainin.com",
     "createdAt": "2026-07-20T14:12:00Z",
-    "author": "Kevin",
-    "viewport": { "w": 1440, "h": 900 }
+    "authors": ["Kevin"]
   },
   "annotations": [
     {
       "id": "a1",
+      "type": "change-request",
       "comment": "Badge should be the yellow accent, not gray",
       "status": "open",
+      "author": "Kevin",
+      "viewportScope": "general",
+      "viewport": { "mode": "desktop", "w": 1440, "h": 900 },
+      "route": "/products/xyz",
       "target": {
         "component": "app-product-tile",
         "ngComponent": "ProductTileComponent",
@@ -143,7 +156,6 @@ nit review <url> [--out ./nit-review] [--browser chromium] [--author Kevin]
         "text": "New",
         "rect": { "x": 812, "y": 340, "w": 48, "h": 22 }
       },
-      "route": "/products/xyz",
       "screenshot": "shots/a1.png",
       "createdAt": "2026-07-20T14:12:03Z"
     }
@@ -151,104 +163,139 @@ nit review <url> [--out ./nit-review] [--browser chromium] [--author Kevin]
 }
 ```
 
-- `status` ∈ `open | fixed | wontfix`. The agent flips `open → fixed` as it resolves items; a future
-  MCP server's `mark_fixed` writes the same field.
-- `ngComponent` is `null` when the build doesn't expose `window.ng` (see §4).
-- Stable `id`s + `status` are exactly what a thin MCP wrapper (`list_annotations` / `get_annotation`
-  / `mark_fixed`) needs — v1 ships the file, v2 wraps it, no schema change.
+Field notes:
+- **`type`** ∈ `change-request | comment`. Default in the overlay: `change-request` (the actionable one).
+- **`status`** ∈ `open | fixed | wontfix`. Agent flips `open → fixed`; future MCP `mark_fixed` writes it.
+- **`author`** is per-annotation (so merged files keep attribution); `review.authors` is the union.
+- **`viewportScope`** ∈ `general | desktop | mobile` — which views the note applies to. Overlay default:
+  the current viewport mode, toggleable to `general`.
+- **`viewport`** — the actual size/mode the annotation was captured at.
+- **`route`** — path the annotation belongs to; replay uses it to know which page to show it on.
+- **`ngComponent`** is `null` when `window.ng` isn't exposed (production builds).
+
+Stable ids + `status` are exactly what a thin MCP wrapper needs (`list_annotations` / `get_annotation`
+/ `mark_fixed`) — v1 ships the file, v2 wraps it, no schema change.
 
 ---
 
-## 4. Target resolution — layered
+## 4. Target resolution — layered (Angular is the priority)
 
 Always capture (framework-agnostic, works on production builds):
 
 - **`component`** — nearest ancestor whose tag contains a hyphen (custom element / Angular selector),
-  e.g. `app-product-tile`. Falls back to the element's own tag if none.
-- **`selector`** — a short, stable CSS path (prefer `id`, then custom-element tag + `nth-of-type`,
-  avoid brittle deep chains).
-- **`xpath`**, **`tag`**, **`classes`**, **`text`** (trimmed, capped), **`rect`**.
+  e.g. `app-product-tile`; falls back to the element's own tag.
+- **`selector`** — short, stable CSS path (prefer `id`, then custom-element tag + `nth-of-type`, avoid
+  brittle deep chains). Also used as the primary replay anchor, so favor stability.
+- **`xpath`**, **`tag`**, **`classes`**, **`text`** (trimmed/capped), **`rect`**.
 
-Then enrich **if `window.ng` is present** (Angular dev/staging builds expose it; production strips it):
+Then enrich **if `window.ng` is present** (Angular dev/staging builds expose it; prod strips it):
 
-- **`ngComponent`** — `window.ng.getComponent(el)?.constructor.name` walked up to the nearest
-  component instance → the real class name (`ProductTileComponent`), which an agent greps directly
-  to the source file.
+- **`ngComponent`** — `window.ng.getComponent(el)?.constructor.name` walked to the nearest component
+  instance → the real class name (`ProductTileComponent`), which an agent greps straight to the source.
 
-Result: on the live prod site you still get `app-product-tile` (enough to locate the code); on
-`localhost:4200` you additionally get `ProductTileComponent`. Never fail if `window.ng` is absent.
+Result: prod site → `app-product-tile` (enough to locate code); `localhost:4200` → also
+`ProductTileComponent`. Never fail when `window.ng` is absent. Because the storefront is the priority,
+invest here first: the Angular class name is the single most valuable pointer for the fixing agent.
 
 ---
 
 ## 5. Claude Code handoff
 
-`review.md` is the human- and agent-readable artifact:
+`review.md` is human- and agent-readable:
 
 ```markdown
 # Nit review — storefront.fainin.com — 2026-07-20
 
-## a1 · open — Badge should be the yellow accent, not gray
+## a1 · change-request · open · desktop — Badge should be the yellow accent, not gray
 ![a1](shots/a1.png)
 - component: `app-product-tile` (ProductTileComponent)
 - selector: `app-product-tile:nth-of-type(3) > .badge`
-- route: `/products/xyz`
+- route: `/products/xyz` · author: Kevin · scope: general
 ```
 
-v1 ships a `/fix-annotations` convention — a one-line instruction to the agent: *"Read
-`nit-review/annotations.json`. For each annotation with `status: open`, make the change described in
-`comment` at the referenced element, then set its `status` to `fixed`."* No custom tooling required.
+The `/fix-annotations` contract: *"Read `nit-review/annotations.json`. For each annotation with
+`status: open` **and `type: change-request`**, make the change described in `comment` at the referenced
+element, then set `status` to `fixed`. Treat `type: comment` as context — do not change code for it;
+surface it to the user instead."*
 
 ---
 
-## 6. Stack
+## 6. Viewports (mobile + desktop)
+
+- One session can switch **desktop ↔ mobile** via an overlay control (and a `--device` / `--mobile`
+  launch flag). v1 = viewport-size switch; device emulation is optional.
+- Each annotation records the `viewport` it was made at and a `viewportScope` (general / desktop /
+  mobile). In **replay**, the active viewport filters what's shown: desktop shows `{general, desktop}`,
+  mobile shows `{general, mobile}`, with an overlay toggle to show All.
+
+## 7. Replay (`nit view <file>`)
+
+- Load a feedback file, open its `url` (or `--url` override), inject the overlay in **replay mode**.
+- As you navigate routes, the overlay shows the annotations whose `route` matches the current path,
+  re-anchored via `anchor/` and filtered by the current viewport. This is how Kevin re-reads
+  co-founder feedback in situ and how anyone reviews what's been reported before.
+
+## 8. Consume / merge (`nit merge <file...>`)
+
+- Combine co-founder feedback files into one consolidated review with namespaced ids and a shared
+  `shots/`. Preserves per-annotation `author`, `route`, `viewport`. Output feeds `review`, `view`
+  (replay the merged set), and the agent handoff identically.
+
+---
+
+## 9. Stack
 
 - Node ≥ 18, ES modules.
-- **Playwright** — the only heavy dependency (browser automation + CDP screenshots).
-- **esbuild** — bundles `overlay/` into the CLI-injected script and the bookmarklet.
+- **Playwright** — the only heavy dependency (browser automation + CDP screenshots + device sizes).
+- **esbuild** — bundles `overlay/` into the injected script.
 - Otherwise stdlib only. Output is plain files.
 
 ---
 
-## 7. Build milestones
+## 10. Build milestones (ship 0–5 first: the solo capture→fix loop)
 
-1. **Walking skeleton:** `nit review <url>` launches Chromium with `bypassCSP`, injects a trivial
-   overlay that logs a click. Proves injection works on the live storefront.
-2. **Pick + comment + save:** element picker, comment popover, `exposeBinding` → write one annotation
-   (no screenshot yet) to `annotations.json`.
-3. **Target resolution:** layered reference (§4) + stable selector generation.
-4. **Screenshots:** CDP element-clip capture → `shots/`.
-5. **review.md renderer** + `/fix-annotations` instruction.
-6. **Bookmarklet build:** same overlay via esbuild, `localStorage` + export.
-7. **Polish:** sidebar, delete, Finish-review flush, idempotent append.
+Each milestone has a **machine-checkable "Done when"**; verify with an *external* check, never the
+builder's own say-so.
 
-Ship 1–5 first; that alone satisfies the core solo workflow. 6 is the co-founder unlock. 7 is nice-to-have.
+0. **Prove the schema by hand (no code).** Hand-author 2–3 `annotations.json` entries (incl. `type`,
+   `viewportScope`, `viewport`) against the real storefront and fix them from the JSON alone.
+   **Done when:** a hand-authored entry leads to a correct code fix with no extra context.
+1. **Walking skeleton** — `nit review <url>` launches Chromium (`bypassCSP`) + trivial overlay logs a
+   click. **Done when:** a Playwright smoke test on a fixture AND a manual run on the live storefront
+   both log an overlay click.
+2. **Pick + comment + save** — picker, popover with **type** selector + **viewport-scope** toggle,
+   `__nitSave` writes one annotation (no screenshot yet). **Done when:** an automated run saves a
+   comment and the written object (incl. `type`, `viewportScope`) matches expected in a test.
+3. **Target resolution** — pure fn (§4). **Done when:** a ≥8-case unit table (id / custom-element
+   ancestor / deep nest / `window.ng` present vs absent) returns the expected `target`.
+4. **Screenshots** — CDP element-clip → `shots/`. **Done when:** each annotation has a non-empty PNG
+   sized to the element rect (±padding), asserted in a test.
+5. **review.md renderer** + `/fix-annotations` file. **Done when:** renderer (annotations → markdown)
+   passes a snapshot test and only `change-request` items are marked actionable.
+6. **Viewports** — desktop/mobile switch + per-annotation `viewport`. **Done when:** switching mode
+   changes `page` viewport and a saved annotation records the active `viewport`.
+7. **Replay (`nit view`)** — re-anchor + route/viewport filtering. **Done when:** loading a fixture
+   feedback file shows the right pins on the right route/viewport, and a missing element degrades to
+   the "couldn't place" list instead of crashing (both asserted).
+8. **Merge (`nit merge`)** — combine files, namespaced ids, shared shots. **Done when:** merging two
+   fixture files yields one review with no id collisions and both authors preserved (test).
+9. **Polish** — sidebar delete, Finish-review flush, idempotent append.
 
-## 8. Acceptance test (the one that matters)
+## 11. Acceptance test (external verifier)
 
-Run `nit review https://<deployed-storefront>`, annotate a real element, close the browser, then in a
-Claude Code session point it at `nit-review/` and confirm it locates and fixes the referenced
-component from the annotation alone. If the selector/component reference doesn't survive to a
-successful fix, target resolution (§4) needs work — that's the highest-risk unit.
-
-Use an **external verifier**: run the fix in a *fresh* agent session with no memory of the build, so
-the code that generated the reference isn't the thing certifying the reference is good enough.
+`nit review` the deployed storefront, annotate a real element as a `change-request`, close the browser,
+then in a **fresh agent session with no build memory** point at `nit-review/` and confirm it locates and
+fixes the referenced component from the annotation alone. The fresh agent is the verifier — the session
+that wrote the resolver must not certify it. If the reference doesn't survive to a fix, harden §4.
 
 ---
 
-## 9. v2 — close the loop (out of scope for v1, but the schema supports it)
+## 12. v2 — close the loop (out of scope for v1; schema supports it)
 
-Nit is loop infrastructure. Mapped onto the loop-engineering anatomy, v1 already has the **state layer**
-(`annotations.json` — a task list of `open` items that survives restarts) and the **human checkpoint**
-(you reviewing before an agent touches code). The loop is the agent walking `open → fixed`.
-
-The missing part is the **verifier**: v1 lets the agent flip `status: open → fixed` on its own claim —
-the model grading its own homework. v2 closes the loop:
-
-1. After the agent marks an item `fixed`, `nit verify` re-launches Chromium at the same route, re-shoots
-   the same element, and captures an **after** screenshot.
-2. The before/after pair is diffed and/or re-presented to a human (or a fresh agent) for a final
-   `verified` / `reopened` decision — the change only counts as done once an *external* check confirms it.
-
-Schema additions (backward-compatible): add `verifiedAt` and a second screenshot slot so an annotation
-carries `screenshot` (before) and `screenshotAfter`. Status gains `verified` and `reopened`. No v1 field
-changes — v2 is additive, and the same shape still feeds the eventual MCP server.
+Nit is loop infrastructure: `annotations.json` is the **state layer**, your review is the **human
+checkpoint**, the agent walking `open → fixed` is the **loop**. The missing part is the **verifier** —
+v1 lets the agent flip `status` on its own claim. v2: after a `fixed` mark, `nit verify` re-launches at
+the same route/viewport, captures an **after** screenshot, and diffs / re-presents before/after for a
+`verified` | `reopened` decision by an external check. Additive schema only: add `verifiedAt` and
+`screenshotAfter`; `status` gains `verified` | `reopened`. No v1 field changes; still feeds the MCP
+server.

@@ -6,6 +6,7 @@
   "bin": {
     "nit": "./src/cli/index.js"
   },
+  "keywords": ["annotation", "website-review", "feedback", "playwright", "coding-agent"],
   "scripts": {
     "build:overlay": "node scripts/build-overlay.js",
     "test": "node --test"

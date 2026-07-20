@@ -11,99 +11,110 @@ source of truth.** Build in this repo (`D:\Tools\Nit`).
 
 ## What Nit does
 
-`nit review <url>` launches a real (headed) Chromium at any URL — live site, staging, or
-`localhost:4200`. An injected overlay lets me hover-highlight elements, click one, type a comment,
-and save. Each saved comment is stored with a stable reference to the element (nearest custom-element
-/ component tag, CSS selector, XPath, classes, text, bounding rect) plus a cropped screenshot, in
-`nit-review/annotations.json` and a readable `nit-review/review.md`. I then tell a coding agent to
-read that file and fix each `open` annotation.
+Three verbs, one Playwright-launched Chromium, one injected overlay:
+
+- `nit review <url>` — annotate any site (live, staging, or `localhost:4200`): hover-highlight an
+  element, click it, type a comment, pick a **type** (change request / comment) and a **viewport scope**
+  (general / current viewport), save. Each note is stored with a stable element reference (nearest
+  custom-element / component tag, CSS selector, XPath, classes, text, rect), a cropped screenshot, the
+  route, and the viewport. Output: `nit-review/annotations.json` + `review.md` + `shots/`.
+- `nit view <file>` — reload a feedback file and re-view the annotations pinned back onto the pages/
+  routes where they were made, filtered by the current viewport.
+- `nit merge <file...>` — combine co-founder feedback files into one consolidated review.
+
+A coding agent then reads `nit-review/` and fixes each `open` change request.
+
+## Priority rule
+
+Nit must work on any website, but the **fainin Angular storefront is the priority target** — when a
+decision forces a trade-off, optimize for the Angular storefront first (especially target resolution:
+getting the Angular component class name is the highest-value pointer for the fixing agent).
 
 ## Hard requirements (from SPEC.md)
 
-- **Works on live, CSP-hardened sites.** Launch the Playwright browser context with
-  `bypassCSP: true` and inject the overlay via `page.addInitScript` so it loads before page scripts
-  and survives SPA route changes. Do NOT inject via a `<script>` tag appended at runtime.
-- **Overlay is framework-agnostic vanilla JS/CSS in a Shadow DOM.** It runs inside a stranger's page
-  and must not assume Angular/React or collide with host CSS.
-- **The overlay is ONE shared asset** bundled by esbuild and delivered two ways: (a) injected by the
-  Playwright CLI, (b) a bookmarklet build for non-technical reviewers (localStorage + an Export
-  button producing the same JSON shape).
-- **Bridge overlay → disk** with `page.exposeBinding('__nitSave', ...)`. The Node handler resolves
-  the target reference, captures a CDP element-clip screenshot (`Page.captureScreenshot` with a
-  clip), and appends to the store.
-- **Layered target resolution:** always capture selector/xpath/nearest-custom-element-tag/rect;
-  additionally, if `window.ng` exists, enrich with the Angular component class name
-  (`window.ng.getComponent(el)?.constructor.name`). Never fail when `window.ng` is absent.
-- **Output schema exactly as in SPEC.md §3**, with `status: open|fixed|wontfix` and stable ids so a
-  future MCP server can wrap the file unchanged. Do not build the MCP server now.
-- **Zero backend, zero changes to the site under review.** Node ≥18, ESM, Playwright + esbuild the
-  only deps, stdlib otherwise.
+- **Works on live, CSP-hardened sites:** Playwright context with `bypassCSP: true`; inject the overlay
+  via `page.addInitScript` (before page scripts, survives SPA route changes). Never inject via a runtime
+  `<script>` tag.
+- **Overlay is framework-agnostic vanilla JS/CSS in a Shadow DOM** — it runs inside a stranger's page;
+  no Angular/React assumptions, no host-CSS collisions. The **same overlay** serves capture and replay.
+- **Single delivery path — no bookmarklet.** Co-founders run the same standalone tool, produce a
+  feedback file, and send it back; `nit merge` consumes one or more files.
+- **Bridge overlay → Node** with `page.exposeBinding` (`__nitSave`, `__nitLoad`, `__nitSetViewport`).
+  The save handler resolves the target, captures a CDP element-clip screenshot, appends to the store.
+- **Layered target resolution:** always selector/xpath/nearest-custom-element-tag/classes/text/rect;
+  additionally, if `window.ng` exists, `window.ng.getComponent(el)?.constructor.name`. Never fail when
+  `window.ng` is absent.
+- **Annotation types:** every annotation has `type: change-request | comment` (overlay default
+  `change-request`). `/fix-annotations` acts only on open `change-request`s; `comment`s are context.
+- **Viewports:** desktop/mobile switch within a session (overlay control + `--device`/`--mobile` flag;
+  v1 = `page.setViewportSize`). Each annotation records `viewport` and a `viewportScope`
+  (`general | desktop | mobile`, default = current mode, toggleable to general). Replay filters by the
+  active viewport (desktop shows `{general,desktop}`, mobile shows `{general,mobile}`, toggle for All).
+- **Replay re-anchoring** (`anchor/`): resolve `selector` → `xpath` → text heuristic; on failure, drop
+  the annotation to a sidebar "couldn't place" list — never crash.
+- **Output schema exactly as SPEC.md §3** (`type`, `status`, per-annotation `author`, `viewportScope`,
+  `viewport`, `route`, `target`, `screenshot`). Stable ids so a future MCP server wraps the file
+  unchanged. Do not build the MCP server now.
+- **Zero backend, zero changes to the site under review.** Node ≥18, ESM, Playwright + esbuild the only
+  deps, stdlib otherwise.
 
-## Build order (ship 0–5 first; they satisfy the core solo workflow)
+## Build order — each milestone has a machine-checkable "Done when" (ship 0–5 first)
 
-Each milestone has a **machine-checkable "Done when"** — treat it as the definition of done and do not
-move on until an *external* check (a test, a file assertion, a fresh agent) confirms it, not your own
-say-so. Grading your own output is the failure mode to avoid.
+Verify each with an **external** check (a test, a file assertion, a fresh agent), never your own
+say-so — grading your own output is the failure mode to avoid.
 
-0. **Prove the schema by hand (no code).** Before writing capture code, hand-author 2–3
-   `nit-review/annotations.json` entries against my real deployed storefront (I will give the URL and
-   the comments), then fix those items in the storefront codebase using only the JSON. This validates
-   that the §3/§4 reference is actually *fixable*. If a hand-written entry is not enough to locate and
-   fix the component, change the schema now — this is the real spec for target resolution.
+0. **Prove the schema by hand (no code).** Before any capture code, hand-author 2–3
+   `nit-review/annotations.json` entries (incl. `type`, `viewportScope`, `viewport`) against my real
+   deployed storefront (I'll give the URL + comments), then fix them in the storefront codebase using
+   only the JSON. This is the real spec for target resolution — if a hand-written entry isn't enough to
+   locate and fix the component, change the schema now.
    **Done when:** a hand-authored `annotations.json` leads to a correct code fix with no extra context.
-1. **Walking skeleton** — `nit review <url>` launches Chromium with `bypassCSP` and injects a trivial
-   overlay that logs a click to the Node console.
-   **Done when:** a Playwright smoke test navigates a fixture page AND a manual run against the live
-   storefront both log an overlay click to stdout.
-2. **Pick + comment + save** — hover-highlight element picker (Alt-to-toggle, Esc-to-cancel), comment
-   popover, `__nitSave` bridge writing one annotation (no screenshot yet) to `annotations.json`.
-   **Done when:** an automated run clicks a fixture element, saves a comment, and the written
-   `annotations.json` matches the expected object (assert in a test).
-3. **Target resolution** — the layered reference incl. stable selector generation and the `window.ng`
-   enrichment. This is a **pure function** (element/DOM → target object) — unit-test it hard.
-   **Done when:** a unit-test table of ≥8 fixture cases (with `id`, with custom-element ancestor,
-   deeply nested, `window.ng` present vs absent) all return the expected `target`.
-4. **Screenshots** — CDP element-clip capture into `nit-review/shots/`.
-   **Done when:** each saved annotation has a non-empty PNG whose dimensions match the element rect
-   (±padding), asserted in a test.
-5. **review.md renderer** + write a `/fix-annotations` instruction file explaining the agent contract.
-   **Done when:** `review.md` renders one section per annotation with the embedded shot and refs, and
-   the pure renderer (annotations → markdown string) passes a snapshot test.
-6. **Bookmarklet build** — same overlay via esbuild, localStorage store, Export button.
-   **Done when:** the bookmarklet-built bundle loads the overlay on a fixture page and Export produces
-   an `annotations.json` byte-identical in shape to the CLI output (assert schema equality).
-7. **Polish** — sidebar with delete, "Finish review" flush, idempotent append across runs.
-   **Done when:** running `nit review` twice against the same `--out` appends a second review block and
-   never clobbers the first (assert in a test).
+1. **Walking skeleton** — `nit review <url>` launches Chromium (`bypassCSP`) + trivial overlay logs a
+   click. **Done when:** a Playwright smoke test on a fixture AND a manual run on the live storefront
+   both log an overlay click to stdout.
+2. **Pick + comment + save** — picker (Alt-toggle, Esc-cancel), popover with **type** selector +
+   **viewport-scope** toggle, `__nitSave` writes one annotation (no screenshot yet). **Done when:** an
+   automated run saves a comment and the written object (incl. `type`, `viewportScope`) matches expected.
+3. **Target resolution** — pure fn (element/DOM → target). **Done when:** a ≥8-case unit table (id /
+   custom-element ancestor / deep nest / `window.ng` present vs absent) returns the expected `target`.
+4. **Screenshots** — CDP element-clip → `shots/`. **Done when:** each annotation has a non-empty PNG
+   sized to the element rect (±padding), asserted in a test.
+5. **review.md renderer** + `/fix-annotations` file. **Done when:** the pure renderer passes a snapshot
+   test and marks only `change-request` items actionable.
+6. **Viewports** — desktop/mobile switch + per-annotation `viewport`. **Done when:** switching mode
+   changes the page viewport and a saved annotation records the active `viewport`.
+7. **Replay (`nit view`)** — re-anchor + route/viewport filtering. **Done when:** loading a fixture
+   feedback file shows the right pins on the right route/viewport, and a missing element degrades to the
+   "couldn't place" list instead of crashing (both asserted).
+8. **Merge (`nit merge`)** — combine files, namespaced ids, shared shots. **Done when:** merging two
+   fixture files yields one review with no id collisions and both authors preserved.
+9. **Polish** — sidebar delete, Finish-review flush, idempotent append.
 
 ## Working agreement
 
-- Follow test-driven development where it's cheap (target resolution and the store are pure functions
-  — unit-test those). The browser/overlay integration can be verified with a Playwright smoke test
-  against a small static fixture page plus one manual run against the real storefront.
-- Keep files small and single-purpose per the module layout in SPEC.md §2.
-- After each milestone, stop and show me it working (a command to run + what I should see) before
-  moving on.
+- TDD where cheap: `capture/` (target resolution), `store/` (merge, render), and `anchor/` (re-anchor)
+  are pure/near-pure — unit-test them hard. Browser/overlay integration → Playwright smoke tests on a
+  small static fixture page + one manual run on the real storefront.
+- Keep files small and single-purpose per SPEC.md §2.
+- After each milestone, stop and show me it working (a command + what I should see) before moving on.
 - Commit after each green milestone with Conventional Commits (one line, no co-author).
 
-## The acceptance test that matters — use an EXTERNAL verifier (SPEC.md §8)
+## Acceptance test — EXTERNAL verifier (SPEC.md §11)
 
-Run `nit review` against my deployed Angular storefront, annotate a real element, close the browser.
-Then judge the reference quality with a check you do NOT control: open a **fresh agent session with no
-memory of this build**, point it at `nit-review/`, and see whether it locates and fixes the referenced
-component from the annotation alone. That fresh agent is the verifier — do not let the session that
-wrote the resolver also certify that the resolver is good enough. If the reference doesn't survive to
-a successful fix, target resolution (milestone 3) is the unit to harden.
+`nit review` the deployed Angular storefront, annotate a real element as a `change-request`, close the
+browser, then in a **fresh agent session with no memory of this build** point at `nit-review/` and
+confirm it locates and fixes the referenced component from the annotation alone. That fresh agent is the
+verifier — the session that wrote the resolver must not certify it. If the reference doesn't survive to a
+fix, harden target resolution (milestone 3).
 
 ## Mindset (loop-engineering)
 
-Building Nit is chain-shaped — the milestones are known up front — so run it as a chain, not an open
-loop. But apply two loop-engineering disciplines throughout: (1) every milestone has a machine-checkable
-"Done when", and (2) the verifier is external wherever it can be (a test, a file assertion, a fresh
-agent), never the builder grading itself. Note also that **Nit is loop infrastructure**: its
-`annotations.json` is the state layer and my review is the human checkpoint for a website-fixing loop —
-see SPEC.md §9 for the v2 "close the loop" verifier, which is out of scope for this build.
+Building Nit is chain-shaped (milestones known up front) — run it as a chain, but apply two loop
+disciplines: every milestone has a machine-checkable "Done when", and the verifier is external wherever
+possible. Note that **Nit is itself loop infrastructure** (`annotations.json` = state layer, my review =
+human checkpoint); the v2 "close the loop" fix-verifier is described in SPEC.md §12 and is out of scope
+here.
 
-Start by reading `SPEC.md`, then do milestone 0 with me (hand-author the schema and prove it's
-fixable), and only after that propose the concrete file tree and milestone-1 implementation. Wait for
-my go-ahead before writing code.
+Start by reading `SPEC.md`, then do milestone 0 with me (hand-author the schema and prove it's fixable),
+and only after that propose the concrete file tree and milestone-1 implementation. Wait for my go-ahead
+before writing code.
