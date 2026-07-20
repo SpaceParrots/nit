@@ -2,7 +2,10 @@
 
 > Point-and-click annotation for websites, built to hand small UI fixes to a coding agent.
 
-**Status:** design approved 2026-07-20 (rev 2) · **Author:** Kevin · **Codename:** `nit`
+**Status:** LOCKED 2026-07-20 (rev 2) · **Author:** Kevin · **Codename:** `nit`
+
+> Defaults locked: annotation `type` defaults to `change-request`; `viewportScope` defaults to the
+> current viewport (toggleable to `general`).
 
 ---
 
