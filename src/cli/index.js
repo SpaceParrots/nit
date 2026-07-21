@@ -1,108 +1,160 @@
 #!/usr/bin/env node
 // nit — point-and-click website annotation for coding agents.
-//   nit review <url>     annotate a site, write nit-review/
-//   nit view <file>      replay a feedback file on the live site
-//   nit merge <file...>  combine feedback files into one review
-import { parseArgs } from './args.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Command, Option } from 'commander';
 import { runMerge } from './merge.js';
 import { startSession } from '../browser/session.js';
+import { startMcpServer } from '../mcp/server.js';
 
-const HELP = `nit — point-and-click website annotation for coding agents
+const pkg = JSON.parse(fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf8'));
 
-Usage:
-  nit review <url>  [--out dir] [--author name] [--mobile] [--headless] [--debug]
-  nit view <file>   [--url override] [--mobile] [--headless] [--debug]
-  nit verify <file> [--url override] [--mobile] [--headless] [--debug]
-  nit merge <file...> [--out dir]
-  nit mcp [dir]
+const program = new Command();
 
-Review: press Alt to pick an element, click it, describe the change, Save.
-Verify: captures "after" screenshots for fixed annotations; rule Verified/Reopen in the panel.
-Mcp:    stdio MCP server over <dir>/annotations.json (list_annotations, get_annotation, mark_fixed, set_status).
-Output: <out>/annotations.json + review.md + shots/ (default out: nit-review).
-`;
+program
+  .name('nit')
+  .description('Point-and-click website annotation that hands small UI fixes to a coding agent.\n'
+    + 'Annotate any site in a real browser; nit writes a structured review folder\n'
+    + '(annotations.json + review.md + screenshots) that an agent fixes directly.')
+  .version(pkg.version)
+  .showHelpAfterError('(run "nit <command> --help" for details)')
+  .showSuggestionAfterError()
+  .addHelpText('after', `
+The loop:
+  1. nit review https://staging.example.com      annotate the site -> nit-review/
+  2. hand nit-review/ to a coding agent          (or serve it: nit mcp nit-review)
+  3. nit verify nit-review/annotations.json      rule each fix Verified / Reopen
 
-main().catch(err => {
-  console.error(`nit: ${err.message}`);
-  process.exit(1);
-});
+Examples:
+  $ nit review http://localhost:4200 --mobile --author Ann
+  $ nit view feedback-ann.json --url https://staging.example.com
+  $ nit merge feedback-kevin.json feedback-ann.json --out review-merged
+  $ claude mcp add nit -- nit mcp ./nit-review`);
 
-async function main() {
-  const { flags, positional } = parseArgs(process.argv.slice(2));
-  const [command, ...rest] = positional;
+/** Options shared by every command that launches a browser. */
+function withBrowserOptions(cmd) {
+  return cmd
+    .option('-m, --mobile', 'start in the mobile viewport (390×844) instead of desktop (1440×900)')
+    .addOption(new Option('-d, --device <mode>', 'explicit start viewport').choices(['desktop', 'mobile']))
+    .option('--headless', 'run the browser headless (for automation/CI)')
+    .option('--debug', 'verbose overlay logging (every page click is logged to stdout)');
+}
 
-  if (flags.help || !command) {
-    console.log(HELP);
-    return;
-  }
-
-  const viewportMode = flags.mobile || flags.device === 'mobile' ? 'mobile' : 'desktop';
-  const common = {
-    viewportMode,
-    headless: Boolean(flags.headless),
-    debug: Boolean(flags.debug),
-  };
-
-  if (command === 'review') {
-    const url = rest[0];
-    if (!url) throw new Error('usage: nit review <url>');
-    const session = await startSession({
-      ...common,
-      mode: 'review',
-      url: normalizeUrl(url),
-      out: typeof flags.out === 'string' ? flags.out : 'nit-review',
-      author: typeof flags.author === 'string' ? flags.author : undefined,
-    });
-    hookSigint(session);
+withBrowserOptions(
+  program.command('review')
+    .aliases(['r', 'annotate'])
+    .summary('open a browser and annotate a site')
+    .description('Open a real Chromium with the nit overlay and annotate any website — live,\n'
+      + 'staging, or http://localhost.\n\n'
+      + 'Press Alt (or click the nit chip bottom-left) to toggle element picking, click an\n'
+      + 'element, describe the change, pick a type (change request / comment) and a viewport\n'
+      + 'scope, then Save. The nit panel window next to the browser lists annotations,\n'
+      + 'switches desktop/mobile, deletes items, and finishes the review.\n\n'
+      + 'Writes <out>/annotations.json, review.md, fix-annotations.md and shots/*.png.')
+    .argument('<url>', 'page to open (https:// is assumed when no scheme is given)')
+    .option('-o, --out <dir>', 'output directory', 'nit-review')
+    .option('-a, --author <name>', 'author recorded on each annotation (default: your OS user name)'))
+  .action(async (url, opts) => {
+    const session = await startBrowser('review', { url, opts });
     console.log(`nit review — ${url}`);
-    console.log('Alt: toggle picking · Esc: cancel · close the browser (or Finish review) when done.');
+    console.log('Alt: toggle picking · Esc: cancel · use the panel window · close the browser (or Finish review) when done.');
     await session.done;
     summarize(session);
-  } else if (command === 'view' || command === 'verify') {
-    const file = rest[0];
-    if (!file) throw new Error(`usage: nit ${command} <file>`);
-    const session = await startSession({
-      ...common,
-      mode: command,
-      reviewFile: file,
-      url: typeof flags.url === 'string' ? normalizeUrl(flags.url) : undefined,
-    });
-    hookSigint(session);
-    if (command === 'verify') {
-      console.log(`nit verify — ${file}`);
-      console.log('Visit the routes of fixed annotations; after-shots are captured automatically.');
-      console.log('Rule each fixed item Verified or Reopen in the panel, then close the browser.');
-    } else {
-      console.log(`nit view — replaying ${file}`);
-      console.log('Navigate the site; pins appear on the routes they were made on. Close the browser when done.');
-    }
+  });
+
+withBrowserOptions(
+  program.command('view')
+    .aliases(['v', 'replay'])
+    .summary('replay a feedback file on the live site')
+    .description('Reload a feedback file and re-view its annotations as numbered pins, re-anchored\n'
+      + 'on the pages/routes where they were made and filtered by the active viewport.\n'
+      + 'Annotations that cannot be re-anchored land in the panel’s "couldn’t place" list.')
+    .argument('<file>', 'a nit feedback file (annotations.json)')
+    .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file'))
+  .action(async (file, opts) => {
+    const session = await startBrowser('view', { file, opts });
+    console.log(`nit view — replaying ${file}`);
+    console.log('Navigate the site; pins appear on the routes they were made on. Close the browser when done.');
     await session.done;
-  } else if (command === 'mcp') {
-    const { startMcpServer } = await import('../mcp/server.js');
-    const dir = rest[0] || 'nit-review';
+  });
+
+withBrowserOptions(
+  program.command('verify')
+    .aliases(['check'])
+    .summary('capture after-shots for fixed items and rule Verified / Reopen')
+    .description('Close the loop after an agent marked change requests "fixed": nit re-opens the\n'
+      + 'site, re-anchors each fixed annotation on its route, and captures an "after"\n'
+      + 'screenshot next to the original (if the element is gone, the originally recorded\n'
+      + 'region is captured instead). Rule each item Verified or Reopen in the panel —\n'
+      + 'reopened items become actionable again for the next fix round.')
+    .argument('<file>', 'a nit feedback file (annotations.json)')
+    .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file'))
+  .action(async (file, opts) => {
+    const session = await startBrowser('verify', { file, opts });
+    console.log(`nit verify — ${file}`);
+    console.log('Visit the routes of fixed annotations; after-shots are captured automatically.');
+    console.log('Rule each fixed item Verified or Reopen in the panel, then close the browser.');
+    await session.done;
+  });
+
+program.command('merge')
+  .aliases(['combine'])
+  .summary('combine feedback files into one consolidated review')
+  .description('Combine feedback files (e.g. from co-founders) into one consolidated review.\n'
+    + 'Ids are namespaced by author (kevin:a1, ann:a1) so nothing collides, screenshots\n'
+    + 'are copied into a shared shots/, and per-annotation authorship is preserved.\n'
+    + 'The merged folder feeds nit view, nit verify, nit mcp and the agent handoff alike.')
+  .argument('<files...>', 'nit feedback files (annotations.json, one per author)')
+  .option('-o, --out <dir>', 'output directory', 'nit-review-merged')
+  .action((files, opts) => {
+    runMerge(files, { out: opts.out });
+  });
+
+program.command('mcp')
+  .aliases(['serve'])
+  .summary('serve a review folder as an MCP server (stdio)')
+  .description('Expose a nit review folder to coding agents as an MCP server over stdio.\n\n'
+    + 'Tools: list_annotations (filterable; reports the actionable count),\n'
+    + 'get_annotation (full record incl. before/after screenshots as images),\n'
+    + 'mark_fixed, set_status (open | fixed | wontfix | verified | reopened).\n\n'
+    + 'Register with Claude Code:  claude mcp add nit -- nit mcp ./nit-review')
+  .argument('[dir]', 'review directory containing annotations.json', 'nit-review')
+  .action(dir => {
     startMcpServer(dir);
     // stays alive while stdin (the MCP client) is connected
-  } else if (command === 'merge') {
-    if (!rest.length) throw new Error('usage: nit merge <file...>');
-    runMerge(rest, { out: typeof flags.out === 'string' ? flags.out : 'nit-review-merged' });
-  } else {
-    throw new Error(`unknown command: ${command}\n\n${HELP}`);
-  }
+  });
+
+async function startBrowser(mode, { url, file, opts }) {
+  const session = await startSession({
+    mode,
+    url: url ? normalizeUrl(url) : opts.url ? normalizeUrl(opts.url) : undefined,
+    reviewFile: file,
+    out: opts.out,
+    author: opts.author,
+    viewportMode: opts.mobile || opts.device === 'mobile' ? 'mobile' : 'desktop',
+    headless: Boolean(opts.headless),
+    debug: Boolean(opts.debug),
+  });
+  process.on('SIGINT', () => {
+    session.close().finally(() => process.exit(0));
+  });
+  return session;
 }
 
 function summarize(session) {
   const anns = session.store.annotations;
-  const open = anns.filter(a => a.type === 'change-request' && a.status === 'open').length;
-  console.log(`\n${anns.length} annotation${anns.length === 1 ? '' : 's'} (${open} open change-request${open === 1 ? '' : 's'}) -> ${session.store.dir}`);
-  if (open) console.log('Hand nit-review/ to your coding agent (see fix-annotations.md).');
+  const open = anns.filter(a => a.type === 'change-request' && (a.status === 'open' || a.status === 'reopened')).length;
+  console.log(`\n${anns.length} annotation${anns.length === 1 ? '' : 's'} (${open} actionable change-request${open === 1 ? '' : 's'}) -> ${session.store.dir}`);
+  if (open) console.log('Hand the folder to your coding agent (see fix-annotations.md) or serve it: nit mcp ' + session.store.dir);
 }
 
 function normalizeUrl(url) {
   return /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`;
 }
 
-function hookSigint(session) {
-  process.on('SIGINT', () => {
-    session.close().finally(() => process.exit(0));
-  });
-}
+program.parseAsync().catch(err => {
+  console.error(`nit: ${err.message}`);
+  process.exit(1);
+});

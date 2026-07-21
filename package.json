@@ -1,12 +1,18 @@
 {
   "name": "nit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Point-and-click website annotation that hands small UI fixes to a coding agent.",
   "type": "module",
   "bin": {
     "nit": "./src/cli/index.js"
   },
-  "keywords": ["annotation", "website-review", "feedback", "playwright", "coding-agent"],
+  "keywords": [
+    "annotation",
+    "website-review",
+    "feedback",
+    "playwright",
+    "coding-agent"
+  ],
   "scripts": {
     "test": "node --test"
   },
@@ -14,6 +20,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "commander": "^15.0.0",
     "esbuild": "^0.25.0",
     "playwright": "^1.54.0"
   },
