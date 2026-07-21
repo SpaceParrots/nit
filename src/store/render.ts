@@ -1,25 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Pure annotations → review.md renderer (SPEC §5) + the /fix-annotations contract file.
+import type { Annotation, ReviewData } from '../types.js';
 
 /**
  * Render a review as human/agent-readable markdown (SPEC §5). Pure function.
  * Open and reopened change-requests are flagged **ACTIONABLE**; comments are
  * marked context-only so a fixing agent never acts on them.
- * @param {import('../types.js').ReviewData} data
- * @returns {string} the complete review.md content
+ * @param data the full review data
+ * @returns the complete review.md content
  */
-export function renderReviewMd(data) {
-  const review = data.review || {};
-  const annotations = data.annotations || [];
+export function renderReviewMd(data: ReviewData): string {
+  const review = data.review ?? {} as Partial<ReviewData['review']>;
+  const annotations = data.annotations ?? [];
   const openCrs = annotations.filter(isActionable).length;
 
-  const lines = [];
-  lines.push(`# Nit review — ${review.url || 'unknown url'} — ${(review.createdAt || '').slice(0, 10)}`);
+  const lines: string[] = [];
+  lines.push(`# Nit review — ${review.url || 'unknown url'} — ${(review.createdAt ?? '').slice(0, 10)}`);
   lines.push('');
-  lines.push(`Authors: ${(review.authors || []).join(', ') || '—'} · ${annotations.length} annotation${annotations.length === 1 ? '' : 's'} · ${openCrs} actionable (open/reopened change-requests)`);
+  lines.push(`Authors: ${(review.authors ?? []).join(', ') || '—'} · ${annotations.length} annotation${annotations.length === 1 ? '' : 's'} · ${openCrs} actionable (open/reopened change-requests)`);
 
   for (const a of annotations) {
-    const t = a.target || {};
+    const t = a.target ?? {} as Partial<Annotation['target']>;
     lines.push('');
     lines.push(`## ${a.id} · ${a.type} · ${a.status} · ${a.viewport ? a.viewport.mode : 'general'} — ${oneLine(a.comment)}`);
     if (isActionable(a)) {
@@ -33,7 +34,7 @@ export function renderReviewMd(data) {
     }
     if (a.screenshot) lines.push(`![${a.id}](${a.screenshot})`);
     if (a.screenshotAfter) lines.push(`![${a.id} after](${a.screenshotAfter})`);
-    lines.push(`- component: \`${t.component || '?'}\`${t.ngComponent ? ` (${t.ngComponent})` : ''}`);
+    lines.push(`- component: \`${t.component ?? '?'}\`${t.ngComponent ? ` (${t.ngComponent})` : ''}`);
     if (t.selector) lines.push(`- selector: \`${t.selector}\``);
     lines.push(`- route: \`${a.route || '/'}\` · author: ${a.author || '—'} · scope: ${a.viewportScope || 'general'}${a.viewport ? ` · captured at ${a.viewport.w}×${a.viewport.h}` : ''}`);
   }
@@ -41,12 +42,12 @@ export function renderReviewMd(data) {
   return lines.join('\n');
 }
 
-function isActionable(a) {
+function isActionable(a: Annotation): boolean {
   return a.type === 'change-request' && (a.status === 'open' || a.status === 'reopened');
 }
 
-function oneLine(s) {
-  return (s || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+function oneLine(s: string | undefined): string {
+  return (s ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
 export const FIX_ANNOTATIONS_MD = `# /fix-annotations

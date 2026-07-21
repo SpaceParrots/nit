@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Numbered pins anchored to elements on the current route (replay + resumed capture).
+import type { OverlayActions, OverlayState, Pins } from './state.js';
 
 /**
  * Create the pins layer: one numbered pin per re-anchored annotation, positioned
  * in absolute page coordinates so pins scroll with the content.
- * @param {ShadowRoot} root the overlay shadow root to mount into
- * @param {object} state shared overlay state (`state.placed` drives rendering)
- * @param {object} actions overlay actions (focusAnnotation on pin click)
- * @returns {{render: () => void, focus: (id: string) => void}}
+ * @param root the overlay shadow root to mount into
+ * @param state shared overlay state (`state.placed` drives rendering)
+ * @param actions overlay actions (focusAnnotation on pin click)
  */
-export function createPins(root, state, actions) {
+export function createPins(root: ShadowRoot, state: OverlayState, actions: OverlayActions): Pins {
   const layer = document.createElement('div');
   layer.className = 'nit-pins';
   root.append(layer);
 
-  function render() {
+  function render(): void {
     layer.innerHTML = '';
     state.placed.forEach(({ ann, el }, i) => {
       const r = el.getBoundingClientRect();
@@ -34,14 +34,14 @@ export function createPins(root, state, actions) {
     });
   }
 
-  function focus(id) {
+  function focus(id: string): void {
     const entry = state.placed.find(p => p.ann.id === id);
     if (!entry) return;
     entry.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     setTimeout(() => flash(entry.el), 250);
   }
 
-  function flash(el) {
+  function flash(el: Element): void {
     const r = el.getBoundingClientRect();
     const f = document.createElement('div');
     f.className = 'nit-flash';

@@ -5,11 +5,41 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
+import type { Readable, Writable } from 'node:stream';
 import { createStore, safeShotPath } from '../store/store.js';
+import type { Store } from '../store/store.js';
 import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
+import { errorMessage } from '../util/error.js';
+import type { AnnotationStatus } from '../types.js';
 
 const PROTOCOL_FALLBACK = '2024-11-05';
-const STATUSES = ['open', 'fixed', 'wontfix', 'verified', 'reopened'];
+const STATUSES: readonly AnnotationStatus[] = ['open', 'fixed', 'wontfix', 'verified', 'reopened'];
+
+function isAnnotationStatus(v: unknown): v is AnnotationStatus {
+  return typeof v === 'string' && (STATUSES as readonly string[]).includes(v);
+}
+
+/** An incoming JSON-RPC 2.0 message (already parsed, structurally unverified). */
+interface JsonRpcMessage {
+  id?: number | string | null;
+  method?: unknown;
+  params?: { protocolVersion?: unknown; name?: unknown; arguments?: Record<string, unknown> };
+}
+
+/** MCP tool-call result content: text and/or images. */
+interface ToolContent {
+  type: 'text' | 'image';
+  text?: string;
+  data?: string;
+  mimeType?: string;
+}
+
+interface ToolResult {
+  content: ToolContent[];
+  isError?: boolean;
+}
+
+type SendFn = (msg: object) => void;
 
 const TOOLS = [
   {
@@ -56,20 +86,28 @@ const TOOLS = [
   },
 ];
 
+/** Options for {@link startMcpServer}. */
+export interface McpServerOptions {
+  /** protocol input (default process.stdin) */
+  input?: Readable;
+  /** protocol output (default process.stdout) */
+  output?: Writable;
+  /** diagnostics sink (default stderr) */
+  log?: (msg: string) => void;
+}
+
 /**
  * Start the MCP stdio server over a review directory. Speaks newline-delimited
  * JSON-RPC 2.0 on the given streams (never writes logs to stdout — that's the
  * protocol channel). The annotations file is re-read on every tool call so
  * humans and other agents can edit it concurrently.
- * @param {string} dir review directory containing annotations.json
- * @param {object} [opts]
- * @param {import('node:stream').Readable} [opts.input] protocol input (default process.stdin)
- * @param {import('node:stream').Writable} [opts.output] protocol output (default process.stdout)
- * @param {(msg: string) => void} [opts.log] diagnostics sink (default stderr)
- * @returns {{close: () => void}}
+ * @param dir review directory containing annotations.json
  * @throws when the directory has no annotations.json
  */
-export function startMcpServer(dir, { input = process.stdin, output = process.stdout, log = msg => console.error(msg) } = {}) {
+export function startMcpServer(
+  dir: string,
+  { input = process.stdin, output = process.stdout, log = msg => console.error(msg) }: McpServerOptions = {},
+): { close: () => void } {
   const absDir = path.resolve(dir);
   if (!fs.existsSync(path.join(absDir, 'annotations.json'))) {
     throw new Error(`no annotations.json in ${absDir}`);
@@ -77,25 +115,26 @@ export function startMcpServer(dir, { input = process.stdin, output = process.st
   log(`nit mcp serving ${absDir}`);
 
   const rl = readline.createInterface({ input, terminal: false });
-  const send = msg => output.write(JSON.stringify(msg) + '\n');
+  const send: SendFn = msg => output.write(JSON.stringify(msg) + '\n');
   rl.on('line', line => {
     const trimmed = line.trim();
     if (!trimmed) return;
-    let msg;
+    let msg: unknown;
     try { msg = JSON.parse(trimmed); } catch { return; }
+    if (!msg || typeof msg !== 'object') return;
     handleMessage(absDir, msg, send);
   });
   return { close: () => rl.close() };
 }
 
-function handleMessage(dir, msg, send) {
+function handleMessage(dir: string, msg: JsonRpcMessage, send: SendFn): void {
   const { id, method, params } = msg;
-  const reply = result => { if (id !== undefined) send({ jsonrpc: '2.0', id, result }); };
-  const fail = (code, message) => { if (id !== undefined) send({ jsonrpc: '2.0', id, error: { code, message } }); };
+  const reply = (result: object): void => { if (id !== undefined) send({ jsonrpc: '2.0', id, result }); };
+  const fail = (code: number, message: string): void => { if (id !== undefined) send({ jsonrpc: '2.0', id, error: { code, message } }); };
   try {
     if (method === 'initialize') {
       reply({
-        protocolVersion: (params && params.protocolVersion) || PROTOCOL_FALLBACK,
+        protocolVersion: (typeof params?.protocolVersion === 'string' && params.protocolVersion) || PROTOCOL_FALLBACK,
         capabilities: { tools: {} },
         serverInfo: { name: 'nit', version: '0.2.0' },
       });
@@ -106,16 +145,16 @@ function handleMessage(dir, msg, send) {
     } else if (method === 'tools/list') {
       reply({ tools: TOOLS });
     } else if (method === 'tools/call') {
-      reply(callTool(dir, params && params.name, (params && params.arguments) || {}));
+      reply(callTool(dir, params?.name, params?.arguments ?? {}));
     } else {
-      fail(-32601, `method not found: ${method}`);
+      fail(-32601, `method not found: ${String(method)}`);
     }
   } catch (e) {
-    fail(-32603, e.message);
+    fail(-32603, errorMessage(e));
   }
 }
 
-function callTool(dir, name, args) {
+function callTool(dir: string, name: unknown, args: Record<string, unknown>): ToolResult {
   // Reload per call: the file is shared with humans and other agents.
   const store = createStore(dir);
   try {
@@ -123,13 +162,13 @@ function callTool(dir, name, args) {
     if (name === 'get_annotation') return getAnnotation(dir, store, args);
     if (name === 'mark_fixed') return setStatus(store, { id: args.id, status: 'fixed' });
     if (name === 'set_status') return setStatus(store, args);
-    return toolError(`unknown tool: ${name}`);
+    return toolError(`unknown tool: ${String(name)}`);
   } catch (e) {
-    return toolError(e.message);
+    return toolError(errorMessage(e));
   }
 }
 
-function listAnnotations(store, { status, type, route }) {
+function listAnnotations(store: Store, { status, type, route }: Record<string, unknown>): ToolResult {
   const all = store.annotations.filter(a =>
     (!status || a.status === status)
     && (!type || a.type === type)
@@ -142,18 +181,18 @@ function listAnnotations(store, { status, type, route }) {
     route: a.route,
     author: a.author,
     viewportScope: a.viewportScope,
-    component: a.target && a.target.component,
-    ngComponent: a.target && a.target.ngComponent,
-    selector: a.target && a.target.selector,
+    component: a.target?.component,
+    ngComponent: a.target?.ngComponent,
+    selector: a.target?.selector,
   }));
   const actionable = all.filter(a => a.type === 'change-request' && (a.status === 'open' || a.status === 'reopened')).length;
   return text(JSON.stringify({ review: store.data.review, total: summary.length, actionable, annotations: summary }, null, 2));
 }
 
-function getAnnotation(dir, store, { id }) {
+function getAnnotation(dir: string, store: Store, { id }: Record<string, unknown>): ToolResult {
   const ann = store.annotations.find(a => a.id === id);
-  if (!ann) return toolError(`no annotation with id ${id}`);
-  const content = [{ type: 'text', text: JSON.stringify(ann, null, 2) }];
+  if (!ann) return toolError(`no annotation with id ${String(id)}`);
+  const content: ToolContent[] = [{ type: 'text', text: JSON.stringify(ann, null, 2) }];
   for (const rel of [ann.screenshot, ann.screenshotAfter]) {
     // annotations.json is shared/agent-editable — never read outside the review dir
     const abs = safeShotPath(dir, rel);
@@ -169,10 +208,10 @@ function getAnnotation(dir, store, { id }) {
   return { content };
 }
 
-function setStatus(store, { id, status }) {
-  if (!STATUSES.includes(status)) return toolError(`invalid status: ${status}`);
+function setStatus(store: Store, { id, status }: Record<string, unknown>): ToolResult {
+  if (!isAnnotationStatus(status)) return toolError(`invalid status: ${String(status)}`);
   const ann = store.annotations.find(a => a.id === id);
-  if (!ann) return toolError(`no annotation with id ${id}`);
+  if (!ann) return toolError(`no annotation with id ${String(id)}`);
   ann.status = status;
   if (status === 'verified' || status === 'reopened') ann.verifiedAt = new Date().toISOString();
   store.flush();
@@ -184,10 +223,10 @@ function setStatus(store, { id, status }) {
   return text(JSON.stringify(ann, null, 2));
 }
 
-function text(t) {
+function text(t: string): ToolResult {
   return { content: [{ type: 'text', text: t }] };
 }
 
-function toolError(message) {
+function toolError(message: string): ToolResult {
   return { content: [{ type: 'text', text: `error: ${message}` }], isError: true };
 }

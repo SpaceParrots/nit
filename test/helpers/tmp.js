@@ -16,7 +16,7 @@ export function tmpDir(prefix) {
 /**
  * Read and parse the annotations.json of a review directory.
  * @param {string} dir
- * @returns {import('../../src/types.js').ReviewData}
+ * @returns {import('../../dist/types.js').ReviewData}
  */
 export function readAnnotations(dir) {
   return JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));

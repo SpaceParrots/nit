@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { startFixtureServer } from './helpers/server.js';
 import { startTestSession, waitFor, tmpDir } from './helpers/session.js';
-import { pngSize, SHOT_PADDING } from '../src/capture/screenshot.js';
+import { pngSize, SHOT_PADDING } from '../dist/capture/screenshot.js';
 
 const PNG_1PX = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',

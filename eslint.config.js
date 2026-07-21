@@ -1,10 +1,42 @@
 import js from '@eslint/js';
 import stylistic from '@stylistic/eslint-plugin';
 import globals from 'globals';
+import tseslint from 'typescript-eslint';
 
-export default [
-  { ignores: ['node_modules', 'nit-review', 'nit-review-merged', '.playwright-mcp', 'examples'] },
+export default tseslint.config(
+  { ignores: ['node_modules', 'dist', 'nit-review', 'nit-review-merged', '.playwright-mcp', 'examples'] },
   js.configs.recommended,
+
+  // Type-aware linting for the TypeScript sources.
+  {
+    files: ['src/**/*.ts'],
+    extends: [
+      ...tseslint.configs.recommendedTypeChecked,
+      ...tseslint.configs.stylisticTypeChecked,
+    ],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+      // `.catch(() => {})` / best-effort cleanup callbacks are idiomatic here.
+      '@typescript-eslint/no-empty-function': ['error', { allow: ['arrowFunctions'] }],
+      // main.ts assembles `ui` after the closures that capture it.
+      'prefer-const': ['error', { ignoreReadBeforeAssign: true }],
+      // Public APIs carry explicit types; locals may infer.
+      '@typescript-eslint/explicit-module-boundary-types': 'error',
+      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/switch-exhaustiveness-check': 'error',
+      // The bridge/MCP boundary logs untrusted values inside template literals.
+      '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true, allowBoolean: true }],
+    },
+  },
+
+  // Shared style rules (JS + TS alike).
   {
     plugins: { '@stylistic': stylistic },
     languageOptions: {
@@ -12,7 +44,6 @@ export default [
       sourceType: 'module',
     },
     rules: {
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
       'prefer-const': 'error',
       'no-var': 'error',
       'eqeqeq': ['error', 'smart'],
@@ -28,19 +59,28 @@ export default [
       '@stylistic/keyword-spacing': 'error',
     },
   },
+
+  // Plain-JS files (tests, this config): base rules only, no type information.
+  {
+    files: ['**/*.js'],
+    rules: {
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+    },
+  },
+
   {
     // Code that runs inside the inspected page (bundled into the overlay).
-    files: ['src/overlay/**/*.js', 'src/capture/target.js', 'src/anchor/**/*.js'],
+    files: ['src/overlay/**/*.ts', 'src/capture/target.ts', 'src/anchor/**/*.ts'],
     languageOptions: { globals: { ...globals.browser } },
   },
   {
     // Node-side code, CLI, tests and this config file.
-    files: ['src/browser/**/*.js', 'src/store/**/*.js', 'src/cli/**/*.js', 'src/mcp/**/*.js', 'src/capture/screenshot.js', 'test/**/*.js', 'eslint.config.js'],
+    files: ['src/browser/**/*.ts', 'src/store/**/*.ts', 'src/cli/**/*.ts', 'src/mcp/**/*.ts', 'src/util/**/*.ts', 'src/capture/screenshot.ts', 'test/**/*.js', 'eslint.config.js'],
     languageOptions: { globals: { ...globals.node } },
   },
   {
     // Node files that embed page.evaluate callbacks (those run in the browser).
-    files: ['src/browser/**/*.js', 'test/browser-*.test.js'],
+    files: ['src/browser/**/*.ts', 'test/browser-*.test.js'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
-];
+);

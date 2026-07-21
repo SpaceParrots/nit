@@ -4,10 +4,10 @@
   "description": "Point-and-click website annotation that hands small UI fixes to a coding agent.",
   "type": "module",
   "bin": {
-    "nit": "./src/cli/index.js"
+    "nit": "./dist/cli/index.js"
   },
   "files": [
-    "src",
+    "dist",
     "README.md",
     "LICENSE"
   ],
@@ -32,10 +32,13 @@
   "homepage": "https://github.com/spaceparrots/nit#readme",
   "author": "Kevin Mattutat <kevin.mattutat@spaceparrots.de>",
   "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').cpSync('src/overlay/overlay.css','dist/overlay/overlay.css')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run build",
     "test": "node --test",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "prepublishOnly": "npm run lint"
+    "prepublishOnly": "npm run lint && npm run build"
   },
   "engines": {
     "node": ">=18"
@@ -48,8 +51,11 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^24.0.0",
     "eslint": "^10.7.0",
-    "globals": "^17.7.0"
+    "globals": "^17.7.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.46.0"
   },
   "license": "AGPL-3.0-or-later",
   "publishConfig": {

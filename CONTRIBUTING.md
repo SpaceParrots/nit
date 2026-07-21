@@ -8,40 +8,47 @@ Thanks for helping make nit better!
 git clone https://github.com/spaceparrots/nit.git
 cd nit
 npm install
-node src/cli/index.js doctor   # verifies Node/deps and installs Chromium if needed
+npm run build                   # compile TypeScript (src/ -> dist/)
+node dist/cli/index.js doctor   # verifies Node/deps and installs Chromium if needed
 ```
 
 ## Development loop
 
 ```bash
-npm test        # unit tables + headless Playwright integration tests (node --test)
-npm run lint    # eslint (flat config, @stylistic rules)
+npm run build   # tsc -> dist/ (npm test does this automatically)
+npm test        # unit tables + headless Playwright integration tests (node --test, against dist/)
+npm run lint    # eslint (flat config, typescript-eslint type-checked + @stylistic rules)
 npm run lint:fix
+npm run typecheck
 ```
 
-Try your changes for real: `node src/cli/index.js review https://example.com`.
+Try your changes for real: `npm run build && node dist/cli/index.js review https://example.com`.
 
 ## Project layout
+
+The source is TypeScript (strict mode) under `src/` and compiles to `dist/` — see
+[src/README.md](./src/README.md) for the full scaffolding walkthrough.
 
 ```
 src/
 ├─ cli/        # commander CLI: review / view / verify / merge / mcp / doctor
 ├─ browser/    # Playwright session: launch, overlay injection, bridge, panel window, verify capture
-├─ overlay/    # injected page UI — vanilla JS/CSS in a Shadow DOM (highlight, popover, pins, chip)
+├─ overlay/    # injected page UI — vanilla TS/CSS in a Shadow DOM (highlight, popover, pins, chip)
 ├─ capture/    # element → target reference + CDP element screenshots
 ├─ anchor/     # re-anchor targets to live elements for replay (selector → xpath → text)
 ├─ store/      # annotations.json read/write, review.md renderer, merge
 ├─ mcp/        # stdio MCP server over a review folder
-└─ types.js    # JSDoc typedefs for the annotations.json schema (the public contract)
+├─ util/       # small shared helpers (error narrowing)
+└─ types.ts    # the annotations.json schema types + the overlay↔Node bridge contract
 ```
 
 Guidelines:
 
-- `capture/target.js`, `anchor/`, `store/` are pure or near-pure — please keep them that way
+- `capture/target.ts`, `anchor/`, `store/` are pure or near-pure — please keep them that way
   and cover changes with the existing table-driven tests.
-- The overlay runs inside arbitrary third-party pages: vanilla JS only, everything scoped to
-  the shadow root, no framework assumptions, never break the host page.
-- The `annotations.json` schema (see `src/types.js`) is a public contract consumed by coding
+- The overlay runs inside arbitrary third-party pages: no framework or runtime dependencies,
+  everything scoped to the shadow root, never break the host page.
+- The `annotations.json` schema (see `src/types.ts`) is a public contract consumed by coding
   agents and the MCP server — additive changes only.
 
 ## Commits & PRs

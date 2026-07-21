@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { startFixtureServer } from './helpers/server.js';
 import { startTestSession, waitFor, readAnnotations } from './helpers/session.js';
-import { pngSize, SHOT_PADDING } from '../src/capture/screenshot.js';
+import { pngSize, SHOT_PADDING } from '../dist/capture/screenshot.js';
 
 test('nit review — capture flow', async t => {
   const server = await startFixtureServer();

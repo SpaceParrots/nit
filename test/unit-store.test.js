@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createStore } from '../src/store/store.js';
+import { createStore } from '../dist/store/store.js';
 import { tmpDir } from './helpers/tmp.js';
 
 test('store: fresh dir initializes review meta', () => {

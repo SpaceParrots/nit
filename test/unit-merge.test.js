@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeReviews } from '../src/store/merge.js';
+import { mergeReviews } from '../dist/store/merge.js';
 
 function review(author, annotations, url = 'https://example.com') {
   return {

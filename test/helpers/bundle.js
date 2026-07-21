@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Bundle a single src module as an IIFE global for in-page unit tables.
+// Bundle a single compiled module (from dist/) as an IIFE global for in-page unit tables.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import esbuild from 'esbuild';
 
-const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'src');
+const DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist');
 
 export async function bundleModule(relPath, globalName) {
   const result = await esbuild.build({
-    entryPoints: [path.join(SRC, relPath)],
+    entryPoints: [path.join(DIST, relPath)],
     bundle: true,
     write: false,
     format: 'iife',

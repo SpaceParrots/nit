@@ -3,17 +3,19 @@
 // window) hosting the annotation list and session controls. It is our own page, so it
 // never overlays or competes with the site under review — important on mobile viewports.
 // It talks to Node through the same context-wide bindings as the overlay.
+import type { BrowserContext, Page } from 'playwright';
+import type { NitSession } from './session.js';
 
 /**
  * Open the panel as a popup window docked next to the browser window and load
  * its self-contained UI. The popup approach (vs. a tab) is what gives nit a
  * devtools-like layout without overlaying the site under review.
- * @param {import('playwright').BrowserContext} context
- * @param {import('playwright').Page} sitePage the page under review (opens the popup, provides window geometry)
- * @param {object} session the live session; `session.panelPage` is cleared when the user closes the panel
- * @returns {Promise<import('playwright').Page>} the panel page
+ * @param context the session's browser context
+ * @param sitePage the page under review (opens the popup, provides window geometry)
+ * @param session the live session; `session.panelPage` is cleared when the user closes the panel
+ * @returns the panel page
  */
-export async function openPanel(context, sitePage, session) {
+export async function openPanel(context: BrowserContext, sitePage: Page, session: NitSession): Promise<Page> {
   const [panel] = await Promise.all([
     context.waitForEvent('page', { timeout: 8000 }),
     sitePage.evaluate(() => {
@@ -33,7 +35,12 @@ export async function openPanel(context, sitePage, session) {
   return panel;
 }
 
-function panelHtml() {
+/**
+ * The panel's self-contained HTML. Its inline script runs in the panel window
+ * and only talks to Node through the `window.__nit*` bindings — it is plain
+ * JavaScript on purpose (shipped as a string, never compiled).
+ */
+function panelHtml(): string {
   return `<!doctype html>
 <html>
 <head>

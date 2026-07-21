@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { safeShotPath } from '../src/store/store.js';
+import { safeShotPath } from '../dist/store/store.js';
 
 test('safeShotPath: accepts normal relative shot paths inside the dir', () => {
   const base = path.resolve('/reviews/x');

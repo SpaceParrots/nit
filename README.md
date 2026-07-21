@@ -109,7 +109,7 @@ One annotation:
 }
 ```
 
-The full schema is documented in [`src/types.js`](./src/types.js). Statuses flow
+The full schema is documented in [`src/types.ts`](./src/types.ts). Statuses flow
 `open → fixed → verified | reopened` (plus `wontfix`), and `reopened` change-requests are
 actionable again.
 
@@ -148,12 +148,13 @@ under review; output is plain files.
 
 ```bash
 npm install
-node src/cli/index.js doctor
-npm test        # unit tables (target/anchor/store/render/merge) + headless browser integration
+npm run build   # compile TypeScript (src/ -> dist/)
+node dist/cli/index.js doctor
+npm test        # builds first, then unit tables (target/anchor/store/render/merge) + headless browser integration
 npm run lint
 ```
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the project layout and guidelines.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines and [src/README.md](./src/README.md) for the project layout.
 
 ## License
 

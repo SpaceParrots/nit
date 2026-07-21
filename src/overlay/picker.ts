@@ -1,22 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Capture-mode element picker: Alt toggles picking, hover highlights, click selects,
 // Esc cancels. All listeners are capture-phase so the page never sees picking clicks.
+import { describeElement } from './dom.js';
+import type { Highlight, OverlayActions, OverlayState, Picker, Popover } from './state.js';
+
+/** The overlay parts the picker needs (a subset of the full ui). */
+export interface PickerUi {
+  host: HTMLElement;
+  root: ShadowRoot;
+  popover: Popover;
+}
 
 /**
  * Install the element picker: Alt toggles picking, hover highlights, click
  * selects (and never reaches the page), Esc cancels. Debug mode additionally
  * reports every page click through the bridge.
- * @param {object} state shared overlay state (picking flag, mode, hovered element)
- * @param {{host: HTMLElement, root: ShadowRoot, popover: object, sidebar?: object}} ui mounted overlay parts
- * @param {object} actions overlay actions (uiChanged is called on picking toggles)
- * @returns {{highlight: {show: Function, hide: Function}, setPicking: (on: boolean) => void}}
+ * @param state shared overlay state (picking flag, mode, hovered element)
+ * @param ui mounted overlay parts (see {@link PickerUi})
+ * @param actions overlay actions (uiChanged is called on picking toggles)
  */
-export function installPicker(state, ui, actions) {
+export function installPicker(state: OverlayState, ui: PickerUi, actions: OverlayActions): Picker {
   const highlight = createHighlight(ui.root);
 
-  const api = {
+  const api: Picker = {
     highlight,
-    setPicking(on) {
+    setPicking(on: boolean): void {
       state.picking = on;
       if (!on) {
         highlight.hide();
@@ -27,7 +35,7 @@ export function installPicker(state, ui, actions) {
     },
   };
 
-  const inOwnUi = e => e.composedPath && e.composedPath().includes(ui.host);
+  const inOwnUi = (e: Event): boolean => e.composedPath().includes(ui.host);
 
   window.addEventListener('keydown', e => {
     if (inOwnUi(e)) return; // our inputs handle their own keys
@@ -44,12 +52,12 @@ export function installPicker(state, ui, actions) {
     if (!state.picking) return;
     if (inOwnUi(e)) { highlight.hide(); state.hovered = null; return; }
     const t = e.composedPath()[0];
-    if (!t || t.nodeType !== 1) return;
+    if (!(t instanceof Element)) return;
     state.hovered = t;
     highlight.show(t);
   }, true);
 
-  const swallow = e => {
+  const swallow = (e: Event): void => {
     if (!state.picking || inOwnUi(e)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -62,11 +70,11 @@ export function installPicker(state, ui, actions) {
     if (state.debug && !inOwnUi(e)) {
       const t = e.composedPath()[0];
       try {
-        window.__nitEvent?.({
+        void window.__nitEvent?.({
           type: 'click',
           x: Math.round(e.pageX),
           y: Math.round(e.pageY),
-          tag: t && t.tagName ? t.tagName.toLowerCase() : '?',
+          tag: t instanceof Element ? t.tagName.toLowerCase() : '?',
         });
       } catch { /* bridge gone — ignore */ }
     }
@@ -74,7 +82,7 @@ export function installPicker(state, ui, actions) {
     e.preventDefault();
     e.stopImmediatePropagation();
     const t = e.composedPath()[0];
-    if (!t || t.nodeType !== 1) return;
+    if (!(t instanceof Element)) return;
     api.setPicking(false);
     state.selected = t;
     highlight.show(t, true);
@@ -84,9 +92,7 @@ export function installPicker(state, ui, actions) {
   return api;
 }
 
-import { describeElement } from './dom.js';
-
-function createHighlight(root) {
+function createHighlight(root: ShadowRoot): Highlight {
   const box = document.createElement('div');
   box.className = 'nit-highlight';
   box.hidden = true;
@@ -95,7 +101,7 @@ function createHighlight(root) {
   box.append(label);
   root.append(box);
   return {
-    show(el, pinned = false) {
+    show(el: Element, pinned = false): void {
       const r = el.getBoundingClientRect();
       box.hidden = false;
       box.classList.toggle('nit-highlight--pinned', pinned);
@@ -105,7 +111,7 @@ function createHighlight(root) {
       box.style.height = `${r.height}px`;
       label.textContent = describeElement(el);
     },
-    hide() {
+    hide(): void {
       box.hidden = true;
     },
   };

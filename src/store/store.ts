@@ -2,75 +2,74 @@
 // Read/write annotations.json (SPEC §3): stable ids, idempotent append, atomic writes.
 import fs from 'node:fs';
 import path from 'node:path';
+import type { Annotation, AnnotationStatus, ReviewData } from '../types.js';
+
+/** Options for {@link createStore}. */
+export interface StoreOptions {
+  /** site under review (recorded on a fresh review) */
+  url?: string;
+  /** appended to `review.authors` if not present */
+  author?: string;
+  /**
+   * explicit annotations file path, for feedback files with arbitrary names
+   * (`nit view feedback-ann.json`)
+   */
+  file?: string;
+}
+
+/** The annotation store owned by a session (or opened per MCP tool call). */
+export interface Store {
+  /** review directory */
+  dir: string;
+  /** screenshot directory inside `dir` */
+  shotsDir: string;
+  /** path of the annotations.json being managed */
+  file: string;
+  /** the live review data (mutated in place, persisted via {@link Store.flush}) */
+  readonly data: ReviewData;
+  /** shortcut for `data.annotations` */
+  readonly annotations: Annotation[];
+  /** next free plain id (`a1`, `a2`, …; namespaced ids don't count) */
+  nextId(): string;
+  /** idempotent append — an existing id is replaced */
+  upsert(ann: Annotation): void;
+  /** delete an annotation and its screenshot files */
+  remove(id: string): boolean;
+  /** absolute path for an annotation's screenshot */
+  shotPath(id: string): string;
+  /** absolute path for an annotation's verify after-shot */
+  afterShotPath(id: string): string;
+  /** atomically write annotations.json (tmp file + rename) */
+  flush(): void;
+}
 
 /**
  * Open (or initialize) the annotation store for a review directory. Loads an
  * existing annotations.json when present — a corrupt file is backed up to
  * `.bak` and the store starts fresh instead of crashing.
- * @param {string} dir review directory (holds annotations.json + shots/)
- * @param {object} [opts]
- * @param {string} [opts.url] site under review (recorded on a fresh review)
- * @param {string} [opts.author] appended to `review.authors` if not present
- * @param {string} [opts.file] explicit annotations file path, for feedback files
- *   with arbitrary names (`nit view feedback-ann.json`)
- * @returns {Store}
+ * @param dir review directory (holds annotations.json + shots/)
+ * @param opts see {@link StoreOptions}
  */
-export function createStore(dir, { url, author, file } = {}) {
+export function createStore(dir: string, { url, author, file }: StoreOptions = {}): Store {
   const filePath = file ? path.resolve(file) : path.join(dir, 'annotations.json');
   const shotsDir = path.join(dir, 'shots');
   fs.mkdirSync(shotsDir, { recursive: true });
 
-  let data = null;
-  if (fs.existsSync(filePath)) {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      if (parsed && Array.isArray(parsed.annotations)) data = parsed;
-    } catch { /* corrupt file → keep a backup, start fresh */ }
-    if (!data) {
-      try { fs.copyFileSync(filePath, filePath + '.bak'); } catch { /* best effort */ }
-    }
-  }
-  if (!data) {
-    const now = new Date();
-    data = {
-      review: {
-        id: `${now.toISOString().slice(0, 10)}-${safeHost(url)}`,
-        url: url || '',
-        createdAt: now.toISOString(),
-        authors: [],
-      },
-      annotations: [],
-    };
-  }
-  if (!Array.isArray(data.review.authors)) data.review.authors = [];
+  const data = loadOrInitData(filePath, url);
   if (author && !data.review.authors.includes(author)) data.review.authors.push(author);
   if (url && !data.review.url) data.review.url = url;
 
   let lastMtimeMs = mtimeMsOf(filePath);
   let lastStatuses = snapshotStatuses(data);
 
-  /**
-   * @typedef {object} Store
-   * @property {string} dir review directory
-   * @property {string} shotsDir screenshot directory inside `dir`
-   * @property {string} file path of the annotations.json being managed
-   * @property {import('../types.js').ReviewData} data the live review data (mutated in place, persisted via {@link Store#flush})
-   * @property {import('../types.js').Annotation[]} annotations shortcut for `data.annotations`
-   * @property {() => string} nextId next free plain id (`a1`, `a2`, …; namespaced ids don't count)
-   * @property {(ann: import('../types.js').Annotation) => void} upsert idempotent append — an existing id is replaced
-   * @property {(id: string) => boolean} remove delete an annotation and its screenshot files
-   * @property {(id: string) => string} shotPath absolute path for an annotation's screenshot
-   * @property {(id: string) => string} afterShotPath absolute path for an annotation's verify after-shot
-   * @property {() => void} flush atomically write annotations.json (tmp file + rename)
-   */
   return {
     dir,
     shotsDir,
     file: filePath,
-    get data() { return data; },
-    get annotations() { return data.annotations; },
+    get data(): ReviewData { return data; },
+    get annotations(): Annotation[] { return data.annotations; },
 
-    nextId() {
+    nextId(): string {
       let max = 0;
       for (const a of data.annotations) {
         const m = /^a(\d+)$/.exec(a.id);
@@ -79,14 +78,13 @@ export function createStore(dir, { url, author, file } = {}) {
       return `a${max + 1}`;
     },
 
-    /** Idempotent append: same id replaces instead of duplicating. */
-    upsert(ann) {
+    upsert(ann: Annotation): void {
       const i = data.annotations.findIndex(a => a.id === ann.id);
       if (i === -1) data.annotations.push(ann);
       else data.annotations[i] = ann;
     },
 
-    remove(id) {
+    remove(id: string): boolean {
       const i = data.annotations.findIndex(a => a.id === id);
       if (i === -1) return false;
       const [ann] = data.annotations.splice(i, 1);
@@ -99,15 +97,15 @@ export function createStore(dir, { url, author, file } = {}) {
       return true;
     },
 
-    shotPath(id) {
+    shotPath(id: string): string {
       return path.join(shotsDir, `${fileSafeId(id)}.png`);
     },
 
-    afterShotPath(id) {
+    afterShotPath(id: string): string {
       return path.join(shotsDir, `${fileSafeId(id)}-after.png`);
     },
 
-    flush() {
+    flush(): void {
       // Detect a concurrent writer (another nit process or an agent via MCP)
       // touching the file since we last read/wrote it, and merge their annotation
       // status changes in rather than clobbering them (last-writer-wins otherwise).
@@ -124,11 +122,48 @@ export function createStore(dir, { url, author, file } = {}) {
   };
 }
 
-function mtimeMsOf(file) {
+/**
+ * Load an existing annotations.json, or initialize a fresh review. A corrupt or
+ * shape-invalid file is backed up to `.bak` and replaced by a fresh review.
+ */
+function loadOrInitData(filePath: string, url: string | undefined): ReviewData {
+  if (fs.existsSync(filePath)) {
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch { /* corrupt file → keep a backup, start fresh */ }
+    if (isReviewDataLike(parsed)) {
+      // Files are shared and hand-editable: normalize a missing review block
+      // instead of crashing on it.
+      if (!parsed.review || typeof parsed.review !== 'object') parsed.review = freshReview(url);
+      if (!Array.isArray(parsed.review.authors)) parsed.review.authors = [];
+      return parsed;
+    }
+    try { fs.copyFileSync(filePath, filePath + '.bak'); } catch { /* best effort */ }
+  }
+  return { review: freshReview(url), annotations: [] };
+}
+
+/** Loose structural check for an annotations file; deeper validity is per-field. */
+function isReviewDataLike(v: unknown): v is ReviewData {
+  return typeof v === 'object' && v !== null && Array.isArray((v as ReviewData).annotations);
+}
+
+function freshReview(url: string | undefined): ReviewData['review'] {
+  const now = new Date();
+  return {
+    id: `${now.toISOString().slice(0, 10)}-${safeHost(url)}`,
+    url: url ?? '',
+    createdAt: now.toISOString(),
+    authors: [],
+  };
+}
+
+function mtimeMsOf(file: string): number | null {
   try { return fs.statSync(file).mtimeMs; } catch { return null; }
 }
 
-function snapshotStatuses(data) {
+function snapshotStatuses(data: ReviewData): Map<string, AnnotationStatus> {
   return new Map(data.annotations.map(a => [a.id, a.status]));
 }
 
@@ -138,14 +173,18 @@ function snapshotStatuses(data) {
  * concurrent status write (e.g. an agent marking `fixed` via MCP) isn't lost,
  * while our own unflushed edits still win. New annotations added externally are
  * left alone — the live session owns creation.
- * @param {string} filePath
- * @param {import('../types.js').ReviewData} data live in-memory data (mutated)
- * @param {Map<string, string>} lastStatuses id → status at our last flush/load
+ * @param filePath the annotations.json path
+ * @param data live in-memory data (mutated)
+ * @param lastStatuses id → status at our last flush/load
  */
-function mergeExternalStatuses(filePath, data, lastStatuses) {
-  let onDisk;
+function mergeExternalStatuses(
+  filePath: string,
+  data: ReviewData,
+  lastStatuses: Map<string, AnnotationStatus>,
+): void {
+  let onDisk: unknown;
   try { onDisk = JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { return; }
-  if (!onDisk || !Array.isArray(onDisk.annotations)) return;
+  if (!isReviewDataLike(onDisk)) return;
   const byId = new Map(data.annotations.map(a => [a.id, a]));
   for (const ext of onDisk.annotations) {
     const local = byId.get(ext.id);
@@ -162,10 +201,8 @@ function mergeExternalStatuses(filePath, data, lastStatuses) {
 /**
  * Turn an annotation id into a safe filename fragment — merged ids contain `:`
  * which is illegal on Windows (`kevin:a1` → `kevin_a1`).
- * @param {string} id
- * @returns {string}
  */
-export function fileSafeId(id) {
+export function fileSafeId(id: string): string {
   return String(id).replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
@@ -173,11 +210,11 @@ export function fileSafeId(id) {
  * Resolve a screenshot path from (untrusted) annotation data safely: it must be
  * a relative path that stays inside `baseDir`. Annotation files are shared between
  * people and edited by agents, so a crafted `../../.env` must never escape.
- * @param {string} baseDir directory the relative path is anchored to
- * @param {unknown} rel the `screenshot`/`screenshotAfter` value from the file
- * @returns {string | null} the absolute path when safe, else null
+ * @param baseDir directory the relative path is anchored to
+ * @param rel the `screenshot`/`screenshotAfter` value from the file
+ * @returns the absolute path when safe, else null
  */
-export function safeShotPath(baseDir, rel) {
+export function safeShotPath(baseDir: string, rel: unknown): string | null {
   if (typeof rel !== 'string' || !rel || path.isAbsolute(rel)) return null;
   if (rel.includes('\0')) return null;
   const base = path.resolve(baseDir);
@@ -189,9 +226,7 @@ export function safeShotPath(baseDir, rel) {
 /**
  * Hostname of a url for use in review ids; falls back to `'review'` for
  * unparseable input instead of throwing.
- * @param {string | undefined} url
- * @returns {string}
  */
-export function safeHost(url) {
-  try { return new URL(url).hostname; } catch { return 'review'; }
+export function safeHost(url: string | undefined): string {
+  try { return new URL(url ?? '').hostname || 'review'; } catch { return 'review'; }
 }

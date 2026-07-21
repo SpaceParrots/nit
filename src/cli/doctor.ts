@@ -7,21 +7,29 @@ import readline from 'node:readline';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import type { BrowserType } from 'playwright';
 
 const require = createRequire(import.meta.url);
 const PKG_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+type LogSink = (line: string) => void;
+
+/** Options for {@link runDoctor}. */
+export interface DoctorOptions {
+  /** install Chromium without asking (non-interactive setup) */
+  yes?: boolean;
+  /** log sink */
+  log?: LogSink;
+}
 
 /**
  * Run the environment checks: Node version, npm dependencies, and the Playwright
  * Chromium browser. When Chromium is missing, offers to install it (or installs
  * straight away with `yes`); without a TTY the offer is skipped and the manual
  * command is printed instead.
- * @param {object} [opts]
- * @param {boolean} [opts.yes] install Chromium without asking (non-interactive setup)
- * @param {(line: string) => void} [opts.log] log sink
- * @returns {Promise<boolean>} true when the environment is ready to run nit
+ * @returns true when the environment is ready to run nit
  */
-export async function runDoctor({ yes = false, log = console.log } = {}) {
+export async function runDoctor({ yes = false, log = console.log }: DoctorOptions = {}): Promise<boolean> {
   let ok = true;
   log('nit doctor\n');
 
@@ -46,7 +54,7 @@ export async function runDoctor({ yes = false, log = console.log } = {}) {
   }
 
   // 3. Chromium browser (the one Playwright downloads)
-  let chromium = null;
+  let chromium: BrowserType | null = null;
   try {
     ({ chromium } = await import('playwright'));
   } catch { /* playwright missing — already reported above */ }
@@ -81,30 +89,32 @@ export async function runDoctor({ yes = false, log = console.log } = {}) {
   return ok;
 }
 
-function pass(log, label) {
+function pass(log: LogSink, label: string): void {
   log(`  [ok] ${label}`);
 }
 
-function fail(log, label, hint) {
+function fail(log: LogSink, label: string, hint?: string): void {
   log(`  [!!] ${label}${hint ? ` — ${hint}` : ''}`);
 }
 
-function readPkgVersion(dep) {
+function readPkgVersion(dep: string): string | null {
   // Direct path first: require.resolve('<dep>/package.json') is blocked by some
   // packages' export maps (commander), and nit's own node_modules is the usual home.
   const candidates = [path.join(PKG_ROOT, 'node_modules', dep, 'package.json')];
   try { candidates.push(require.resolve(`${dep}/package.json`)); } catch { /* exports-restricted */ }
   for (const p of candidates) {
-    try { return JSON.parse(fs.readFileSync(p, 'utf8')).version; } catch { /* next */ }
+    try {
+      return (JSON.parse(fs.readFileSync(p, 'utf8')) as { version?: string }).version ?? null;
+    } catch { /* next */ }
   }
   return null;
 }
 
-function safeExecutablePath(chromium) {
+function safeExecutablePath(chromium: BrowserType): string | null {
   try { return chromium.executablePath(); } catch { return null; }
 }
 
-function installChromium(log) {
+function installChromium(log: LogSink): number {
   log('\nInstalling Chromium via Playwright…');
   const cli = playwrightCliPath();
   const res = cli
@@ -113,7 +123,7 @@ function installChromium(log) {
   return res.status ?? 1;
 }
 
-function playwrightCliPath() {
+function playwrightCliPath(): string | null {
   try {
     const cli = path.join(path.dirname(require.resolve('playwright')), 'cli.js');
     return fs.existsSync(cli) ? cli : null;
@@ -122,7 +132,7 @@ function playwrightCliPath() {
   }
 }
 
-function confirm(question) {
+function confirm(question: string): Promise<boolean> {
   if (!process.stdin.isTTY) return Promise.resolve(false);
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => {

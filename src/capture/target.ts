@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Pure element → target reference (SPEC §4). Runs inside the inspected page (bundled
 // into the overlay); must never throw and must work without window.ng (production builds).
+import type { Rect, Target } from '../types.js';
 
 const MAX_TEXT = 80;
 const MAX_CLASSES = 8;
@@ -9,11 +10,10 @@ const ANGULAR_RUNTIME_CLASS = /^(ng-star-inserted|ng-trigger.*|ng-tns-.*|ng-anim
 /**
  * Resolve an element to its layered target reference — the stable pointer a coding
  * agent (and the replay anchorer) uses to find it again. Never throws.
- * @param {Element} el the annotated DOM element
- * @param {Window} [win] the window the element lives in (injectable for tests)
- * @returns {import('../types.js').Target}
+ * @param el the annotated DOM element
+ * @param win the window the element lives in (injectable for tests)
  */
-export function resolveTarget(el, win = globalThis.window) {
+export function resolveTarget(el: Element, win: Window | undefined = globalThis.window): Target {
   const doc = el.ownerDocument;
   return {
     component: nearestComponentTag(el),
@@ -30,11 +30,10 @@ export function resolveTarget(el, win = globalThis.window) {
 /**
  * Nearest ancestor (incl. self) whose tag contains a hyphen — a custom element /
  * Angular component selector like `app-product-tile`.
- * @param {Element} el
- * @returns {string} the component tag, or the element's own tag when no custom ancestor exists
+ * @returns the component tag, or the element's own tag when no custom ancestor exists
  */
-export function nearestComponentTag(el) {
-  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+export function nearestComponentTag(el: Element): string {
+  for (let n: Element | null = el; n?.nodeType === 1; n = n.parentElement) {
     if (n.tagName.includes('-')) return n.tagName.toLowerCase();
   }
   return el.tagName.toLowerCase();
@@ -44,17 +43,15 @@ export function nearestComponentTag(el) {
  * Angular component class name via `window.ng.getComponent`, walking up to the
  * nearest component instance. Dev/staging builds expose `window.ng`; production
  * builds strip it — then (and on any error) this returns null, never throws.
- * @param {Element} el
- * @param {Window | undefined} win
- * @returns {string | null} e.g. `ProductTileComponent`
+ * @returns e.g. `ProductTileComponent`
  */
-export function resolveNgComponent(el, win) {
+export function resolveNgComponent(el: Element, win: Window | undefined): string | null {
   try {
-    const ng = win && win.ng;
+    const ng = win?.ng;
     if (!ng || typeof ng.getComponent !== 'function') return null;
-    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
-      const comp = ng.getComponent(n);
-      if (comp && comp.constructor && comp.constructor.name) return comp.constructor.name;
+    for (let n: Element | null = el; n?.nodeType === 1; n = n.parentElement) {
+      const comp: unknown = ng.getComponent(n);
+      if (comp && typeof comp === 'object' && comp.constructor?.name) return comp.constructor.name;
     }
     return null;
   } catch {
@@ -75,19 +72,17 @@ const LANDMARK_TAGS = new Set(['SECTION', 'ARTICLE', 'MAIN', 'NAV', 'HEADER', 'F
  *  5. absolute nth-of-type chain
  * Every candidate is verified unique against the live document before being returned,
  * so the selector is also the primary replay anchor.
- * @param {Element} el
- * @param {Document} [doc] the document to verify uniqueness against
- * @returns {string}
+ * @param doc the document to verify uniqueness against
  */
-export function buildSelector(el, doc = el.ownerDocument) {
+export function buildSelector(el: Element, doc: Document = el.ownerDocument): string {
   if (el.id) {
     const idSel = `#${cssEscape(el.id)}`;
     if (matchesUnique(doc, idSel, el)) return idSel;
   }
 
   // Ancestor path from just below body down to the element itself.
-  const path = [];
-  for (let n = el; n && n.nodeType === 1 && n.tagName !== 'BODY' && n.tagName !== 'HTML'; n = n.parentElement) {
+  const path: Element[] = [];
+  for (let n: Element | null = el; n?.nodeType === 1 && n.tagName !== 'BODY' && n.tagName !== 'HTML'; n = n.parentElement) {
     path.unshift(n);
   }
 
@@ -135,16 +130,16 @@ export function buildSelector(el, doc = el.ownerDocument) {
   return absoluteChain(el);
 }
 
-function isSignificant(n) {
+function isSignificant(n: Element): boolean {
   return Boolean(n.id) || n.tagName.includes('-') || LANDMARK_TAGS.has(n.tagName);
 }
 
-function sigSegment(n) {
+function sigSegment(n: Element): string {
   if (n.id) return `${n.tagName.toLowerCase()}#${cssEscape(n.id)}`;
   return segment(n);
 }
 
-function anchorSelectorFor(n, doc) {
+function anchorSelectorFor(n: Element, doc: Document): { sel: string; kind: 'id' | 'custom' | 'landmark' } | null {
   if (n.id) {
     const sel = `#${cssEscape(n.id)}`;
     if (matchesUnique(doc, sel, n)) return { sel, kind: 'id' };
@@ -162,12 +157,10 @@ function anchorSelectorFor(n, doc) {
 /**
  * Absolute XPath with per-tag sibling indices (`/html[1]/body[1]/…`) — the
  * secondary replay anchor when the CSS selector no longer matches.
- * @param {Element} el
- * @returns {string}
  */
-export function buildXPath(el) {
-  const parts = [];
-  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+export function buildXPath(el: Element): string {
+  const parts: string[] = [];
+  for (let n: Element | null = el; n?.nodeType === 1; n = n.parentElement) {
     parts.unshift(`${n.tagName.toLowerCase()}[${nthOfType(n)}]`);
   }
   return '/' + parts.join('/');
@@ -176,11 +169,9 @@ export function buildXPath(el) {
 /**
  * The element's class list minus Angular runtime noise (`ng-star-inserted`,
  * `ng-tns-*`, `ng-trigger*`, …), capped at 8 entries.
- * @param {Element} el
- * @returns {string[]}
  */
-export function cleanClasses(el) {
-  const out = [];
+export function cleanClasses(el: Element): string[] {
+  const out: string[] = [];
   for (const c of el.classList) {
     if (ANGULAR_RUNTIME_CLASS.test(c)) continue;
     out.push(c);
@@ -192,14 +183,12 @@ export function cleanClasses(el) {
 /**
  * Whitespace-normalized text content, capped at 80 chars — the last-resort
  * replay anchor and a human-readable hint in the annotation file.
- * @param {Element} el
- * @returns {string}
  */
-export function cleanText(el) {
-  return (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, MAX_TEXT);
+export function cleanText(el: Element): string {
+  return (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_TEXT);
 }
 
-function pageRect(el, win) {
+function pageRect(el: Element, win: Window | undefined): Rect {
   const r = el.getBoundingClientRect();
   const sx = win ? win.scrollX || 0 : 0;
   const sy = win ? win.scrollY || 0 : 0;
@@ -211,7 +200,7 @@ function pageRect(el, win) {
   };
 }
 
-function nthOfType(el) {
+function nthOfType(el: Element): number {
   let i = 1;
   for (let s = el.previousElementSibling; s; s = s.previousElementSibling) {
     if (s.tagName === el.tagName) i++;
@@ -219,7 +208,7 @@ function nthOfType(el) {
   return i;
 }
 
-function segment(el) {
+function segment(el: Element): string {
   const tag = el.tagName.toLowerCase();
   const parent = el.parentElement;
   if (!parent) return tag;
@@ -228,15 +217,15 @@ function segment(el) {
   return sameTag > 1 ? `${tag}:nth-of-type(${nthOfType(el)})` : tag;
 }
 
-function absoluteChain(el) {
-  const parts = [];
-  for (let n = el; n && n.nodeType === 1 && n.tagName !== 'HTML'; n = n.parentElement) {
+function absoluteChain(el: Element): string {
+  const parts: string[] = [];
+  for (let n: Element | null = el; n?.nodeType === 1 && n.tagName !== 'HTML'; n = n.parentElement) {
     parts.unshift(segment(n));
   }
   return parts.join(' > ');
 }
 
-function matchesUnique(doc, selector, el) {
+function matchesUnique(doc: Document, selector: string, el: Element): boolean {
   try {
     const found = doc.querySelectorAll(selector);
     return found.length === 1 && found[0] === el;
@@ -245,7 +234,7 @@ function matchesUnique(doc, selector, el) {
   }
 }
 
-function cssEscape(s) {
-  if (globalThis.CSS && typeof globalThis.CSS.escape === 'function') return globalThis.CSS.escape(s);
+function cssEscape(s: string): string {
+  if (typeof globalThis.CSS?.escape === 'function') return globalThis.CSS.escape(s);
   return String(s).replace(/([^a-zA-Z0-9_-])/g, '\\$1');
 }

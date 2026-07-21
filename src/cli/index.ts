@@ -8,10 +8,27 @@ import { Command, Option } from 'commander';
 import { runMerge } from './merge.js';
 import { runDoctor } from './doctor.js';
 import { startSession } from '../browser/session.js';
+import type { NitSession } from '../browser/session.js';
 import { startMcpServer } from '../mcp/server.js';
+import { errorMessage } from '../util/error.js';
+import type { SessionMode } from '../types.js';
 
 const pkg = JSON.parse(fs.readFileSync(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf8'));
+  path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf8')) as { version: string };
+
+/** Options shared by every command that launches a browser. */
+interface BrowserCmdOptions {
+  mobile?: boolean;
+  device?: 'desktop' | 'mobile';
+  headless?: boolean;
+  debug?: boolean;
+  /** view/verify: open this url instead of the one stored in the feedback file */
+  url?: string;
+  /** review: output directory */
+  out?: string;
+  /** review: author recorded on each annotation */
+  author?: string;
+}
 
 const program = new Command();
 
@@ -35,8 +52,8 @@ Examples:
   $ nit merge feedback-kevin.json feedback-ann.json --out review-merged
   $ claude mcp add nit -- nit mcp ./nit-review`);
 
-/** Options shared by every command that launches a browser. */
-function withBrowserOptions(cmd) {
+/** Attach the options shared by every command that launches a browser. */
+function withBrowserOptions(cmd: Command): Command {
   return cmd
     .option('-m, --mobile', 'start in the mobile viewport (390×844) instead of desktop (1440×900)')
     .addOption(new Option('-d, --device <mode>', 'explicit start viewport').choices(['desktop', 'mobile']))
@@ -58,7 +75,7 @@ withBrowserOptions(
     .argument('<url>', 'page to open (https:// is assumed when no scheme is given)')
     .option('-o, --out <dir>', 'output directory', 'nit-review')
     .option('-a, --author <name>', 'author recorded on each annotation (default: your OS user name)'))
-  .action(async (url, opts) => {
+  .action(async (url: string, opts: BrowserCmdOptions) => {
     const session = await startBrowser('review', { url, opts });
     console.log(`nit review — ${url}`);
     console.log('Alt: toggle picking · Esc: cancel · use the panel window · close the browser (or Finish review) when done.');
@@ -75,7 +92,7 @@ withBrowserOptions(
       + 'Annotations that cannot be re-anchored land in the panel’s "couldn’t place" list.')
     .argument('<file>', 'a nit feedback file (annotations.json)')
     .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file'))
-  .action(async (file, opts) => {
+  .action(async (file: string, opts: BrowserCmdOptions) => {
     const session = await startBrowser('view', { file, opts });
     console.log(`nit view — replaying ${file}`);
     console.log('Navigate the site; pins appear on the routes they were made on. Close the browser when done.');
@@ -93,7 +110,7 @@ withBrowserOptions(
       + 'reopened items become actionable again for the next fix round.')
     .argument('<file>', 'a nit feedback file (annotations.json)')
     .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file'))
-  .action(async (file, opts) => {
+  .action(async (file: string, opts: BrowserCmdOptions) => {
     const session = await startBrowser('verify', { file, opts });
     console.log(`nit verify — ${file}`);
     console.log('Visit the routes of fixed annotations; after-shots are captured automatically.');
@@ -110,7 +127,7 @@ program.command('merge')
     + 'The merged folder feeds nit view, nit verify, nit mcp and the agent handoff alike.')
   .argument('<files...>', 'nit feedback files (annotations.json, one per author)')
   .option('-o, --out <dir>', 'output directory', 'nit-review-merged')
-  .action((files, opts) => {
+  .action((files: string[], opts: { out: string }) => {
     runMerge(files, { out: opts.out });
   });
 
@@ -122,7 +139,7 @@ program.command('doctor')
     + 'it — the same one-time download "npx playwright install chromium" performs.\n\n'
     + 'First-time setup (e.g. for co-founders):  npm install && nit doctor --yes')
   .option('-y, --yes', 'install Chromium without asking (non-interactive setup)')
-  .action(async opts => {
+  .action(async (opts: { yes?: boolean }) => {
     const ok = await runDoctor({ yes: Boolean(opts.yes) });
     process.exitCode = ok ? 0 : 1;
   });
@@ -136,12 +153,15 @@ program.command('mcp')
     + 'mark_fixed, set_status (open | fixed | wontfix | verified | reopened).\n\n'
     + 'Register with Claude Code:  claude mcp add nit -- nit mcp ./nit-review')
   .argument('[dir]', 'review directory containing annotations.json', 'nit-review')
-  .action(dir => {
+  .action((dir: string) => {
     startMcpServer(dir);
     // stays alive while stdin (the MCP client) is connected
   });
 
-async function startBrowser(mode, { url, file, opts }) {
+async function startBrowser(
+  mode: SessionMode,
+  { url, file, opts }: { url?: string; file?: string; opts: BrowserCmdOptions },
+): Promise<NitSession> {
   const session = await startSession({
     mode,
     url: url ? normalizeUrl(url) : opts.url ? normalizeUrl(opts.url) : undefined,
@@ -153,23 +173,23 @@ async function startBrowser(mode, { url, file, opts }) {
     debug: Boolean(opts.debug),
   });
   process.on('SIGINT', () => {
-    session.close().finally(() => process.exit(0));
+    void session.close().finally(() => process.exit(0));
   });
   return session;
 }
 
-function summarize(session) {
+function summarize(session: NitSession): void {
   const anns = session.store.annotations;
   const open = anns.filter(a => a.type === 'change-request' && (a.status === 'open' || a.status === 'reopened')).length;
   console.log(`\n${anns.length} annotation${anns.length === 1 ? '' : 's'} (${open} actionable change-request${open === 1 ? '' : 's'}) -> ${session.store.dir}`);
   if (open) console.log('Hand the folder to your coding agent (see fix-annotations.md) or serve it: nit mcp ' + session.store.dir);
 }
 
-function normalizeUrl(url) {
+function normalizeUrl(url: string): string {
   return /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`;
 }
 
-program.parseAsync().catch(err => {
-  console.error(`nit: ${err.message}`);
+void program.parseAsync().catch((err: unknown) => {
+  console.error(`nit: ${errorMessage(err)}`);
   process.exit(1);
 });

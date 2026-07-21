@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../src/store/render.js';
+import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../dist/store/render.js';
 
 const DATA = {
   review: {

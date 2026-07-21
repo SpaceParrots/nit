@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { runMerge } from '../src/cli/merge.js';
+import { runMerge } from '../dist/cli/merge.js';
 import { tmpDir } from './helpers/tmp.js';
 
 const PNG_1PX = Buffer.from(

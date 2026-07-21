@@ -3,34 +3,44 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { mergeReviews } from '../store/merge.js';
+import type { MergeInput } from '../store/merge.js';
 import { safeShotPath } from '../store/store.js';
 import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
+import { errorMessage } from '../util/error.js';
+import type { ReviewData } from '../types.js';
+
+/** Options for {@link runMerge}. */
+export interface RunMergeOptions {
+  /** output directory (default `nit-review-merged`) */
+  out?: string;
+  /** log sink */
+  log?: (line: string) => void;
+}
 
 /**
  * Read feedback files, merge them ({@link mergeReviews}), copy screenshots into
  * the shared output dir and write annotations.json + review.md + fix-annotations.md.
- * @param {string[]} files paths of nit feedback files (one per author)
- * @param {object} [opts]
- * @param {string} [opts.out] output directory (default `nit-review-merged`)
- * @param {(line: string) => void} [opts.log] log sink
- * @returns {{outDir: string, data: import('../types.js').ReviewData}}
+ * @param files paths of nit feedback files (one per author)
  * @throws when a file is missing, unreadable, or not a nit feedback file
  */
-export function runMerge(files, { out = 'nit-review-merged', log = line => console.log(line) } = {}) {
+export function runMerge(
+  files: string[],
+  { out = 'nit-review-merged', log = line => console.log(line) }: RunMergeOptions = {},
+): { outDir: string; data: ReviewData } {
   if (files.length < 1) throw new Error('nit merge needs at least one feedback file');
 
-  const inputs = files.map(f => {
+  const inputs: MergeInput[] = files.map(f => {
     const filePath = path.resolve(f);
-    let data;
+    let data: unknown;
     try {
       data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     } catch (e) {
-      throw new Error(`cannot read feedback file ${filePath}: ${e.message}`, { cause: e });
+      throw new Error(`cannot read feedback file ${filePath}: ${errorMessage(e)}`, { cause: e });
     }
-    if (!data || !Array.isArray(data.annotations)) {
+    if (!data || typeof data !== 'object' || !Array.isArray((data as ReviewData).annotations)) {
       throw new Error(`not a nit feedback file (missing annotations array): ${filePath}`);
     }
-    return { data, dir: path.dirname(filePath) };
+    return { data: data as ReviewData, dir: path.dirname(filePath) };
   });
 
   const { data, copies } = mergeReviews(inputs);
