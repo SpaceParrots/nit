@@ -44,46 +44,95 @@ export function resolveNgComponent(el, win) {
   }
 }
 
-/** Short, stable CSS selector: prefer id, then a nearby id/custom-element anchor plus
- *  either a unique class shorthand or a child chain. Verified unique before returning. */
+// Landmark tags are meaningful waypoints: they anchor selectors and survive
+// re-renders far better than anonymous div chains.
+const LANDMARK_TAGS = new Set(['SECTION', 'ARTICLE', 'MAIN', 'NAV', 'HEADER', 'FOOTER', 'ASIDE', 'FORM']);
+
+/** Short, stable CSS selector. Preference order:
+ *  1. the element's own unique #id
+ *  2. nearest unique anchor (#id, custom element, or landmark tag) + unique class shorthand
+ *  3. anchor + compressed path of significant nodes (ids, custom elements, landmarks)
+ *  4. anchor + full child chain
+ *  5. absolute nth-of-type chain
+ *  Every candidate is verified unique against the live document before being returned. */
 export function buildSelector(el, doc = el.ownerDocument) {
   if (el.id) {
     const idSel = `#${cssEscape(el.id)}`;
     if (matchesUnique(doc, idSel, el)) return idSel;
   }
 
-  // Walk up collecting a child chain until an anchor (unique id / custom element) is found.
-  const chain = [];
-  let anchorSel = '';
-  for (let n = el; n && n.nodeType === 1 && n.tagName !== 'BODY' && n.tagName !== 'HTML'; ) {
-    chain.unshift(segment(n));
-    const p = n.parentElement;
-    if (!p || p.tagName === 'BODY' || p.tagName === 'HTML') break;
-    if (p.id) {
-      const idSel = `#${cssEscape(p.id)}`;
-      if (matchesUnique(doc, idSel, p)) { anchorSel = idSel; break; }
-    }
-    if (p.tagName.includes('-')) {
-      const tag = p.tagName.toLowerCase();
-      const cand = matchesUnique(doc, tag, p) ? tag : `${tag}:nth-of-type(${nthOfType(p)})`;
-      if (matchesUnique(doc, cand, p)) { anchorSel = cand; break; }
-    }
-    n = p;
+  // Ancestor path from just below body down to the element itself.
+  const path = [];
+  for (let n = el; n && n.nodeType === 1 && n.tagName !== 'BODY' && n.tagName !== 'HTML'; n = n.parentElement) {
+    path.unshift(n);
   }
 
-  // Prefer a short class-based selector inside the anchor when it is unique.
+  // Deepest ancestor (strictly above el) that is uniquely selectable on its own.
+  let anchorIdx = -1;
+  let anchorSel = '';
+  let anchorKind = '';
+  for (let i = path.length - 2; i >= 0; i--) {
+    const found = anchorSelectorFor(path[i], doc);
+    if (found) { anchorIdx = i; anchorSel = found.sel; anchorKind = found.kind; break; }
+  }
+  // A bare landmark (nav, section, …) is a weak anchor — prefix it with the nearest
+  // outer id/custom-element anchor so replay survives new landmarks appearing.
+  if (anchorKind === 'landmark') {
+    for (let j = anchorIdx - 1; j >= 0; j--) {
+      const outer = anchorSelectorFor(path[j], doc);
+      if (outer && outer.kind !== 'landmark') {
+        const combined = `${outer.sel} ${anchorSel}`;
+        if (matchesUnique(doc, combined, path[anchorIdx])) anchorSel = combined;
+        break;
+      }
+    }
+  }
+  const chainEls = path.slice(anchorIdx + 1);
+
+  // 2: unique class shorthand inside the anchor.
   const classes = cleanClasses(el).slice(0, 3);
   if (classes.length) {
     const short = `${anchorSel ? anchorSel + ' ' : ''}${el.tagName.toLowerCase()}.${classes.map(cssEscape).join('.')}`;
     if (matchesUnique(doc, short, el)) return short;
   }
 
-  const full = `${anchorSel ? anchorSel + ' > ' : 'body > '}${chain.join(' > ')}`;
+  // 3: compressed path keeping only significant waypoints (ids, custom elements, landmarks).
+  const significant = chainEls.filter((n, i) => i === chainEls.length - 1 || isSignificant(n));
+  if (significant.length < chainEls.length) {
+    const sig = `${anchorSel ? anchorSel + ' ' : ''}${significant.map(sigSegment).join(' ')}`;
+    if (matchesUnique(doc, sig, el)) return sig;
+  }
+
+  // 4: full child chain from the anchor.
+  const full = `${anchorSel ? anchorSel + ' > ' : 'body > '}${chainEls.map(segment).join(' > ')}`;
   if (matchesUnique(doc, full, el)) return full;
 
-  // Last resort: absolute nth-of-type chain from body.
-  const abs = absoluteChain(el);
-  return abs;
+  // 5: absolute nth-of-type chain.
+  return absoluteChain(el);
+}
+
+function isSignificant(n) {
+  return Boolean(n.id) || n.tagName.includes('-') || LANDMARK_TAGS.has(n.tagName);
+}
+
+function sigSegment(n) {
+  if (n.id) return `${n.tagName.toLowerCase()}#${cssEscape(n.id)}`;
+  return segment(n);
+}
+
+function anchorSelectorFor(n, doc) {
+  if (n.id) {
+    const sel = `#${cssEscape(n.id)}`;
+    if (matchesUnique(doc, sel, n)) return { sel, kind: 'id' };
+  }
+  if (n.tagName.includes('-') || LANDMARK_TAGS.has(n.tagName)) {
+    const tag = n.tagName.toLowerCase();
+    const cand = matchesUnique(doc, tag, n) ? tag : `${tag}:nth-of-type(${nthOfType(n)})`;
+    if (matchesUnique(doc, cand, n)) {
+      return { sel: cand, kind: n.tagName.includes('-') ? 'custom' : 'landmark' };
+    }
+  }
+  return null;
 }
 
 /** Absolute XPath with per-tag indices — the replay fallback anchor. */

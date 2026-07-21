@@ -60,7 +60,13 @@ test('target resolution table', async t => {
     cases.badge2 = verify(R.resolveTarget(badge2), badge2);
     // 9: text normalized and capped at 80 chars
     cases.longText = R.resolveTarget(q('#long-text')).text;
-    // 10: rect is absolute page coords even when scrolled
+    // 10: ancestor id anchors the selector (nav link inside #hdr)
+    const navLink = document.querySelector('#hdr nav a');
+    cases.navLink = verify(R.resolveTarget(navLink), navLink);
+    // 11: landmark tags (article/section/…) anchor and appear in the path
+    const postNote = q('article .post-note');
+    cases.postNote = verify(R.resolveTarget(postNote), postNote);
+    // 12: rect is absolute page coords even when scrolled
     window.scrollTo(0, 1200);
     const fine = q('.fine-print');
     const r = fine.getBoundingClientRect();
@@ -101,6 +107,12 @@ test('target resolution table', async t => {
 
   assert.ok(results.longText.length <= 80, `capped: ${results.longText.length}`);
   assert.ok(!results.longText.includes('\n'));
+
+  assert.match(results.navLink.selector, /^#hdr/, `id-anchored: ${results.navLink.selector}`);
+  assert.ok(results.navLink.selectorResolves && results.navLink.xpathResolves);
+
+  assert.match(results.postNote.selector, /article/, `landmark in path: ${results.postNote.selector}`);
+  assert.ok(results.postNote.selectorResolves && results.postNote.xpathResolves);
 
   assert.deepEqual(results.rect.got, results.rect.expected);
 });
