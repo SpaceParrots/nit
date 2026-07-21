@@ -140,7 +140,11 @@ export type BridgeResult<T extends object = object> =
   | { ok: false; error: string };
 
 export type SaveResult = BridgeResult<{ annotation: Annotation }>;
-export type VerdictResult = BridgeResult<{ annotation: Annotation }>;
+/** Envelope for bindings that return the annotation they changed. */
+export type AnnotationResult = BridgeResult<{ annotation: Annotation }>;
+/** @deprecated use {@link AnnotationResult} — kept for one version */
+export type VerdictResult = AnnotationResult;
+export type GoToResult = BridgeResult<{ url: string }>;
 export type ViewportResult = BridgeResult<{ mode: ViewportMode; w: number; h: number }>;
 
 /** Session snapshot returned by `__nitLoad` (overlay boot/resync). */
@@ -220,6 +224,8 @@ declare global {
     __nitSetViewport?: (mode: ViewportMode) => Promise<ViewportResult>;
     __nitShot?: (id: string, which?: 'after') => Promise<string | null>;
     __nitVerdict?: (id: string, verdict: 'verified' | 'reopened') => Promise<VerdictResult>;
+    __nitSetIssueRef?: (id: string, ref: string) => Promise<AnnotationResult>;
+    __nitGoTo?: (id: string) => Promise<GoToResult>;
     __nitDelete?: (id: string) => Promise<{ ok: boolean }>;
     __nitFinish?: () => Promise<{ ok: boolean }>;
     __nitEvent?: (evt: OverlayEvent) => Promise<void>;

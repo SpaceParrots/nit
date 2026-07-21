@@ -7,6 +7,7 @@ import { captureElementShot } from '../capture/screenshot.js';
 import { captureAfterShots } from './verify.js';
 import { safeShotPath } from '../store/store.js';
 import { errorMessage } from '../util/error.js';
+import { resolveAnnotationUrl } from '../store/url.js';
 import type { NitSession } from './session.js';
 import type {
   Annotation,
@@ -52,6 +53,8 @@ interface RawSavePayload {
  *  - `__nitSetViewport(mode)`     switch desktop/mobile (panel window excluded)
  *  - `__nitShot(id, which?)`      screenshot as data-uri ('after' for the verify shot)
  *  - `__nitVerdict(id, verdict)`  verify ruling: 'verified' | 'reopened'
+ *  - `__nitSetIssueRef(id, ref)`  attach/clear a tracker issue reference
+ *  - `__nitGoTo(id)`              navigate the site page to an annotation's route
  *  - `__nitDelete(id)`            remove annotation + screenshot files
  *  - `__nitFinish()`              flush review and close the session
  *  - `__nitEvent(evt)`            overlay telemetry: clicks (debug), ui state, focus requests
@@ -149,13 +152,44 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
     if (verdict !== 'verified' && verdict !== 'reopened') {
       return { ok: false, error: 'verdict must be "verified" or "reopened"' };
     }
-    const ann = store.annotations.find(a => a.id === id);
-    if (!ann) return { ok: false, error: `no annotation ${String(id)}` };
-    ann.status = verdict;
-    ann.verifiedAt = new Date().toISOString();
+    if (typeof id !== 'string') return { ok: false, error: 'id must be a string' };
+    const ann = store.patch(id, { status: verdict, verifiedAt: new Date().toISOString() }, session.author);
+    if (!ann) return { ok: false, error: `no annotation ${id}` };
     session.flush();
     session.log(`${verdict === 'verified' ? '+ verified' : '~ reopened'} ${ann.id}`);
     return { ok: true, annotation: ann };
+  }));
+
+  await context.exposeBinding('__nitSetIssueRef', guard((source, id: unknown, ref: unknown) => {
+    if (typeof id !== 'string') return { ok: false, error: 'id must be a string' };
+    // free-form text that ends up in review.md and MCP output — bound its length
+    const value = typeof ref === 'string' ? ref.trim().slice(0, 200) : '';
+    const ann = store.patch(id, { issueRef: value || undefined }, session.author);
+    if (!ann) return { ok: false, error: `no annotation ${id}` };
+    session.flush();
+    session.log(value ? `~ ${id} issue ${value}` : `~ ${id} issue cleared`);
+    return { ok: true, annotation: ann };
+  }));
+
+  await context.exposeBinding('__nitGoTo', guard(async (source, id: unknown) => {
+    const ann = store.annotations.find(a => a.id === id);
+    if (!ann) return { ok: false, error: `no annotation ${String(id)}` };
+    const url = resolveAnnotationUrl(store.data.review.url, ann.route);
+    if (!url) return { ok: false, error: `route is not on the review origin: ${String(ann.route)}` };
+    const page = session.sitePage;
+    if (!page) return { ok: false, error: 'no site page' };
+    try {
+      const target = new URL(url);
+      const current = new URL(page.url());
+      const samePage = current.pathname === target.pathname && current.search === target.search;
+      if (!samePage) await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    } catch (e) {
+      return { ok: false, error: errorMessage(e) };
+    }
+    // The overlay has not re-anchored yet; the `ui` event below focuses the pin
+    // as soon as it reports this id placed.
+    session.pendingFocus = { id: ann.id, expiresAt: Date.now() + 10000 };
+    return { ok: true, url };
   }));
 
   await context.exposeBinding('__nitDelete', guard((source, id: unknown) => {
@@ -191,6 +225,17 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
         placed: Array.isArray(ui.placed) ? ui.placed.filter(isPlacedRef) : [],
         unplaced: Array.isArray(ui.unplaced) ? ui.unplaced.filter((u): u is string => typeof u === 'string') : [],
       };
+      const pending = session.pendingFocus;
+      if (pending) {
+        if (Date.now() > pending.expiresAt) {
+          session.pendingFocus = null;
+        } else if ((session.uiState.placed ?? []).some(p => p.id === pending.id)) {
+          session.pendingFocus = null;
+          await source.page
+            .evaluate(fid => window.__nitOverlay?.cmd({ cmd: 'focus', id: fid }), pending.id)
+            .catch(() => {});
+        }
+      }
       if (session.mode === 'verify') {
         await captureAfterShots(session, source.page, session.uiState)
           .catch((e: unknown) => session.log(`! after-shot capture failed: ${errorMessage(e)}`));

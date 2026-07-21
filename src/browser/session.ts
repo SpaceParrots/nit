@@ -44,6 +44,12 @@ export interface NitSession {
   /** the side panel window; null when unavailable or closed */
   panelPage: Page | null;
   uiState: SessionUiState;
+  /**
+   * @internal set by `__nitGoTo`: focus this annotation as soon as the overlay
+   * reports it placed on the newly loaded page. Expires so a pin that never
+   * anchors cannot fire a stale focus on some unrelated later page.
+   */
+  pendingFocus?: { id: string; expiresAt: number } | null;
   /** resolves when the browser closes */
   done: Promise<void>;
   /** persist annotations.json + the derived review.md / fix-annotations.md */
@@ -133,6 +139,7 @@ export async function startSession(opts: StartSessionOptions): Promise<NitSessio
     sitePage: null,
     panelPage: null,
     uiState: {},
+    pendingFocus: null,
     _closing: false,
 
     done: new Promise<void>(resolve => {
