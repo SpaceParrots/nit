@@ -9,6 +9,8 @@ capturing the little things on any website and getting them fixed fast.
 nit review <url>          # annotate any site (live, staging, or http://localhost:4200)
 nit view <file>           # replay: reload a feedback file and see the pins back on their routes
 nit merge <file...>       # consume: combine co-founder feedback files into one review
+nit verify <file>         # close the loop: after-shots for fixed items, rule Verified / Reopen
+nit mcp [dir]             # stdio MCP server over annotations.json for coding agents
 ```
 
 A real Chromium opens with an annotation overlay. Hover to highlight an element, click it, type a
@@ -52,7 +54,19 @@ component class name (`ProductTileComponent`) — on production builds the custo
 (`app-product-tile`) is captured instead. Both are enough for an agent to locate the source.
 
 Handoff: point your coding agent at `nit-review/` — `fix-annotations.md` in the output contains the
-contract (fix each open `change-request`, flip its `status` to `fixed`; treat `comment`s as context).
+contract (fix each open/reopened `change-request`, flip its `status` to `fixed`; treat `comment`s as
+context). Or wire it up as an MCP server so the agent works through tools instead of raw files:
+
+```bash
+claude mcp add nit -- node D:/Tools/Nit/src/cli/index.js mcp ./nit-review
+# tools: list_annotations · get_annotation (returns the screenshots as images) · mark_fixed · set_status
+```
+
+Close the loop: after the agent marked items `fixed`, run `nit verify nit-review/annotations.json`.
+Nit re-opens the site, re-anchors each fixed annotation on its route, captures an **after** screenshot
+next to the original (element gone? the originally recorded region is captured instead), and the panel
+shows before/after with **Verified / Reopen** buttons. Reopened items become actionable again for the
+next fix round.
 
 ## Development
 
