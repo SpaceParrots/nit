@@ -21,9 +21,16 @@ export function resolveAnnotationUrl(reviewUrl: string, route: string | undefine
   }
   if (base.protocol !== 'http:' && base.protocol !== 'https:') return null;
 
+  // An empty string means the same thing as `undefined` here — "go to the
+  // root" — so it is normalized away before falling back with `??`, keeping
+  // the fallback itself nullish-coalescing (satisfies
+  // @typescript-eslint/prefer-nullish-coalescing) without treating `''` as a
+  // meaningful route.
+  const normalizedRoute = route === '' ? undefined : route;
+
   let target: URL;
   try {
-    target = new URL(route ?? '/', base);
+    target = new URL(normalizedRoute ?? '/', base);
   } catch {
     return null;
   }

@@ -60,3 +60,47 @@ test('security: resolveAnnotationUrl rejects an unusable review url', () => {
   assert.equal(resolveAnnotationUrl('not a url', '/x'), null);
   assert.equal(resolveAnnotationUrl('file:///tmp/page.html', '/x'), null);
 });
+
+test('security: resolveAnnotationUrl rejects a backslash bypass attempt', () => {
+  const base = 'https://staging.example.com/';
+  // A route of '\\evil.com/steal' (two-character backslash sequence) is
+  // interpreted by the WHATWG URL parser the same as '//evil.com/steal':
+  // backslashes are normalized to forward slashes for special schemes, so
+  // this is a protocol-relative escape in disguise and must be rejected.
+  assert.equal(resolveAnnotationUrl(base, '\\\\evil.com/steal'), null);
+});
+
+test('security: resolveAnnotationUrl rejects userinfo tricks', () => {
+  const base = 'https://staging.example.com/';
+  assert.equal(resolveAnnotationUrl(base, 'https://user@evil.com/'), null);
+  assert.equal(resolveAnnotationUrl(base, 'https://staging.example.com@evil.com/'), null);
+});
+
+test('security: resolveAnnotationUrl rejects same host with a different port or scheme', () => {
+  const base = 'https://staging.example.com/';
+  assert.equal(resolveAnnotationUrl(base, 'https://staging.example.com:8443/'), null);
+  assert.equal(resolveAnnotationUrl(base, 'http://staging.example.com/'), null);
+});
+
+test('security: resolveAnnotationUrl rejects a percent-encoded traversal attempt', () => {
+  const base = 'https://staging.example.com/';
+  // '%2F%2Fevil.com' decodes to '//evil.com', but the URL parser treats the
+  // percent-encoding literally (it is not re-decoded before parsing), so this
+  // resolves as a same-origin path rather than escaping — verify the exact
+  // resolved value rather than merely "not null".
+  assert.equal(
+    resolveAnnotationUrl(base, '%2F%2Fevil.com'),
+    'https://staging.example.com/%2F%2Fevil.com',
+  );
+});
+
+test('security: resolveAnnotationUrl resolves an empty-string route to the origin root', () => {
+  assert.equal(resolveAnnotationUrl('https://x.test/a/b?q=1', ''), 'https://x.test/');
+  assert.equal(resolveAnnotationUrl('https://x.test/a/b?q=1', undefined), 'https://x.test/');
+});
+
+test('security: resolveAnnotationUrl resolves fragment-only and query-only routes against the current path', () => {
+  const base = 'https://staging.example.com/a/b';
+  assert.equal(resolveAnnotationUrl(base, '#section'), 'https://staging.example.com/a/b#section');
+  assert.equal(resolveAnnotationUrl(base, '?id=5'), 'https://staging.example.com/a/b?id=5');
+});
