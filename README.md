@@ -41,9 +41,11 @@ node src/cli/index.js merge feedback-kevin.json feedback-ann.json --out review-m
 ```
 
 In the browser: **Alt** toggles element picking, **Esc** cancels, click an element to annotate.
-The sidebar switches desktop/mobile, filters by viewport scope, deletes annotations, and finishes the
-review. `nit view` shows saved annotations as numbered pins re-anchored on the routes where they were
-made; anything that can't be re-anchored lands in a "couldn't place" list instead of crashing.
+A devtools-style **nit panel** opens in its own window next to the browser — it lists annotations,
+switches desktop/mobile, filters by viewport scope, deletes annotations, and finishes the review, so
+the page itself stays uncovered (only a slim chip and the pins live in-page). `nit view` shows saved
+annotations as numbered pins re-anchored on the routes where they were made; anything that can't be
+re-anchored lands in the panel's "couldn't place" list instead of crashing.
 
 Angular tip: on dev/staging builds that expose `window.ng`, every annotation also records the
 component class name (`ProductTileComponent`) — on production builds the custom-element tag
