@@ -37,6 +37,10 @@ export function renderReviewMd(data: ReviewData): string {
     lines.push(`- component: \`${t.component ?? '?'}\`${t.ngComponent ? ` (${t.ngComponent})` : ''}`);
     if (t.selector) lines.push(`- selector: \`${t.selector}\``);
     lines.push(`- route: \`${a.route || '/'}\` · author: ${a.author || '—'} · scope: ${a.viewportScope || 'general'}${a.viewport ? ` · captured at ${a.viewport.w}×${a.viewport.h}` : ''}`);
+    const extra: string[] = [];
+    if (a.issueRef) extra.push(`issue: ${issueMd(a.issueRef)}`);
+    if (a.updatedAt) extra.push(`updated ${a.updatedAt.slice(0, 10)}${a.updatedBy ? ` by ${a.updatedBy}` : ''}`);
+    if (extra.length) lines.push(`- ${extra.join(' · ')}`);
   }
   lines.push('');
   return lines.join('\n');
@@ -48,6 +52,11 @@ function isActionable(a: Annotation): boolean {
 
 function oneLine(s: string | undefined): string {
   return (s ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+
+/** A tracker url becomes a link; anything else stays inline code. */
+function issueMd(ref: string): string {
+  return /^https?:\/\//i.test(ref) ? `[${ref}](${ref})` : `\`${ref}\``;
 }
 
 export const FIX_ANNOTATIONS_MD = `# /fix-annotations
@@ -65,4 +74,8 @@ cropped screenshot in \`shots/\` shows it visually.
 
 Note: the target marks where the reviewer SAW the problem — the defect may live in a neighboring
 component (spacing/overflow issues especially). Verify the root cause before editing.
+
+Optional metadata: if you file or resolve a tracker issue for a nit, record its key or url in that
+annotation's \`issueRef\`. Do not hand-edit \`updatedAt\`/\`updatedBy\` — nit stamps them whenever a
+status or issue reference changes.
 `;

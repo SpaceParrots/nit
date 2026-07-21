@@ -129,3 +129,36 @@ test('fix-annotations contract mentions the type/status gate', () => {
   assert.ok(FIX_ANNOTATIONS_MD.includes('`"reopened"`'));
   assert.ok(FIX_ANNOTATIONS_MD.includes('do not change code'));
 });
+
+test('render: issue key renders as code, issue url renders as a link', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'key', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z', issueRef: 'FAI-1234' },
+      { id: 'a2', type: 'change-request', status: 'open', comment: 'url', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z',
+        issueRef: 'https://jira.test/browse/FAI-9' },
+    ],
+  });
+  assert.match(md, /- issue: `FAI-1234`/);
+  assert.match(md, /- issue: \[https:\/\/jira\.test\/browse\/FAI-9\]\(https:\/\/jira\.test\/browse\/FAI-9\)/);
+});
+
+test('render: updated stamp is shown, and the line is omitted when there is nothing to show', () => {
+  const base = { review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: [] } };
+  const withStamp = renderReviewMd({
+    ...base,
+    annotations: [{ id: 'a1', type: 'change-request', status: 'fixed', comment: 'c', author: 'Kevin',
+      route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z',
+      updatedAt: '2026-07-22T09:00:00Z', updatedBy: 'agent' }],
+  });
+  assert.match(withStamp, /updated 2026-07-22 by agent/);
+
+  const without = renderReviewMd({
+    ...base,
+    annotations: [{ id: 'a1', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+      route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z' }],
+  });
+  assert.equal(/- issue:|updated /.test(without), false);
+});
