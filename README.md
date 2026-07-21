@@ -33,8 +33,8 @@ whole set in situ. Desktop/mobile is a toggle, and annotations can be scoped gen
 ## Install & run
 
 ```bash
-npm install                      # installs playwright + esbuild
-npx playwright install chromium  # first run only
+npm install                      # installs the dependencies
+node src/cli/index.js doctor     # checks Node/deps/Chromium, offers to install Chromium (--yes to skip the prompt)
 
 node src/cli/index.js review https://your-site.com
 node src/cli/index.js review http://localhost:4200 --mobile --author Ann

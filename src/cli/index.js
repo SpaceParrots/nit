@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command, Option } from 'commander';
 import { runMerge } from './merge.js';
+import { runDoctor } from './doctor.js';
 import { startSession } from '../browser/session.js';
 import { startMcpServer } from '../mcp/server.js';
 
@@ -110,6 +111,19 @@ program.command('merge')
   .option('-o, --out <dir>', 'output directory', 'nit-review-merged')
   .action((files, opts) => {
     runMerge(files, { out: opts.out });
+  });
+
+program.command('doctor')
+  .aliases(['setup'])
+  .summary('check that nit can run; offer to install Chromium if missing')
+  .description('Check everything nit needs: Node >= 18, the npm dependencies, and the\n'
+    + 'Playwright Chromium browser. If Chromium is missing, nit offers to download\n'
+    + 'it — the same one-time download "npx playwright install chromium" performs.\n\n'
+    + 'First-time setup (e.g. for co-founders):  npm install && nit doctor --yes')
+  .option('-y, --yes', 'install Chromium without asking (non-interactive setup)')
+  .action(async opts => {
+    const ok = await runDoctor({ yes: Boolean(opts.yes) });
+    process.exitCode = ok ? 0 : 1;
   });
 
 program.command('mcp')
