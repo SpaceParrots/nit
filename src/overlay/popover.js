@@ -10,6 +10,8 @@ export function createPopover(root, state, actions) {
   root.append(el);
   let currentEl = null;
   let saving = false;
+  // Keep keystrokes (except Escape) away from page-level hotkey handlers.
+  el.addEventListener('keydown', e => { if (e.key !== 'Escape') e.stopPropagation(); });
 
   function open(target) {
     currentEl = target;
@@ -64,17 +66,18 @@ export function createPopover(root, state, actions) {
       }
       if (saving || !currentEl) return;
       saving = true;
-      const payload = {
-        comment,
-        type,
-        viewportScope: scope,
-        target: resolveTarget(currentEl, window),
-        route: location.pathname,
-      };
-      close();
-      actions.setUiHidden(true); // keep our own UI out of the CDP screenshot
-      await new Promise(r => setTimeout(r, 80));
+      const elementToSave = currentEl;
+      close(); // close first — nothing below may keep the popover on screen
       try {
+        const payload = {
+          comment,
+          type,
+          viewportScope: scope,
+          target: resolveTarget(elementToSave, window),
+          route: location.pathname,
+        };
+        actions.setUiHidden(true); // keep our own UI out of the CDP screenshot
+        await new Promise(r => setTimeout(r, 80));
         const res = await window.__nitSave(payload);
         if (res && res.ok) actions.onSaved(res.annotation);
         else console.warn('[nit] save failed:', res && res.error);
@@ -89,8 +92,6 @@ export function createPopover(root, state, actions) {
     buttons.append(cancelBtn, saveBtn);
 
     el.append(head, ta, labelRow('Type', typeRow), labelRow('Applies to', scopeRow), buttons);
-    // Keep keystrokes (except Escape) away from page-level hotkey handlers.
-    el.addEventListener('keydown', e => { if (e.key !== 'Escape') e.stopPropagation(); });
   }
 
   function position(target) {
