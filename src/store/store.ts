@@ -33,6 +33,16 @@ export interface Store {
   nextId(): string;
   /** idempotent append — an existing id is replaced */
   upsert(ann: Annotation): void;
+  /**
+   * Apply changes to one annotation, stamping `updatedAt`/`updatedBy`. The entry
+   * is replaced rather than mutated, so callers holding the old object see no
+   * surprise writes. A change value of `undefined` clears that field.
+   * @param id annotation id
+   * @param changes fields to overwrite
+   * @param by who is making the change (session author, or `agent`)
+   * @returns the new annotation, or null when the id is unknown
+   */
+  patch(id: string, changes: Partial<Annotation>, by: string): Annotation | null;
   /** delete an annotation and its screenshot files */
   remove(id: string): boolean;
   /** absolute path for an annotation's screenshot */
@@ -82,6 +92,19 @@ export function createStore(dir: string, { url, author, file }: StoreOptions = {
       const i = data.annotations.findIndex(a => a.id === ann.id);
       if (i === -1) data.annotations.push(ann);
       else data.annotations[i] = ann;
+    },
+
+    patch(id: string, changes: Partial<Annotation>, by: string): Annotation | null {
+      const i = data.annotations.findIndex(a => a.id === id);
+      if (i === -1) return null;
+      const next: Annotation = {
+        ...data.annotations[i],
+        ...changes,
+        updatedAt: new Date().toISOString(),
+        updatedBy: by,
+      };
+      data.annotations[i] = next;
+      return next;
     },
 
     remove(id: string): boolean {
@@ -194,6 +217,10 @@ function mergeExternalStatuses(
     if (localUnchanged) {
       local.status = ext.status;
       if (ext.verifiedAt) local.verifiedAt = ext.verifiedAt;
+      // the stamp belongs to the status we just adopted — take it too, or the
+      // record would claim our author made the other writer's change
+      if (ext.updatedAt) local.updatedAt = ext.updatedAt;
+      if (ext.updatedBy) local.updatedBy = ext.updatedBy;
     }
   }
 }

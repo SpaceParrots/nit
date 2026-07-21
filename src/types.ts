@@ -88,6 +88,12 @@ export interface Annotation {
   createdAt: string;
   /** ISO timestamp of the verified/reopened verdict */
   verifiedAt?: string;
+  /** free-form issue key or URL: `FAI-1234`, `#87`, `https://…/browse/FAI-1234` */
+  issueRef?: string;
+  /** ISO timestamp of the last change to this annotation (status, issueRef) */
+  updatedAt?: string;
+  /** who made that change: the session author, or `agent` via MCP */
+  updatedBy?: string;
 }
 
 /** Review metadata. */

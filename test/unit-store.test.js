@@ -95,3 +95,58 @@ test('store: flush merges a concurrent external status change instead of clobber
   assert.equal(result.annotations.find(a => a.id === 'a1').status, 'fixed', 'external change preserved');
   assert.equal(result.annotations.find(a => a.id === 'a2').status, 'wontfix', 'local change kept');
 });
+
+test('store: patch stamps updatedAt/updatedBy and returns the new annotation', () => {
+  const dir = tmpDir('nit-store-');
+  const store = createStore(dir, { url: 'https://x.test' });
+  store.upsert({ id: 'a1', comment: 'hello', status: 'open' });
+  store.upsert({ id: 'a2', comment: 'other', status: 'open' });
+
+  const before = store.annotations[0];
+  const patched = store.patch('a1', { status: 'fixed' }, 'agent');
+
+  assert.equal(patched.status, 'fixed');
+  assert.equal(patched.updatedBy, 'agent');
+  assert.match(patched.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(patched.comment, 'hello', 'untouched fields survive');
+  assert.notEqual(store.annotations[0], before, 'entry is replaced, not mutated in place');
+  assert.equal(store.annotations[1].updatedAt, undefined, 'other annotations untouched');
+});
+
+test('store: patch returns null for an unknown id', () => {
+  const dir = tmpDir('nit-store-');
+  const store = createStore(dir, { url: 'https://x.test' });
+  assert.equal(store.patch('nope', { status: 'fixed' }, 'Kevin'), null);
+});
+
+test('store: patch with an undefined value clears the field on disk', () => {
+  const dir = tmpDir('nit-store-');
+  const store = createStore(dir, { url: 'https://x.test' });
+  store.upsert({ id: 'a1', comment: 'hello', status: 'open', issueRef: 'FAI-1' });
+  store.patch('a1', { issueRef: undefined }, 'Kevin');
+  store.flush();
+
+  const written = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
+  assert.equal('issueRef' in written.annotations[0], false);
+});
+
+test('store: flush adopts an external updatedAt/updatedBy with the status it belongs to', () => {
+  const dir = tmpDir('nit-store-');
+  const store = createStore(dir, { url: 'https://x.test' });
+  store.upsert({ id: 'a1', comment: 'hello', status: 'open' });
+  store.flush();
+
+  // another writer (an agent via MCP) marks it fixed while we hold the file
+  const file = path.join(dir, 'annotations.json');
+  const external = JSON.parse(fs.readFileSync(file, 'utf8'));
+  external.annotations[0].status = 'fixed';
+  external.annotations[0].updatedAt = '2026-07-22T09:00:00.000Z';
+  external.annotations[0].updatedBy = 'agent';
+  fs.writeFileSync(file, JSON.stringify(external, null, 2));
+  fs.utimesSync(file, new Date(Date.now() + 2000), new Date(Date.now() + 2000));
+
+  store.flush();
+  assert.equal(store.annotations[0].status, 'fixed');
+  assert.equal(store.annotations[0].updatedBy, 'agent');
+  assert.equal(store.annotations[0].updatedAt, '2026-07-22T09:00:00.000Z');
+});
