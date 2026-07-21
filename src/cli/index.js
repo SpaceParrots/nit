@@ -14,9 +14,11 @@ Usage:
   nit view <file>   [--url override] [--mobile] [--headless] [--debug]
   nit verify <file> [--url override] [--mobile] [--headless] [--debug]
   nit merge <file...> [--out dir]
+  nit mcp [dir]
 
 Review: press Alt to pick an element, click it, describe the change, Save.
 Verify: captures "after" screenshots for fixed annotations; rule Verified/Reopen in the panel.
+Mcp:    stdio MCP server over <dir>/annotations.json (list_annotations, get_annotation, mark_fixed, set_status).
 Output: <out>/annotations.json + review.md + shots/ (default out: nit-review).
 `;
 
@@ -75,6 +77,11 @@ async function main() {
       console.log('Navigate the site; pins appear on the routes they were made on. Close the browser when done.');
     }
     await session.done;
+  } else if (command === 'mcp') {
+    const { startMcpServer } = await import('../mcp/server.js');
+    const dir = rest[0] || 'nit-review';
+    startMcpServer(dir);
+    // stays alive while stdin (the MCP client) is connected
   } else if (command === 'merge') {
     if (!rest.length) throw new Error('usage: nit merge <file...>');
     runMerge(rest, { out: typeof flags.out === 'string' ? flags.out : 'nit-review-merged' });
