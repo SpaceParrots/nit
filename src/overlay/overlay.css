@@ -1,0 +1,217 @@
+/* Overlay styles — scoped inside the shadow root, so no host-page collisions.   */
+/* Everything positions relative to the viewport (fixed) or page (absolute pins). */
+
+:host {
+  --nit-bg: #1c1c1e;
+  --nit-fg: #f5f5f7;
+  --nit-muted: #9a9aa2;
+  --nit-accent: #ffcc00;
+  --nit-accent-fg: #1c1c1e;
+  --nit-cr: #ffcc00;
+  --nit-comment: #6ec1ff;
+  --nit-border: #3a3a3e;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ---- highlight box ---- */
+.nit-highlight {
+  position: fixed;
+  pointer-events: none;
+  border: 2px solid var(--nit-accent);
+  background: rgba(255, 204, 0, 0.08);
+  border-radius: 3px;
+  z-index: 30;
+}
+.nit-highlight--pinned { border-style: solid; background: rgba(255, 204, 0, 0.14); }
+.nit-highlight-label {
+  position: absolute;
+  top: -24px;
+  left: -2px;
+  background: var(--nit-accent);
+  color: var(--nit-accent-fg);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* ---- pins (absolute page coords) ---- */
+.nit-pins { position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: visible; z-index: 20; }
+.nit-pin {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--nit-cr);
+  color: var(--nit-accent-fg);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+.nit-pin--comment { background: var(--nit-comment); }
+.nit-pin--closed { opacity: 0.45; }
+.nit-flash {
+  position: absolute;
+  border: 2px solid var(--nit-accent);
+  border-radius: 3px;
+  pointer-events: none;
+  animation: nit-flash 1.2s ease-out;
+}
+@keyframes nit-flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---- popover ---- */
+.nit-popover {
+  position: fixed;
+  width: 320px;
+  background: var(--nit-bg);
+  color: var(--nit-fg);
+  border: 1px solid var(--nit-border);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.nit-pop-head { font-size: 12px; font-weight: 600; color: var(--nit-accent); }
+.nit-pop-comment {
+  width: 100%;
+  background: #2a2a2e;
+  color: var(--nit-fg);
+  border: 1px solid var(--nit-border);
+  border-radius: 6px;
+  padding: 8px;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+.nit-pop-comment.nit-invalid { border-color: #ff5f57; }
+.nit-row { display: flex; align-items: center; gap: 8px; }
+.nit-row-label { font-size: 11px; color: var(--nit-muted); width: 64px; flex: none; }
+.nit-seg { display: flex; gap: 4px; flex: 1; }
+.nit-seg-btn {
+  flex: 1;
+  background: #2a2a2e;
+  color: var(--nit-muted);
+  border: 1px solid var(--nit-border);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 5px 6px;
+  cursor: pointer;
+}
+.nit-seg-btn--active { background: var(--nit-accent); color: var(--nit-accent-fg); border-color: var(--nit-accent); font-weight: 600; }
+.nit-btnrow { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---- buttons ---- */
+.nit-btn {
+  background: #2a2a2e;
+  color: var(--nit-fg);
+  border: 1px solid var(--nit-border);
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.nit-btn:hover { border-color: var(--nit-muted); }
+.nit-btn--primary, .nit-btn--active { background: var(--nit-accent); color: var(--nit-accent-fg); border-color: var(--nit-accent); font-weight: 600; }
+
+/* ---- sidebar ---- */
+.nit-sidebar {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: 290px;
+  background: var(--nit-bg);
+  color: var(--nit-fg);
+  border: 1px solid var(--nit-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.nit-sidebar--collapsed {
+  width: 34px;
+  height: 34px;
+  bottom: auto;
+  border-radius: 8px;
+  align-items: center;
+  justify-content: center;
+}
+.nit-collapse {
+  background: none;
+  border: none;
+  color: var(--nit-muted);
+  font-size: 14px;
+  cursor: pointer;
+  margin-left: auto;
+  padding: 4px 6px;
+}
+.nit-side-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--nit-border); }
+.nit-logo { font-weight: 800; font-size: 14px; color: var(--nit-accent); }
+.nit-mode { font-size: 11px; color: var(--nit-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.nit-controls { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--nit-border); }
+.nit-vp { display: flex; gap: 6px; }
+.nit-vp .nit-btn { flex: 1; }
+.nit-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.nit-empty { font-size: 12px; color: var(--nit-muted); padding: 12px; text-align: center; }
+
+.nit-item {
+  background: #26262a;
+  border: 1px solid var(--nit-border);
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.nit-item--closed { opacity: 0.55; }
+.nit-item--unplaced { border-style: dashed; }
+.nit-item-head { display: flex; align-items: flex-start; gap: 6px; }
+.nit-num {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3a3a3e;
+  color: var(--nit-fg);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.nit-badge { flex: none; font-size: 9px; font-weight: 700; border-radius: 4px; padding: 2px 5px; margin-top: 1px; }
+.nit-badge--change-request { background: var(--nit-cr); color: var(--nit-accent-fg); }
+.nit-badge--comment { background: var(--nit-comment); color: var(--nit-accent-fg); }
+.nit-item-comment {
+  flex: 1;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.nit-del {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--nit-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.nit-del:hover { color: #ff5f57; }
+.nit-item-meta { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--nit-border); display: flex; flex-direction: column; gap: 4px; }
+.nit-meta-line { font-size: 11px; color: var(--nit-muted); word-break: break-all; }
+.nit-shot { max-width: 100%; border-radius: 6px; border: 1px solid var(--nit-border); }
+
+.nit-unplaced { border-top: 1px solid var(--nit-border); padding: 8px; max-height: 30%; overflow-y: auto; }
+.nit-unplaced-head { font-size: 11px; color: var(--nit-muted); margin-bottom: 6px; }
