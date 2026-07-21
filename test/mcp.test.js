@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Milestone 11: the MCP stdio server wraps annotations.json without schema changes.
 // A scripted JSON-RPC client drives initialize → tools/list → tools/call.
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +16,9 @@ const PNG_1PX = Buffer.from(
   'base64',
 );
 
-function makeReviewDir() {
+// Options let a test override the a1 fixture annotation (e.g. a query-carrying
+// route) without duplicating the whole fixture.
+function makeReviewDir({ route = '/products' } = {}) {
   const dir = tmpDir('nit-mcp-');
   fs.mkdirSync(path.join(dir, 'shots'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'shots', 'a1.png'), PNG_1PX);
@@ -25,7 +27,7 @@ function makeReviewDir() {
     annotations: [
       {
         id: 'a1', type: 'change-request', comment: 'Make the badge yellow', status: 'open', author: 'Kevin',
-        viewportScope: 'general', viewport: { mode: 'desktop', w: 1440, h: 900 }, route: '/products',
+        viewportScope: 'general', viewport: { mode: 'desktop', w: 1440, h: 900 }, route,
         target: { component: 'app-tile', ngComponent: null, selector: '.badge', xpath: '/html[1]', tag: 'div', classes: ['badge'], text: 'New', rect: { x: 0, y: 0, w: 10, h: 10 } },
         screenshot: 'shots/a1.png', createdAt: '2026-07-20T10:01:00Z',
       },
@@ -83,6 +85,38 @@ function startClient(dir) {
   };
 }
 
+// Fixture clients spawned by startFixtureMcp() are closed in bulk after the
+// file's tests finish, since the brief's tests take no `t` to register per-test
+// cleanup with.
+const fixtureClients = [];
+after(() => { for (const c of fixtureClients) c.close(); });
+
+/**
+ * Spin up a fixture review dir + MCP server, complete the initialize handshake,
+ * and return a `call(name, args)` helper that resolves to the tool result
+ * (`{ content, isError? }`) — the shape the brief's tests assert against.
+ * @param {{ route?: string }} [annotationOverrides] forwarded to makeReviewDir
+ */
+async function startFixtureMcp(annotationOverrides = {}) {
+  const dir = makeReviewDir(annotationOverrides);
+  const client = startClient(dir);
+  fixtureClients.push(client);
+  await client.request('initialize', {
+    protocolVersion: '2025-06-18',
+    capabilities: {},
+    clientInfo: { name: 'nit-test', version: '0' },
+  });
+  client.notify('notifications/initialized');
+  return {
+    dir,
+    client,
+    async call(name, args) {
+      const res = await client.request('tools/call', { name, arguments: args });
+      return res.result;
+    },
+  };
+}
+
 test('mcp server — list, get, mark_fixed, set_status over stdio JSON-RPC', async t => {
   const dir = makeReviewDir();
   const client = startClient(dir);
@@ -99,7 +133,7 @@ test('mcp server — list, get, mark_fixed, set_status over stdio JSON-RPC', asy
 
   const tools = await client.request('tools/list');
   const names = tools.result.tools.map(x => x.name);
-  assert.deepEqual(names.sort(), ['get_annotation', 'list_annotations', 'mark_fixed', 'set_status']);
+  assert.deepEqual(names.sort(), ['get_annotation', 'list_annotations', 'mark_fixed', 'set_issue_ref', 'set_status']);
 
   const list = await client.request('tools/call', { name: 'list_annotations', arguments: {} });
   const listed = JSON.parse(list.result.content[0].text);
@@ -163,4 +197,35 @@ test('mcp server — a poisoned screenshot path cannot read files outside the re
   assert.ok(got.result.content.some(c => c.type === 'text'));
   const leaked = got.result.content.find(c => c.type === 'image' && Buffer.from(c.data, 'base64').toString().includes('TOP SECRET'));
   assert.equal(leaked, undefined, 'secret file must not be exfiltrated as an image');
+});
+
+test('mcp: set_issue_ref sets and clears the reference', async () => {
+  const { call, dir } = await startFixtureMcp();
+  const set = await call('set_issue_ref', { id: 'a1', ref: ' FAI-1234 ' });
+  assert.equal(JSON.parse(set.content[0].text).issueRef, 'FAI-1234', 'trimmed and stored');
+
+  const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
+  assert.equal(onDisk.annotations[0].issueRef, 'FAI-1234');
+  assert.equal(onDisk.annotations[0].updatedBy, 'agent');
+
+  const cleared = await call('set_issue_ref', { id: 'a1', ref: '' });
+  assert.equal(JSON.parse(cleared.content[0].text).issueRef, undefined);
+});
+
+test('mcp: set_status stamps updatedBy agent', async () => {
+  const { call } = await startFixtureMcp();
+  const res = await call('mark_fixed', { id: 'a1' });
+  const ann = JSON.parse(res.content[0].text);
+  assert.equal(ann.status, 'fixed');
+  assert.equal(ann.updatedBy, 'agent');
+  assert.match(ann.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('mcp: list_annotations route filter matches the full route and the path', async () => {
+  const { call } = await startFixtureMcp({ route: '/products?id=5' });
+  const byFull = JSON.parse((await call('list_annotations', { route: '/products?id=5' })).content[0].text);
+  const byPath = JSON.parse((await call('list_annotations', { route: '/products' })).content[0].text);
+  assert.equal(byFull.total, 1);
+  assert.equal(byPath.total, 1, 'path-only filter still finds a query-carrying route');
+  assert.equal(byFull.annotations[0].issueRef, undefined, 'summary carries the field');
 });

@@ -10,7 +10,8 @@ import { createStore, safeShotPath } from '../store/store.js';
 import type { Store } from '../store/store.js';
 import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
 import { errorMessage } from '../util/error.js';
-import type { AnnotationStatus } from '../types.js';
+import { routePath } from '../util/route.js';
+import type { Annotation, AnnotationStatus } from '../types.js';
 
 const PROTOCOL_FALLBACK = '2024-11-05';
 const STATUSES: readonly AnnotationStatus[] = ['open', 'fixed', 'wontfix', 'verified', 'reopened'];
@@ -82,6 +83,18 @@ const TOOLS = [
         status: { type: 'string', enum: STATUSES },
       },
       required: ['id', 'status'],
+    },
+  },
+  {
+    name: 'set_issue_ref',
+    description: 'Attach a tracker issue key or url to an annotation (empty string clears it).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        ref: { type: 'string' },
+      },
+      required: ['id', 'ref'],
     },
   },
 ];
@@ -162,6 +175,7 @@ function callTool(dir: string, name: unknown, args: Record<string, unknown>): To
     if (name === 'get_annotation') return getAnnotation(dir, store, args);
     if (name === 'mark_fixed') return setStatus(store, { id: args.id, status: 'fixed' });
     if (name === 'set_status') return setStatus(store, args);
+    if (name === 'set_issue_ref') return setIssueRef(store, args);
     return toolError(`unknown tool: ${String(name)}`);
   } catch (e) {
     return toolError(errorMessage(e));
@@ -172,7 +186,8 @@ function listAnnotations(store: Store, { status, type, route }: Record<string, u
   const all = store.annotations.filter(a =>
     (!status || a.status === status)
     && (!type || a.type === type)
-    && (!route || a.route === route));
+    // routes now carry query strings: accept an exact match or a path-only filter
+    && (!route || a.route === route || routePath(a.route) === route));
   const summary = all.map(a => ({
     id: a.id,
     type: a.type,
@@ -181,6 +196,10 @@ function listAnnotations(store: Store, { status, type, route }: Record<string, u
     route: a.route,
     author: a.author,
     viewportScope: a.viewportScope,
+    issueRef: a.issueRef,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+    updatedBy: a.updatedBy,
     component: a.target?.component,
     ngComponent: a.target?.ngComponent,
     selector: a.target?.selector,
@@ -210,12 +229,23 @@ function getAnnotation(dir: string, store: Store, { id }: Record<string, unknown
 
 function setStatus(store: Store, { id, status }: Record<string, unknown>): ToolResult {
   if (!isAnnotationStatus(status)) return toolError(`invalid status: ${String(status)}`);
-  const ann = store.annotations.find(a => a.id === id);
-  if (!ann) return toolError(`no annotation with id ${String(id)}`);
-  ann.status = status;
-  if (status === 'verified' || status === 'reopened') ann.verifiedAt = new Date().toISOString();
+  if (typeof id !== 'string') return toolError('id must be a string');
+  const changes: Partial<Annotation> = { status };
+  if (status === 'verified' || status === 'reopened') changes.verifiedAt = new Date().toISOString();
+  return writeAnnotation(store, id, changes);
+}
+
+function setIssueRef(store: Store, { id, ref }: Record<string, unknown>): ToolResult {
+  if (typeof id !== 'string') return toolError('id must be a string');
+  const value = typeof ref === 'string' ? ref.trim().slice(0, 200) : '';
+  return writeAnnotation(store, id, { issueRef: value || undefined });
+}
+
+/** Apply a change as the agent, persist, and keep the derived files in sync. */
+function writeAnnotation(store: Store, id: string, changes: Partial<Annotation>): ToolResult {
+  const ann = store.patch(id, changes, 'agent');
+  if (!ann) return toolError(`no annotation with id ${id}`);
   store.flush();
-  // keep the human-readable artifacts in sync
   try {
     fs.writeFileSync(path.join(store.dir, 'review.md'), renderReviewMd(store.data), 'utf8');
     fs.writeFileSync(path.join(store.dir, 'fix-annotations.md'), FIX_ANNOTATIONS_MD, 'utf8');
