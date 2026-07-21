@@ -231,7 +231,7 @@ declare global {
     __nitEvent?: (evt: OverlayEvent) => Promise<void>;
     __nitPanelState?: () => Promise<PanelState>;
     __nitPanelCmd?: (cmd: PanelCmd) => Promise<BridgeResult>;
-    /** installed by the panel page itself (panel.ts inline script) */
+    /** installed by the panel window's own bundle (src/panel/main.ts) */
     __nitPanelFocus?: (id: string) => void;
     /** installed by the overlay (main.ts) for Node to drive */
     __nitOverlay?: OverlayApi;

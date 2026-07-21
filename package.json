@@ -32,7 +32,7 @@
   "homepage": "https://github.com/spaceparrots/nit#readme",
   "author": "Kevin Mattutat <kevin.mattutat@spaceparrots.de>",
   "scripts": {
-    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').cpSync('src/overlay/overlay.css','dist/overlay/overlay.css')\"",
+    "build": "tsc -p tsconfig.json && node -e \"const f=require('node:fs');f.cpSync('src/overlay/overlay.css','dist/overlay/overlay.css');f.cpSync('src/panel/panel.css','dist/panel/panel.css')\"",
     "gen:logo": "node scripts/gen-logo.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "npm run build",
