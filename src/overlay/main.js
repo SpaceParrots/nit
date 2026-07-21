@@ -87,7 +87,7 @@ async function init() {
   ui.popover = createPopover(root, state, actions);
   ui.picker = installPicker(state, ui, actions);
 
-  // Commands from the panel window, routed through Node.
+  // Commands from the panel window (and verify screenshots), routed through Node.
   window.__nitOverlay = {
     cmd(c) {
       if (!c || typeof c !== 'object') return;
@@ -95,6 +95,7 @@ async function init() {
       else if (c.cmd === 'toggleShowAll') actions.setShowAll(!state.showAll);
       else if (c.cmd === 'focus') ui.pins.focus(c.id);
     },
+    setUiHidden: actions.setUiHidden,
   };
 
   installRouteWatcher(state, ui);
@@ -128,10 +129,20 @@ function emitUi(state) {
       route: location.pathname,
       picking: state.picking,
       showAll: state.showAll,
-      placed: state.placed.map(p => p.ann.id),
+      placed: state.placed.map(p => ({ id: p.ann.id, rect: pageRectOf(p.el) })),
       unplaced: state.unplaced.map(a => a.id),
     });
   } catch { /* bridge gone */ }
+}
+
+function pageRectOf(el) {
+  const r = el.getBoundingClientRect();
+  return {
+    x: Math.round(r.x + window.scrollX),
+    y: Math.round(r.y + window.scrollY),
+    w: Math.round(r.width),
+    h: Math.round(r.height),
+  };
 }
 
 function scopeVisible(state, ann) {

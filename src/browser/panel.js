@@ -130,7 +130,7 @@ function panelHtml() {
   tick();
 
   function render(s) {
-    $('#mode').textContent = s.mode === 'view' ? 'replay' : 'review';
+    $('#mode').textContent = s.mode === 'view' ? 'replay' : s.mode === 'verify' ? 'verify' : 'review';
     $('#pick').hidden = s.mode !== 'review';
     $('#finish').hidden = s.mode !== 'review';
     $('#pick').classList.toggle('active', Boolean(s.picking));
@@ -208,22 +208,52 @@ function panelHtml() {
           + ((ann.target && ann.target.ngComponent) ? ' (' + ann.target.ngComponent + ')' : '')),
       );
       if (ann.target && ann.target.selector) meta.append(line('selector: ' + ann.target.selector));
-      if (ann.screenshot) {
-        const img = document.createElement('img');
-        img.className = 'shot';
-        img.alt = ann.id;
-        if (shotCache.has(ann.id)) {
-          img.src = shotCache.get(ann.id);
-        } else {
-          Promise.resolve(call('__nitShot', ann.id)).then(src => {
-            if (src) { shotCache.set(ann.id, src); img.src = src; } else img.remove();
-          }).catch(() => img.remove());
-        }
-        meta.append(img);
+      appendShot(meta, ann.id, 'before', ann.screenshot, ann.screenshotAfter ? 'before' : null);
+      appendShot(meta, ann.id, 'after', ann.screenshotAfter, 'after');
+      if (s.mode === 'verify' && ann.status === 'fixed') {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:6px;margin-top:6px';
+        const ok = document.createElement('button');
+        ok.className = 'btn nit-verdict-verified';
+        ok.textContent = '\\u2713 Verified';
+        ok.addEventListener('click', e => {
+          e.stopPropagation();
+          try { window.__nitVerdict(ann.id, 'verified'); } catch {}
+          lastKey = '';
+        });
+        const re = document.createElement('button');
+        re.className = 'btn nit-verdict-reopen';
+        re.textContent = '\\u21ba Reopen';
+        re.addEventListener('click', e => {
+          e.stopPropagation();
+          try { window.__nitVerdict(ann.id, 'reopened'); } catch {}
+          lastKey = '';
+        });
+        row.append(ok, re);
+        meta.append(row);
       }
       it.append(meta);
     }
     return it;
+  }
+
+  function appendShot(meta, id, which, rel, caption) {
+    if (!rel) return;
+    if (caption) meta.append(line(caption + ':'));
+    const img = document.createElement('img');
+    img.className = 'shot';
+    img.alt = id + ' ' + which;
+    const key = id + ':' + which;
+    if (shotCache.has(key)) {
+      img.src = shotCache.get(key);
+    } else {
+      Promise.resolve((() => {
+        try { return window.__nitShot(id, which === 'after' ? 'after' : undefined); } catch { return null; }
+      })()).then(src => {
+        if (src) { shotCache.set(key, src); img.src = src; } else img.remove();
+      }).catch(() => img.remove());
+    }
+    meta.append(img);
   }
 
   function span(cls, text) {

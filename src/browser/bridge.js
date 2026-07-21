@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { captureElementShot } from '../capture/screenshot.js';
+import { captureAfterShots } from './verify.js';
 
 const SCOPES = ['general', 'desktop', 'mobile'];
 
@@ -54,15 +55,29 @@ export async function wireBridge(context, session) {
 
   await context.exposeBinding('__nitSetViewport', async (source, mode) => session.setViewport(mode));
 
-  await context.exposeBinding('__nitShot', async (source, id) => {
+  await context.exposeBinding('__nitShot', async (source, id, which) => {
     const ann = store.annotations.find(a => a.id === id);
-    if (!ann || !ann.screenshot) return null;
+    const rel = which === 'after' ? ann?.screenshotAfter : ann?.screenshot;
+    if (!rel) return null;
     try {
-      const buf = fs.readFileSync(path.join(store.dir, ann.screenshot));
+      const buf = fs.readFileSync(path.join(store.dir, rel));
       return `data:image/png;base64,${buf.toString('base64')}`;
     } catch {
       return null;
     }
+  });
+
+  await context.exposeBinding('__nitVerdict', async (source, id, verdict) => {
+    if (verdict !== 'verified' && verdict !== 'reopened') {
+      return { ok: false, error: 'verdict must be "verified" or "reopened"' };
+    }
+    const ann = store.annotations.find(a => a.id === id);
+    if (!ann) return { ok: false, error: `no annotation ${id}` };
+    ann.status = verdict;
+    ann.verifiedAt = new Date().toISOString();
+    session.flush();
+    session.log(`${verdict === 'verified' ? '+ verified' : '~ reopened'} ${id}`);
+    return { ok: true, annotation: ann };
   });
 
   await context.exposeBinding('__nitDelete', async (source, id) => {
@@ -93,6 +108,10 @@ export async function wireBridge(context, session) {
         placed: Array.isArray(evt.placed) ? evt.placed : [],
         unplaced: Array.isArray(evt.unplaced) ? evt.unplaced : [],
       };
+      if (session.mode === 'verify') {
+        await captureAfterShots(session, source.page, evt)
+          .catch(e => session.log(`! after-shot capture failed: ${e.message}`));
+      }
     } else if (evt.type === 'focus' && session.panelPage) {
       await session.panelPage
         .evaluate(id => window.__nitPanelFocus && window.__nitPanelFocus(id), evt.id)
@@ -110,7 +129,7 @@ export async function wireBridge(context, session) {
     picking: session.uiState.picking || false,
     showAll: session.uiState.showAll ?? (session.mode !== 'view'),
     route: session.uiState.route || '/',
-    placed: session.uiState.placed || [],
+    placed: (session.uiState.placed || []).map(p => (typeof p === 'string' ? p : p.id)),
     unplaced: session.uiState.unplaced || [],
     annotations: store.annotations,
   }));

@@ -12,9 +12,11 @@ const HELP = `nit — point-and-click website annotation for coding agents
 Usage:
   nit review <url>  [--out dir] [--author name] [--mobile] [--headless] [--debug]
   nit view <file>   [--url override] [--mobile] [--headless] [--debug]
+  nit verify <file> [--url override] [--mobile] [--headless] [--debug]
   nit merge <file...> [--out dir]
 
 Review: press Alt to pick an element, click it, describe the change, Save.
+Verify: captures "after" screenshots for fixed annotations; rule Verified/Reopen in the panel.
 Output: <out>/annotations.json + review.md + shots/ (default out: nit-review).
 `;
 
@@ -54,18 +56,24 @@ async function main() {
     console.log('Alt: toggle picking · Esc: cancel · close the browser (or Finish review) when done.');
     await session.done;
     summarize(session);
-  } else if (command === 'view') {
+  } else if (command === 'view' || command === 'verify') {
     const file = rest[0];
-    if (!file) throw new Error('usage: nit view <file>');
+    if (!file) throw new Error(`usage: nit ${command} <file>`);
     const session = await startSession({
       ...common,
-      mode: 'view',
+      mode: command,
       reviewFile: file,
       url: typeof flags.url === 'string' ? normalizeUrl(flags.url) : undefined,
     });
     hookSigint(session);
-    console.log(`nit view — replaying ${file}`);
-    console.log('Navigate the site; pins appear on the routes they were made on. Close the browser when done.');
+    if (command === 'verify') {
+      console.log(`nit verify — ${file}`);
+      console.log('Visit the routes of fixed annotations; after-shots are captured automatically.');
+      console.log('Rule each fixed item Verified or Reopen in the panel, then close the browser.');
+    } else {
+      console.log(`nit view — replaying ${file}`);
+      console.log('Navigate the site; pins appear on the routes they were made on. Close the browser when done.');
+    }
     await session.done;
   } else if (command === 'merge') {
     if (!rest.length) throw new Error('usage: nit merge <file...>');

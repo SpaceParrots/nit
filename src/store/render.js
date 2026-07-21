@@ -8,20 +8,23 @@ export function renderReviewMd(data) {
   const lines = [];
   lines.push(`# Nit review — ${review.url || 'unknown url'} — ${(review.createdAt || '').slice(0, 10)}`);
   lines.push('');
-  lines.push(`Authors: ${(review.authors || []).join(', ') || '—'} · ${annotations.length} annotation${annotations.length === 1 ? '' : 's'} · ${openCrs} actionable (open change-requests)`);
+  lines.push(`Authors: ${(review.authors || []).join(', ') || '—'} · ${annotations.length} annotation${annotations.length === 1 ? '' : 's'} · ${openCrs} actionable (open/reopened change-requests)`);
 
   for (const a of annotations) {
     const t = a.target || {};
     lines.push('');
     lines.push(`## ${a.id} · ${a.type} · ${a.status} · ${a.viewport ? a.viewport.mode : 'general'} — ${oneLine(a.comment)}`);
     if (isActionable(a)) {
-      lines.push('**ACTIONABLE** — make this change, then set `status` to `"fixed"` in annotations.json.');
+      lines.push(a.status === 'reopened'
+        ? '**ACTIONABLE (reopened)** — the previous fix did not hold; fix again, then set `status` to `"fixed"`.'
+        : '**ACTIONABLE** — make this change, then set `status` to `"fixed"` in annotations.json.');
     } else if (a.type === 'comment') {
       lines.push('*Context only — do not change code for this.*');
     } else {
       lines.push(`*Not actionable — status: ${a.status}.*`);
     }
     if (a.screenshot) lines.push(`![${a.id}](${a.screenshot})`);
+    if (a.screenshotAfter) lines.push(`![${a.id} after](${a.screenshotAfter})`);
     lines.push(`- component: \`${t.component || '?'}\`${t.ngComponent ? ` (${t.ngComponent})` : ''}`);
     if (t.selector) lines.push(`- selector: \`${t.selector}\``);
     lines.push(`- route: \`${a.route || '/'}\` · author: ${a.author || '—'} · scope: ${a.viewportScope || 'general'}${a.viewport ? ` · captured at ${a.viewport.w}×${a.viewport.h}` : ''}`);
@@ -31,7 +34,7 @@ export function renderReviewMd(data) {
 }
 
 function isActionable(a) {
-  return a.type === 'change-request' && a.status === 'open';
+  return a.type === 'change-request' && (a.status === 'open' || a.status === 'reopened');
 }
 
 function oneLine(s) {
@@ -40,10 +43,11 @@ function oneLine(s) {
 
 export const FIX_ANNOTATIONS_MD = `# /fix-annotations
 
-Read \`annotations.json\` in this directory. For each annotation with \`status: "open"\` **and**
-\`type: "change-request"\`, make the change described in \`comment\` at the referenced element, then set
-that annotation's \`status\` to \`"fixed"\`. Treat \`type: "comment"\` annotations as context — do not
-change code for them; surface them to the user instead.
+Read \`annotations.json\` in this directory. For each annotation of \`type: "change-request"\` whose
+\`status\` is \`"open"\` **or** \`"reopened"\` (a fix that did not hold), make the change described in
+\`comment\` at the referenced element, then set that annotation's \`status\` to \`"fixed"\`. Treat
+\`type: "comment"\` annotations as context — do not change code for them; surface them to the user
+instead.
 
 Locating each spot: use \`target.component\` (custom-element tag ≈ Angular component selector) and
 \`route\` first. \`target.ngComponent\` is the Angular class name when the build exposed it —

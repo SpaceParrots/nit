@@ -65,14 +65,20 @@ export function createStore(dir, { url, author, file } = {}) {
       const i = data.annotations.findIndex(a => a.id === id);
       if (i === -1) return false;
       const [ann] = data.annotations.splice(i, 1);
-      if (ann.screenshot) {
-        try { fs.unlinkSync(path.join(dir, ann.screenshot)); } catch { /* already gone */ }
+      for (const rel of [ann.screenshot, ann.screenshotAfter]) {
+        if (rel) {
+          try { fs.unlinkSync(path.join(dir, rel)); } catch { /* already gone */ }
+        }
       }
       return true;
     },
 
     shotPath(id) {
       return path.join(shotsDir, `${fileSafeId(id)}.png`);
+    },
+
+    afterShotPath(id) {
+      return path.join(shotsDir, `${fileSafeId(id)}-after.png`);
     },
 
     flush() {

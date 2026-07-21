@@ -53,12 +53,27 @@ const DATA = {
       screenshot: null,
       createdAt: '2026-07-20T10:03:00Z',
     },
+    {
+      id: 'a4',
+      type: 'change-request',
+      comment: 'Align the price tag',
+      status: 'reopened',
+      author: 'Kevin',
+      viewportScope: 'general',
+      viewport: { mode: 'desktop', w: 1440, h: 900 },
+      route: '/',
+      target: { component: 'app-price', ngComponent: null, selector: '.price' },
+      screenshot: 'shots/a4.png',
+      screenshotAfter: 'shots/a4-after.png',
+      verifiedAt: '2026-07-21T09:00:00Z',
+      createdAt: '2026-07-20T10:04:00Z',
+    },
   ],
 };
 
 const EXPECTED = `# Nit review — https://example.com — 2026-07-20
 
-Authors: Kevin, Ann · 3 annotations · 1 actionable (open change-requests)
+Authors: Kevin, Ann · 4 annotations · 2 actionable (open/reopened change-requests)
 
 ## a1 · change-request · open · desktop — Badge should be yellow
 **ACTIONABLE** — make this change, then set \`status\` to \`"fixed"\` in annotations.json.
@@ -78,17 +93,26 @@ Authors: Kevin, Ann · 3 annotations · 1 actionable (open change-requests)
 - component: \`app-footer\`
 - selector: \`footer a.imprint\`
 - route: \`/\` · author: Kevin · scope: general · captured at 1440×900
+
+## a4 · change-request · reopened · desktop — Align the price tag
+**ACTIONABLE (reopened)** — the previous fix did not hold; fix again, then set \`status\` to \`"fixed"\`.
+![a4](shots/a4.png)
+![a4 after](shots/a4-after.png)
+- component: \`app-price\`
+- selector: \`.price\`
+- route: \`/\` · author: Kevin · scope: general · captured at 1440×900
 `;
 
 test('render: review.md snapshot', () => {
   assert.equal(renderReviewMd(DATA), EXPECTED);
 });
 
-test('render: only open change-requests are marked actionable', () => {
+test('render: only open/reopened change-requests are marked actionable', () => {
   const md = renderReviewMd(DATA);
-  const actionableCount = (md.match(/\*\*ACTIONABLE\*\*/g) || []).length;
-  assert.equal(actionableCount, 1);
+  const actionableCount = (md.match(/\*\*ACTIONABLE/g) || []).length;
+  assert.equal(actionableCount, 2); // a1 (open) + a4 (reopened); not a2 (comment), not a3 (fixed)
   assert.ok(md.includes('## a1 · change-request · open'));
+  assert.ok(md.includes('**ACTIONABLE (reopened)**'));
   assert.ok(md.includes('*Context only — do not change code for this.*'));
   assert.ok(md.includes('*Not actionable — status: fixed.*'));
 });
@@ -99,7 +123,8 @@ test('render: empty review renders without crashing', () => {
 });
 
 test('fix-annotations contract mentions the type/status gate', () => {
-  assert.ok(FIX_ANNOTATIONS_MD.includes('`status: "open"`'));
   assert.ok(FIX_ANNOTATIONS_MD.includes('`type: "change-request"`'));
-  assert.ok(FIX_ANNOTATIONS_MD.includes('do not\nchange code'));
+  assert.ok(FIX_ANNOTATIONS_MD.includes('`"open"`'));
+  assert.ok(FIX_ANNOTATIONS_MD.includes('`"reopened"`'));
+  assert.ok(FIX_ANNOTATIONS_MD.includes('do not change code'));
 });

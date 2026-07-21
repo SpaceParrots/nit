@@ -38,6 +38,15 @@ test('merge: namespaces ids by author, no collisions, authors preserved', () => 
   assert.equal(data.annotations[1].screenshot, null);
 });
 
+test('merge: after-screenshots are copied and renamed too', () => {
+  const kevin = review('Kevin', [
+    { id: 'a1', author: 'Kevin', comment: 'k1', screenshot: 'shots/a1.png', screenshotAfter: 'shots/a1-after.png' },
+  ]);
+  const { data, copies } = mergeReviews([kevin]);
+  assert.equal(data.annotations[0].screenshotAfter, 'shots/kevin_a1-after.png');
+  assert.deepEqual(copies.map(c => c.to), ['shots/kevin_a1.png', 'shots/kevin_a1-after.png']);
+});
+
 test('merge: same file twice still yields unique ids', () => {
   const kevin = review('Kevin', [{ id: 'a1', author: 'Kevin', comment: 'k1' }]);
   const { data } = mergeReviews([kevin, kevin]);

@@ -34,6 +34,11 @@ export function mergeReviews(inputs, { now = new Date() } = {}) {
         copies.push({ fromDir: input.dir, from: ann.screenshot, to });
         merged.screenshot = to;
       }
+      if (ann.screenshotAfter) {
+        const to = `shots/${fileSafeId(id)}-after.png`;
+        copies.push({ fromDir: input.dir, from: ann.screenshotAfter, to });
+        merged.screenshotAfter = to;
+      }
       annotations.push(merged);
     }
   }

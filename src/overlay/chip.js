@@ -14,7 +14,8 @@ export function createChip(root, state, actions) {
     if (state.picking) {
       el.textContent = '◉ picking — click an element (Esc cancels)';
     } else {
-      el.textContent = `nit${state.mode === 'view' ? ' replay' : ''} · ${state.annotations.length}`;
+      const modeLabel = state.mode === 'view' ? ' replay' : state.mode === 'verify' ? ' verify' : '';
+      el.textContent = `nit${modeLabel} · ${state.annotations.length}`;
     }
     el.title = state.mode === 'review' ? 'Toggle element picking (Alt)' : 'nit replay';
   }

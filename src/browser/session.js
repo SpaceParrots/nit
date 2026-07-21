@@ -33,8 +33,8 @@ export async function startSession(opts) {
 
   let store;
   let targetUrl = url;
-  if (mode === 'view') {
-    if (!reviewFile) throw new Error('view mode needs a feedback file');
+  if (mode === 'view' || mode === 'verify') {
+    if (!reviewFile) throw new Error(`${mode} mode needs a feedback file`);
     const filePath = path.resolve(reviewFile);
     if (!fs.existsSync(filePath)) throw new Error(`feedback file not found: ${filePath}`);
     store = createStore(path.dirname(filePath), { file: filePath });
