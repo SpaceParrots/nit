@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nit fixture</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 20px; }
+  fake-product-tile { display: block; border: 1px solid #ccc; padding: 12px; margin: 8px; width: 200px; }
+  .badge { display: inline-block; background: #eee; padding: 2px 8px; }
+  .cards { display: flex; }
+  #tall-spacer { height: 1500px; background: #fafafa; }
+</style>
+</head>
+<body>
+  <header id="hdr">
+    <h1>Nit fixture page</h1>
+    <nav>
+      <a href="/" data-route="/">Home</a>
+      <a href="/about" data-route="/about">About</a>
+    </nav>
+  </header>
+  <main id="app"></main>
+  <script>
+    const routes = {
+      '/': `
+        <fake-hero>
+          <h2 id="hero-title">Welcome to the fixture</h2>
+          <p class="lead intro">A tiny SPA used by nit's test-suite.</p>
+        </fake-hero>
+        <section class="cards">
+          <fake-product-tile>
+            <div class="badge badge--muted">New</div>
+            <span class="price">5 €</span>
+          </fake-product-tile>
+          <fake-product-tile>
+            <div class="badge ng-star-inserted ng-tns-c12-3 ng-trigger">Hot</div>
+            <span class="price">7 €</span>
+          </fake-product-tile>
+          <fake-product-tile>
+            <div class="deep-1"><div class="deep-2"><div class="deep-3"><div class="deep-4">
+              <span class="deep-target">deep text</span>
+            </div></div></div></div>
+          </fake-product-tile>
+        </section>
+        <p id="long-text">This paragraph exists to verify that captured element text is normalized and capped at eighty characters, because nobody wants an annotation file bloated with entire paragraphs of body copy from the page under review.</p>
+        <div id="tall-spacer"></div>
+        <footer><p class="fine-print">Scrolled far down content for rect tests.</p></footer>
+      `,
+      '/about': `
+        <fake-about>
+          <p class="about-text">About page paragraph</p>
+          <button id="cta" type="button">Click me</button>
+        </fake-about>
+      `,
+    };
+    function render() {
+      document.getElementById('app').innerHTML = routes[location.pathname] || '<p class="notfound">404</p>';
+    }
+    document.addEventListener('click', e => {
+      const a = e.target.closest('a[data-route]');
+      if (!a) return;
+      e.preventDefault();
+      history.pushState({}, '', a.dataset.route);
+      render();
+    });
+    window.addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>
