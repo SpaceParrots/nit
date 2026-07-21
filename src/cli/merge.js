@@ -13,7 +13,7 @@ export function runMerge(files, { out = 'nit-review-merged', log = line => conso
     try {
       data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     } catch (e) {
-      throw new Error(`cannot read feedback file ${filePath}: ${e.message}`);
+      throw new Error(`cannot read feedback file ${filePath}: ${e.message}`, { cause: e });
     }
     if (!data || !Array.isArray(data.annotations)) {
       throw new Error(`not a nit feedback file (missing annotations array): ${filePath}`);

@@ -67,6 +67,6 @@ test('cli: unknown command suggests the nearest one', () => {
 test('cli: missing required argument fails with guidance', () => {
   const { code, out } = run('review');
   assert.notEqual(code, 0);
-  assert.ok(out.includes("missing required argument"));
+  assert.ok(out.includes('missing required argument'));
   assert.ok(out.includes('--help'));
 });

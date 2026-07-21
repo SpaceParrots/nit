@@ -104,6 +104,6 @@ test('nit verify — after-shots + verdicts', async t => {
     // a verdict-ed annotation no longer offers verdict buttons
     await waitFor(async () =>
       (await panel.locator('.nit-verdict-verified').count()) === 0 ? true : null,
-      { message: 'verdict buttons gone after decisions' });
+    { message: 'verdict buttons gone after decisions' });
   });
 });

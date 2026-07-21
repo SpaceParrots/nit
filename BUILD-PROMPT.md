@@ -1,10 +1,3 @@
-# Nit — build prompt for Fable
-
-> Paste the block below into a fresh Claude Fable / Claude Code session whose working directory is
-> `D:\Tools\Nit`. `SPEC.md` in this repo is the full design; the prompt tells the agent to follow it.
-
----
-
 You are building **Nit**, a point-and-click website annotation tool that hands small UI fixes to a
 coding agent. The complete design is in `SPEC.md` in this repo — **read it first and treat it as the
 source of truth.** Build in this repo (`D:\Tools\Nit`).

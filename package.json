@@ -14,7 +14,9 @@
     "coding-agent"
   ],
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "engines": {
     "node": ">=18"
@@ -25,5 +27,11 @@
     "playwright": "^1.54.0"
   },
   "license": "MIT",
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0"
+  }
 }
