@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Overlay → Node bridge via page.exposeBinding (SPEC §2.1).
 import fs from 'node:fs';
 import path from 'node:path';

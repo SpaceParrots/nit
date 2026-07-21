@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // nit doctor — check everything nit needs (Node, dependencies, Chromium) and offer
 // to install the Chromium browser the same way "npx playwright install chromium" does.
 import fs from 'node:fs';

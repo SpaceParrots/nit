@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Filesystem + polling helpers shared by unit and browser tests.
 import fs from 'node:fs';
 import os from 'node:os';

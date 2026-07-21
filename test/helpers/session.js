@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // In-process nit session for browser tests (headless, tmp profile + output dirs).
 import { startSession } from '../../src/browser/session.js';
 import { tmpDir } from './tmp.js';

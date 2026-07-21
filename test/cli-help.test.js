@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // The commander-based CLI: helpful output, per-command help, aliases, suggestions.
 import test from 'node:test';
 import assert from 'node:assert/strict';

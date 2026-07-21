@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // nit merge <file...> — combine feedback files into one consolidated review.
 import fs from 'node:fs';
 import path from 'node:path';

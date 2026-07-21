@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Overlay entrypoint. Bundled by esbuild (iife) and injected via addInitScript into
 // every page of the session. Framework-agnostic vanilla JS in an open Shadow DOM;
 // serves capture ('review') and replay ('view') with the same UI. The page overlay

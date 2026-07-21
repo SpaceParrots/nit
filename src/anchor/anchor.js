@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Re-anchor an annotation target to a live element for replay (SPEC §2.4).
 // Layered: selector → xpath → text heuristic scoped to the component tag.
 // Returns the element or null — never throws.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // nit verify (SPEC §12): for every annotation the agent marked "fixed", capture an
 // "after" screenshot at the same route — of the re-anchored element when possible,
 // of the originally recorded page region when the element can't be re-anchored

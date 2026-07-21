@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Milestone 11: the MCP stdio server wraps annotations.json without schema changes.
 // A scripted JSON-RPC client drives initialize → tools/list → tools/call.
 import test from 'node:test';

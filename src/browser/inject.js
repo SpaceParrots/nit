@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Bundle the overlay (vanilla JS/CSS, Shadow DOM) with esbuild and inject it via
 // page.addInitScript — before page scripts, on every navigation, never a <script> tag.
 import path from 'node:path';

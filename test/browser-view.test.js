@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Milestone 7 (integration): nit view replays a feedback file — right pins on the
 // right route/viewport, unanchorable items degrade to "couldn't place", no crash.
 import test from 'node:test';

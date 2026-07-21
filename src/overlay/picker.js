@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Capture-mode element picker: Alt toggles picking, hover highlights, click selects,
 // Esc cancels. All listeners are capture-phase so the page never sees picking clicks.
 

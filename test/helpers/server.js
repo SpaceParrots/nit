@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Tiny static server for the fixture SPA. Sends a CSP header like a hardened
 // production site would (nit must work regardless, via bypassCSP).
 import http from 'node:http';

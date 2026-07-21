@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Milestone 8 (integration): nit merge combines files, copies shots, renders review.md.
 import test from 'node:test';
 import assert from 'node:assert/strict';

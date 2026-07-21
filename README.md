@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/spaceparrots/nit/actions/workflows/ci.yml/badge.svg)](https://github.com/spaceparrots/nit/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/%40spaceparrots%2Fnit)](https://www.npmjs.com/package/@spaceparrots/nit)
-[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![license: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](./LICENSE)
 
 You're browsing your product and spot the little things — a badge in the wrong color, an unfilled
 star icon, a dead active-state. Filing tickets for those is overkill; describing them to an AI agent
@@ -157,4 +157,10 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the project layout and guidelines.
 
 ## License
 
-[MIT](./LICENSE)
+nit is licensed under the [GNU AGPL-3.0](./LICENSE). It's free to use, modify and self-host, but the
+copyleft terms mean any distributed or **network-hosted** modified version must make its source
+available under the same license — so nobody can take nit closed-source and resell it.
+
+Need to use nit in a way AGPL-3.0 doesn't allow (e.g. embedding it in a closed-source or commercial
+product)? A separate commercial license is available — reach out to
+[kevin.mattutat@spaceparrots.de](mailto:kevin.mattutat@spaceparrots.de).

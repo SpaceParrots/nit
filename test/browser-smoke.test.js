@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Milestones 1, 2, 4, 6, 9: the full capture loop against the CSP-hardened fixture SPA.
 import test from 'node:test';
 import assert from 'node:assert/strict';

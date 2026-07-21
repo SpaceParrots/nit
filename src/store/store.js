@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Read/write annotations.json (SPEC §3): stable ids, idempotent append, atomic writes.
 import fs from 'node:fs';
 import path from 'node:path';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Pure annotations → review.md renderer (SPEC §5) + the /fix-annotations contract file.
 
 /**

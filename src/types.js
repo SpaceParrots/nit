@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 /**
  * Central JSDoc typedefs for nit's data model (SPEC §3). The annotations.json
  * schema is the public contract between the capture tool, the replay/verify

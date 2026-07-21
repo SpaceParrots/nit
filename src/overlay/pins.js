@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Numbered pins anchored to elements on the current route (replay + resumed capture).
 
 /**

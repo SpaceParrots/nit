@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Milestone 3: target resolution unit table (≥8 cases) in a real DOM.
 import test from 'node:test';
 import assert from 'node:assert/strict';

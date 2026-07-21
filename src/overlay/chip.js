@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Slim in-page chip (bottom-left): annotation count + picking state. The full
 // list/controls UI lives in the separate nit panel window, not over the page.
 /**

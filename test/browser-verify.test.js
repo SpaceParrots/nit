@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Milestone 10 (SPEC §12): nit verify captures after-shots for fixed annotations and
 // lets the human rule verified/reopened from the panel. Open annotations are untouched.
 import test from 'node:test';

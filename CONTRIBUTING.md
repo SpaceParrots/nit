@@ -49,3 +49,11 @@ Guidelines:
 - Conventional Commits, one line: `feat(nit): …`, `fix(nit): …`, `docs(nit): …`.
 - PRs should pass `npm run lint` and `npm test` (CI enforces both) and include tests for
   behavior changes.
+
+## Licensing of contributions
+
+nit is licensed under the [GNU AGPL-3.0](./LICENSE). By submitting a contribution you agree that it
+is licensed under the same terms. The project maintainer (spaceparrots) also offers nit under a
+separate commercial license; by contributing you grant spaceparrots the right to include your
+contribution in those commercially-licensed distributions as well. If you're contributing on behalf
+of an employer, make sure you have the right to do so.

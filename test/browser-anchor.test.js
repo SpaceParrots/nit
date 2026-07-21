@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Milestone 7 (unit layer): re-anchoring table — selector → xpath → text heuristic → null.
 import test from 'node:test';
 import assert from 'node:assert/strict';

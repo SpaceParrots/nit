@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // nit — point-and-click website annotation for coding agents.
 import fs from 'node:fs';
 import path from 'node:path';

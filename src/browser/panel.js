@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // The nit panel: a separate popup window (devtools-style, docked next to the browser
 // window) hosting the annotation list and session controls. It is our own page, so it
 // never overlays or competes with the site under review — important on mobile viewports.

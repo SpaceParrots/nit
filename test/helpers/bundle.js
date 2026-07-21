@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Bundle a single src module as an IIFE global for in-page unit tables.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

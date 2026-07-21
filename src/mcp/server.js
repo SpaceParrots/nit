@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Minimal MCP (Model Context Protocol) stdio server wrapping a nit review directory.
 // SPEC §3: stable ids + status are exactly what this thin wrapper needs — the schema
 // ships unchanged. Newline-delimited JSON-RPC 2.0 over stdio, stdlib only.

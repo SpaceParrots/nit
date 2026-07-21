@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // The annotation popover: comment text, type selector (default change-request),
 // viewport-scope toggle (default: current viewport, toggleable to general).
 import { div, button, segmented, labelRow, describeElement } from './dom.js';

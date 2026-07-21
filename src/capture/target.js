@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Pure element → target reference (SPEC §4). Runs inside the inspected page (bundled
 // into the overlay); must never throw and must work without window.ng (production builds).
 

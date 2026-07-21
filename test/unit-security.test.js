@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Path-traversal guards: annotation files are shared between people and edited by
 // agents, so screenshot paths must never escape the review directory.
 import test from 'node:test';

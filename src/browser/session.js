@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // One review/view session: launch, inject overlay, wire bridge, own the store.
 import os from 'node:os';
 import fs from 'node:fs';

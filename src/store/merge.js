@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Pure merge of N feedback files into one consolidated review (SPEC §2.5, §8).
 // Ids are namespaced by author (kevin:a1); screenshots are renamed into a shared shots/.
 import { fileSafeId } from './store.js';

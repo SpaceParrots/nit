@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Playwright launcher (SPEC §2.1): headed Chromium, persistent context, bypassCSP
 // so the overlay runs on CSP-hardened production sites.
 import os from 'node:os';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // CDP element-clip screenshot (SPEC §2.3): Page.captureScreenshot clipped to the
 // element rect in absolute page coordinates, with generous context padding
 // (milestone-0 learning: tight crops are useless to the fixing agent).

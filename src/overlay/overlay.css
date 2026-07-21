@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
 /* Overlay styles — scoped inside the shadow root, so no host-page collisions.   */
 /* Everything positions relative to the viewport (fixed) or page (absolute pins). */
 
