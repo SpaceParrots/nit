@@ -64,9 +64,12 @@ test('nit view — replay flow', async t => {
     assert.equal(await page.locator('.nit-pin').first().getAttribute('title'), 'Welcome heading tweak');
   });
 
-  await t.test('unanchorable annotation degrades to the couldn\'t-place list', async () => {
-    assert.equal(await page.locator('.nit-item--unplaced').count(), 1);
-    const text = await page.locator('.nit-unplaced').textContent();
+  await t.test('unanchorable annotation degrades to the couldn\'t-place list (panel)', async () => {
+    const panel = S.session.panelPage;
+    assert.ok(panel, 'panel window opened');
+    await waitFor(async () => (await panel.locator('.nit-item--unplaced').count()) === 1 ? true : null,
+      { message: 'unplaced item in panel' });
+    const text = await panel.locator('.unplaced').textContent();
     assert.ok(text.includes('Ghost element'));
     // and the page is still alive — no crash
     assert.equal(await page.evaluate(() => 1 + 1), 2);
@@ -79,7 +82,8 @@ test('nit view — replay flow', async t => {
       if ((await page.locator('.nit-pin').count()) !== 1) return null;
       return (await page.locator('.nit-pin').first().getAttribute('title')) === 'Button label unclear' ? true : null;
     }, { message: 'about pin replaces home pin' });
-    assert.equal(await page.locator('.nit-item--unplaced').count(), 0);
+    await waitFor(async () => (await S.session.panelPage.locator('.nit-item--unplaced').count()) === 0 ? true : null,
+      { message: 'unplaced list empty on /about' });
   });
 
   await t.test('viewport filter: mobile mode reveals the mobile-scoped pin', async () => {
@@ -87,7 +91,8 @@ test('nit view — replay flow', async t => {
     await waitFor(() => page.evaluate(() => location.pathname === '/'), { message: 'back home' });
     await waitFor(async () => (await page.locator('.nit-pin').count()) === 1 ? true : null, { message: 'general pin back' });
 
-    await page.locator('.nit-vp-mobile').click();
+    const panel = S.session.panelPage;
+    await panel.locator('.nit-vp-mobile').click();
     await waitFor(() => {
       const vp = page.viewportSize();
       return vp && vp.width === 390 ? true : null;
@@ -95,7 +100,7 @@ test('nit view — replay flow', async t => {
     await waitFor(async () => (await page.locator('.nit-pin').count()) === 2 ? true : null, { message: 'general + mobile pins' });
 
     // showing all scopes is a toggle away
-    await page.locator('.nit-filter').click();
+    await panel.locator('.nit-filter').click();
     await waitFor(async () => (await page.locator('.nit-pin').count()) === 2 ? true : null, { message: 'all pins (a4 still anchorable)' });
   });
 });

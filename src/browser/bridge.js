@@ -82,10 +82,48 @@ export async function wireBridge(context, session) {
   });
 
   await context.exposeBinding('__nitEvent', async (source, evt) => {
-    if (evt && evt.type === 'click') {
+    if (!evt || typeof evt !== 'object') return;
+    if (evt.type === 'click') {
       session.log(`overlay: click at ${evt.x},${evt.y} on <${evt.tag}>`);
+    } else if (evt.type === 'ui') {
+      session.uiState = {
+        route: evt.route,
+        picking: Boolean(evt.picking),
+        showAll: Boolean(evt.showAll),
+        placed: Array.isArray(evt.placed) ? evt.placed : [],
+        unplaced: Array.isArray(evt.unplaced) ? evt.unplaced : [],
+      };
+    } else if (evt.type === 'focus' && session.panelPage) {
+      await session.panelPage
+        .evaluate(id => window.__nitPanelFocus && window.__nitPanelFocus(id), evt.id)
+        .catch(() => {});
     }
     session.onEvent?.(evt);
+  });
+
+  // ---- panel window support ----
+
+  await context.exposeBinding('__nitPanelState', async () => ({
+    mode: session.mode,
+    author: session.author,
+    viewportMode: session.viewportMode,
+    picking: session.uiState.picking || false,
+    showAll: session.uiState.showAll ?? (session.mode !== 'view'),
+    route: session.uiState.route || '/',
+    placed: session.uiState.placed || [],
+    unplaced: session.uiState.unplaced || [],
+    annotations: store.annotations,
+  }));
+
+  await context.exposeBinding('__nitPanelCmd', async (source, cmd) => {
+    const page = session.sitePage;
+    if (!page) return { ok: false, error: 'no site page' };
+    try {
+      await page.evaluate(c => window.__nitOverlay && window.__nitOverlay.cmd(c), cmd);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
   });
 }
 

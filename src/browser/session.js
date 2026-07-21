@@ -5,6 +5,7 @@ import path from 'node:path';
 import { launchBrowser, VIEWPORTS } from './launch.js';
 import { injectOverlay } from './inject.js';
 import { wireBridge } from './bridge.js';
+import { openPanel } from './panel.js';
 import { createStore } from '../store/store.js';
 import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
 
@@ -54,6 +55,10 @@ export async function startSession(opts) {
     viewportMode,
     context: null,
     page: null,
+    sitePage: null,
+    panelPage: null,
+    uiState: {},
+    _closing: false,
 
     flush() {
       store.flush();
@@ -70,6 +75,7 @@ export async function startSession(opts) {
       session.viewportMode = m;
       const vp = VIEWPORTS[m];
       for (const p of session.context.pages()) {
+        if (p === session.panelPage) continue; // the panel keeps its own size
         await p.setViewportSize(vp).catch(() => {});
       }
       log(`viewport -> ${m} ${vp.width}x${vp.height}`);
@@ -77,6 +83,7 @@ export async function startSession(opts) {
     },
 
     async close() {
+      session._closing = true;
       await session.context.close().catch(() => {});
     },
   };
@@ -95,8 +102,20 @@ export async function startSession(opts) {
 
   const page = context.pages()[0] || await context.newPage();
   session.page = page;
+  session.sitePage = page;
+  // Closing the site window ends the session (the panel alone is useless).
+  page.on('close', () => {
+    if (!session._closing) session.close();
+  });
   await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
     .catch(e => log(`! navigation failed: ${e.message}`));
+
+  // Devtools-style side panel in its own window — the page overlay stays minimal.
+  try {
+    session.panelPage = await openPanel(context, page, session);
+  } catch (e) {
+    log(`! side panel unavailable (${e.message}) — the in-page chip and Alt picking still work`);
+  }
 
   return session;
 }

@@ -24,6 +24,13 @@ export function createPins(root, state, actions) {
     });
   }
 
+  function focus(id) {
+    const entry = state.placed.find(p => p.ann.id === id);
+    if (!entry) return;
+    entry.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setTimeout(() => flash(entry.el), 250);
+  }
+
   function flash(el) {
     const r = el.getBoundingClientRect();
     const f = document.createElement('div');
@@ -36,5 +43,5 @@ export function createPins(root, state, actions) {
     setTimeout(() => f.remove(), 1200);
   }
 
-  return { render };
+  return { render, focus };
 }

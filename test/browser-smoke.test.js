@@ -41,6 +41,10 @@ test('nit review — capture flow', async t => {
       } catch { return null; }
     }, { message: 'annotations.json written' });
 
+    // regression: the popover must actually disappear after save
+    await waitFor(async () => (await page.locator('.nit-popover').isVisible()) === false ? true : null,
+      { message: 'popover hidden after save' });
+
     const a = data.annotations[0];
     assert.equal(a.id, 'a1');
     assert.equal(a.type, 'change-request'); // overlay default
@@ -98,8 +102,10 @@ test('nit review — capture flow', async t => {
     assert.ok(Math.abs(size.height - (r.h + pad)) <= 2, `png height ${size.height} ≈ rect ${r.h}+${pad}`);
   });
 
-  await t.test('m6: viewport switch via overlay control, recorded on annotations', async () => {
-    await page.locator('.nit-vp-mobile').click();
+  await t.test('m6: viewport switch via the panel window, recorded on annotations', async () => {
+    const panel = S.session.panelPage;
+    assert.ok(panel, 'panel window opened');
+    await panel.locator('.nit-vp-mobile').click();
     await waitFor(() => {
       const vp = page.viewportSize();
       return vp && vp.width === 390 && vp.height === 844 ? true : null;
@@ -124,11 +130,13 @@ test('nit review — capture flow', async t => {
     assert.deepEqual(res.annotation.viewport, { mode: 'mobile', w: 390, h: 844 });
     assert.equal(res.annotation.viewportScope, 'mobile');
 
-    await page.locator('.nit-vp-desktop').click();
+    await panel.locator('.nit-vp-desktop').click();
     await waitFor(() => {
       const vp = page.viewportSize();
       return vp && vp.width === 1440 ? true : null;
     }, { message: 'back to desktop' });
+    // the panel window itself must never be resized by viewport switching
+    assert.equal(panel.viewportSize().width, 344);
   });
 
   await t.test('m9: delete removes annotation + shot, finish flushes and closes', async () => {

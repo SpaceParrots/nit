@@ -13,7 +13,7 @@ export function installPicker(state, ui, actions) {
         state.hovered = null;
       }
       document.documentElement.style.cursor = on ? 'crosshair' : '';
-      ui.sidebar.render();
+      actions.uiChanged();
     },
   };
 
