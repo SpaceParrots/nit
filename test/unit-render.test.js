@@ -201,3 +201,62 @@ test('render: updated stamp is shown, and the line is omitted when there is noth
   });
   assert.equal(/- issue:|updated /.test(without), false);
 });
+
+test('render: whitespace-only issueRef with no updatedAt is treated as absent', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: [] },
+    annotations: [{ id: 'a1', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+      route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z', issueRef: '   ' }],
+  });
+  assert.equal(/- issue:/.test(md), false);
+  assert.equal(/``/.test(md), false);
+  assert.equal(/^- $/m.test(md), false);
+});
+
+test('render: whitespace-only issueRef with an updatedAt still renders the stamp, no issue fragment', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: [] },
+    annotations: [{ id: 'a1', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+      route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z',
+      issueRef: '   ', updatedAt: '2026-07-22T09:00:00Z', updatedBy: 'agent' }],
+  });
+  assert.equal(/- issue:/.test(md), false);
+  assert.match(md, /- updated 2026-07-22 by agent/);
+});
+
+test('render: single-backtick issueRef is treated as absent, same as whitespace-only', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: [] },
+    annotations: [{ id: 'a1', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+      route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z', issueRef: '`' }],
+  });
+  assert.equal(/- issue:/.test(md), false);
+  assert.equal(/``/.test(md), false);
+});
+
+test('render: a URL ending in a backslash renders as a code span, not a link', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'key', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z',
+        issueRef: 'https://good.com\\' },
+    ],
+  });
+  assert.match(md, /- issue: `https:\/\/good\.com\\`/);
+  assert.equal(/- issue: \[.*\]\(.*\)/.test(md), false);
+});
+
+test('render: an issueRef longer than 200 characters is capped at 200', () => {
+  const long = 'A'.repeat(250);
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'key', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z', issueRef: long },
+    ],
+  });
+  const match = md.match(/- issue: `(A+)`/);
+  assert.ok(match);
+  assert.equal(match[1].length, 200);
+});

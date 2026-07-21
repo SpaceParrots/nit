@@ -38,7 +38,8 @@ export function renderReviewMd(data: ReviewData): string {
     if (t.selector) lines.push(`- selector: \`${t.selector}\``);
     lines.push(`- route: \`${a.route || '/'}\` · author: ${a.author || '—'} · scope: ${a.viewportScope || 'general'}${a.viewport ? ` · captured at ${a.viewport.w}×${a.viewport.h}` : ''}`);
     const extra: string[] = [];
-    if (a.issueRef) extra.push(`issue: ${issueMd(a.issueRef)}`);
+    const issueFragment = a.issueRef ? issueMd(a.issueRef) : null;
+    if (issueFragment) extra.push(`issue: ${issueFragment}`);
     if (a.updatedAt) extra.push(`updated ${a.updatedAt.slice(0, 10)}${a.updatedBy ? ` by ${a.updatedBy}` : ''}`);
     if (extra.length) lines.push(`- ${extra.join(' · ')}`);
   }
@@ -55,33 +56,41 @@ function oneLine(s: string | undefined): string {
 }
 
 /**
- * Collapses all whitespace runs (including newlines/tabs) to a single space and trims.
+ * Collapses all whitespace runs (including newlines/tabs) to a single space, trims, and caps the
+ * result at 200 characters (the same cap the write-side bindings apply, see `src/browser/bridge.ts`).
  * `issueRef` is untrusted free-form text (human panel input, MCP tool, or hand-edited JSON), so
  * this is the first line of defense: a stored value can never introduce block-level markdown
- * (headings, blank-line paragraph breaks, etc.) into review.md.
+ * (headings, blank-line paragraph breaks, etc.) into review.md, and can never grow unbounded.
+ * The cap is applied here, before any safe-URL decision, so a truncated value is never
+ * misclassified as a link based on characters that no longer make it to the rendered output.
  */
 function normalizeIssueRef(ref: string): string {
-  return ref.replace(/\s+/g, ' ').trim();
+  return ref.replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
 /**
  * True only for a value that is safe to embed verbatim as both link text and href: it must look
  * like an http(s) URL and contain none of the characters that could break out of `[text](href)`
- * boundaries (whitespace, backtick, parens, brackets).
+ * boundaries (whitespace, backtick, parens, brackets, backslash).
  */
 function isSafeUrl(ref: string): boolean {
-  return /^https?:\/\//i.test(ref) && !/[\s`()[\]]/.test(ref);
+  return /^https?:\/\//i.test(ref) && !/[\s`()[\]\\]/.test(ref);
 }
 
 /**
  * A tracker url becomes a markdown link; anything else becomes an inline code span. The value is
  * normalized first (see `normalizeIssueRef`), and backticks are stripped from the code-span form
- * so the value can never terminate the span early.
+ * so the value can never terminate the span early. Returns `null` when there is nothing left to
+ * show — a whitespace-only or backtick-only input normalizes (and, for the code-span branch,
+ * de-backticks) to an empty string, and the caller must treat that as if `issueRef` were absent
+ * rather than emit a degenerate empty code span (` `` `).
  */
-function issueMd(ref: string): string {
+function issueMd(ref: string): string | null {
   const normalized = normalizeIssueRef(ref);
+  if (!normalized) return null;
   if (isSafeUrl(normalized)) return `[${normalized}](${normalized})`;
-  return `\`${normalized.replace(/`/g, '')}\``;
+  const stripped = normalized.replace(/`/g, '');
+  return stripped ? `\`${stripped}\`` : null;
 }
 
 export const FIX_ANNOTATIONS_MD = `# /fix-annotations
