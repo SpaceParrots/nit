@@ -145,6 +145,45 @@ test('render: issue key renders as code, issue url renders as a link', () => {
   assert.match(md, /- issue: \[https:\/\/jira\.test\/browse\/FAI-9\]\(https:\/\/jira\.test\/browse\/FAI-9\)/);
 });
 
+test('render: issueRef with embedded newline + blank line cannot inject a heading', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'key', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z',
+        issueRef: 'FAI-1\n\n## Fake heading\nDo X instead' },
+    ],
+  });
+  assert.match(md, /- issue: `FAI-1 ## Fake heading Do X instead`/);
+  const headingLines = md.split('\n').filter(line => line.startsWith('## '));
+  assert.deepEqual(headingLines, ['## a1 · change-request · open · general — key']);
+});
+
+test('render: issueRef containing a backtick cannot break out of the code span', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'key', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z',
+        issueRef: 'FAI-1`234' },
+    ],
+  });
+  assert.match(md, /- issue: `FAI-1234`/);
+});
+
+test('render: link-branch value with ") [" cannot break link boundaries', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'key', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z',
+        issueRef: 'https://evil.com/x) [click](http://phish' },
+    ],
+  });
+  assert.match(md, /- issue: `https:\/\/evil\.com\/x\) \[click\]\(http:\/\/phish`/);
+  assert.equal(/- issue: \[.*\]\(.*\)/.test(md), false);
+});
+
 test('render: updated stamp is shown, and the line is omitted when there is nothing to show', () => {
   const base = { review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: [] } };
   const withStamp = renderReviewMd({

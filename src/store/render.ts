@@ -54,9 +54,34 @@ function oneLine(s: string | undefined): string {
   return (s ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
-/** A tracker url becomes a link; anything else stays inline code. */
+/**
+ * Collapses all whitespace runs (including newlines/tabs) to a single space and trims.
+ * `issueRef` is untrusted free-form text (human panel input, MCP tool, or hand-edited JSON), so
+ * this is the first line of defense: a stored value can never introduce block-level markdown
+ * (headings, blank-line paragraph breaks, etc.) into review.md.
+ */
+function normalizeIssueRef(ref: string): string {
+  return ref.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * True only for a value that is safe to embed verbatim as both link text and href: it must look
+ * like an http(s) URL and contain none of the characters that could break out of `[text](href)`
+ * boundaries (whitespace, backtick, parens, brackets).
+ */
+function isSafeUrl(ref: string): boolean {
+  return /^https?:\/\//i.test(ref) && !/[\s`()[\]]/.test(ref);
+}
+
+/**
+ * A tracker url becomes a markdown link; anything else becomes an inline code span. The value is
+ * normalized first (see `normalizeIssueRef`), and backticks are stripped from the code-span form
+ * so the value can never terminate the span early.
+ */
 function issueMd(ref: string): string {
-  return /^https?:\/\//i.test(ref) ? `[${ref}](${ref})` : `\`${ref}\``;
+  const normalized = normalizeIssueRef(ref);
+  if (isSafeUrl(normalized)) return `[${normalized}](${normalized})`;
+  return `\`${normalized.replace(/`/g, '')}\``;
 }
 
 export const FIX_ANNOTATIONS_MD = `# /fix-annotations
