@@ -3,6 +3,7 @@
 // viewport-scope toggle (default: current viewport, toggleable to general).
 import { div, button, segmented, labelRow, describeElement } from './dom.js';
 import { resolveTarget } from '../capture/target.js';
+import { currentRoute } from '../util/route.js';
 import type { AnnotationType, SavePayload, ViewportScope } from '../types.js';
 import type { OverlayActions, OverlayState, Popover } from './state.js';
 
@@ -88,7 +89,7 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
           type,
           viewportScope: scope,
           target: resolveTarget(elementToSave, window),
-          route: location.pathname,
+          route: currentRoute(location),
         };
         actions.setUiHidden(true); // keep our own UI out of the CDP screenshot
         await new Promise(r => setTimeout(r, 80));

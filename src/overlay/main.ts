@@ -10,6 +10,7 @@ import { installPicker } from './picker.js';
 import { createPopover } from './popover.js';
 import { createPins } from './pins.js';
 import { createChip } from './chip.js';
+import { currentRoute, routePath } from '../util/route.js';
 import type { OverlayActions, OverlayState, OverlayUi, PlacedAnnotation } from './state.js';
 import type { Annotation, LoadResult, Rect } from '../types.js';
 
@@ -115,10 +116,11 @@ async function init(): Promise<void> {
 
 function refresh(state: OverlayState, ui: OverlayUi): void {
   const route = location.pathname;
+  // matching ignores query/hash: an annotation captured at /p?id=5 still pins on /p
   const placed: PlacedAnnotation[] = [];
   const unplaced: Annotation[] = [];
   for (const ann of state.annotations) {
-    if ((ann.route || '/') !== route) continue;
+    if (routePath(ann.route) !== route) continue;
     if (!scopeVisible(state, ann)) continue;
     const el = anchorTarget(ann.target, document);
     if (el && isRendered(el)) placed.push({ ann, el });
@@ -135,7 +137,7 @@ function emitUi(state: OverlayState): void {
   try {
     void window.__nitEvent?.({
       type: 'ui',
-      route: location.pathname,
+      route: currentRoute(location),
       picking: state.picking,
       showAll: state.showAll,
       placed: state.placed.map(p => ({ id: p.ann.id, rect: pageRectOf(p.el) })),
@@ -168,10 +170,10 @@ function isRendered(el: Element): boolean {
 /** SPA route changes don't reload the page: watch history API + popstate + a slow
  *  interval fallback, and re-anchor pins after the new DOM settles. */
 function installRouteWatcher(state: OverlayState, ui: OverlayUi): void {
-  let last = location.pathname;
+  let last = currentRoute(location);
   const onMaybeChange = (): void => {
-    if (location.pathname === last) return;
-    last = location.pathname;
+    if (currentRoute(location) === last) return;
+    last = currentRoute(location);
     setTimeout(() => refresh(state, ui), 300);
     setTimeout(() => refresh(state, ui), 1500);
   };
