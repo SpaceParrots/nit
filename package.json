@@ -1,22 +1,41 @@
 {
-  "name": "nit",
+  "name": "@spaceparrots/nit",
   "version": "0.2.0",
   "description": "Point-and-click website annotation that hands small UI fixes to a coding agent.",
   "type": "module",
   "bin": {
     "nit": "./src/cli/index.js"
   },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
     "annotation",
     "website-review",
+    "design-review",
     "feedback",
     "playwright",
-    "coding-agent"
+    "coding-agent",
+    "mcp",
+    "qa",
+    "ui"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spaceparrots/nit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/spaceparrots/nit/issues"
+  },
+  "homepage": "https://github.com/spaceparrots/nit#readme",
+  "author": "Kevin Mattutat <kevin.mattutat@spaceparrots.de>",
   "scripts": {
     "test": "node --test",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "prepublishOnly": "npm run lint"
   },
   "engines": {
     "node": ">=18"
@@ -26,12 +45,14 @@
     "esbuild": "^0.25.0",
     "playwright": "^1.54.0"
   },
-  "license": "MIT",
-  "private": true,
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.10.0",
     "eslint": "^10.7.0",
     "globals": "^17.7.0"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
   }
 }
