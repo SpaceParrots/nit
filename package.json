@@ -33,6 +33,7 @@
   "author": "Kevin Mattutat <kevin.mattutat@spaceparrots.de>",
   "scripts": {
     "build": "tsc -p tsconfig.json && node -e \"require('node:fs').cpSync('src/overlay/overlay.css','dist/overlay/overlay.css')\"",
+    "gen:logo": "node scripts/gen-logo.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "npm run build",
     "test": "node --test",

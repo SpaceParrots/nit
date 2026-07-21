@@ -75,7 +75,7 @@ export default tseslint.config(
   },
   {
     // Node-side code, CLI, tests and this config file.
-    files: ['src/browser/**/*.ts', 'src/store/**/*.ts', 'src/cli/**/*.ts', 'src/mcp/**/*.ts', 'src/util/**/*.ts', 'src/capture/screenshot.ts', 'test/**/*.js', 'eslint.config.js'],
+    files: ['src/browser/**/*.ts', 'src/store/**/*.ts', 'src/cli/**/*.ts', 'src/mcp/**/*.ts', 'src/util/**/*.ts', 'src/capture/screenshot.ts', 'test/**/*.js', 'scripts/**/*.mjs', 'eslint.config.js'],
     languageOptions: { globals: { ...globals.node } },
   },
   {
