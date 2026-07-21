@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
-import { createStore } from '../store/store.js';
+import { createStore, safeShotPath } from '../store/store.js';
 import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
 
 const PROTOCOL_FALLBACK = '2024-11-05';
@@ -55,6 +55,19 @@ const TOOLS = [
   },
 ];
 
+/**
+ * Start the MCP stdio server over a review directory. Speaks newline-delimited
+ * JSON-RPC 2.0 on the given streams (never writes logs to stdout — that's the
+ * protocol channel). The annotations file is re-read on every tool call so
+ * humans and other agents can edit it concurrently.
+ * @param {string} dir review directory containing annotations.json
+ * @param {object} [opts]
+ * @param {import('node:stream').Readable} [opts.input] protocol input (default process.stdin)
+ * @param {import('node:stream').Writable} [opts.output] protocol output (default process.stdout)
+ * @param {(msg: string) => void} [opts.log] diagnostics sink (default stderr)
+ * @returns {{close: () => void}}
+ * @throws when the directory has no annotations.json
+ */
 export function startMcpServer(dir, { input = process.stdin, output = process.stdout, log = msg => console.error(msg) } = {}) {
   const absDir = path.resolve(dir);
   if (!fs.existsSync(path.join(absDir, 'annotations.json'))) {
@@ -141,11 +154,13 @@ function getAnnotation(dir, store, { id }) {
   if (!ann) return toolError(`no annotation with id ${id}`);
   const content = [{ type: 'text', text: JSON.stringify(ann, null, 2) }];
   for (const rel of [ann.screenshot, ann.screenshotAfter]) {
-    if (!rel) continue;
+    // annotations.json is shared/agent-editable — never read outside the review dir
+    const abs = safeShotPath(dir, rel);
+    if (!abs) continue;
     try {
       content.push({
         type: 'image',
-        data: fs.readFileSync(path.join(dir, rel)).toString('base64'),
+        data: fs.readFileSync(abs).toString('base64'),
         mimeType: 'image/png',
       });
     } catch { /* screenshot file missing — text is still useful */ }

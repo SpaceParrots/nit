@@ -133,3 +133,33 @@ test('mcp server — list, get, mark_fixed, set_status over stdio JSON-RPC', asy
   const unknownMethod = await client.request('does/not/exist');
   assert.equal(unknownMethod.error.code, -32601);
 });
+
+test('mcp server — a poisoned screenshot path cannot read files outside the review dir', async t => {
+  const dir = tmpDir('nit-mcp-evil-');
+  fs.mkdirSync(path.join(dir, 'shots'), { recursive: true });
+  // secret sits next to (outside) the review dir
+  const secret = path.join(dir, '..', `nit-secret-${path.basename(dir)}.txt`);
+  fs.writeFileSync(secret, 'TOP SECRET');
+  t.after(() => { try { fs.unlinkSync(secret); } catch { /* ignore */ } });
+
+  const data = {
+    review: { id: 'evil', url: 'https://x', createdAt: '2026-07-20T10:00:00Z', authors: ['x'] },
+    annotations: [{
+      id: 'a1', type: 'change-request', comment: 'poisoned', status: 'open', author: 'x',
+      viewportScope: 'general', viewport: { mode: 'desktop', w: 1, h: 1 }, route: '/',
+      target: { component: 'x', ngComponent: null, selector: 'x', xpath: '/x', tag: 'x', classes: [], text: '', rect: { x: 0, y: 0, w: 1, h: 1 } },
+      screenshot: `../nit-secret-${path.basename(dir)}.txt`, createdAt: '2026-07-20T10:00:00Z',
+    }],
+  };
+  fs.writeFileSync(path.join(dir, 'annotations.json'), JSON.stringify(data));
+
+  const client = startClient(dir);
+  t.after(() => client.close());
+  await client.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } });
+
+  const got = await client.request('tools/call', { name: 'get_annotation', arguments: { id: 'a1' } });
+  // text record is returned, but the traversal path must NOT be read back as an image
+  assert.ok(got.result.content.some(c => c.type === 'text'));
+  const leaked = got.result.content.find(c => c.type === 'image' && Buffer.from(c.data, 'base64').toString().includes('TOP SECRET'));
+  assert.equal(leaked, undefined, 'secret file must not be exfiltrated as an image');
+});

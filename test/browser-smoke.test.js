@@ -82,6 +82,33 @@ test('nit review — capture flow', async t => {
     assert.equal(a.target.selector, '#hero-title');
   });
 
+  await t.test('security: bridge rejects calls from an untrusted iframe', async () => {
+    const before = readAnnotations(S.out).annotations.length;
+    // A third-party iframe on the reviewed page can see the __nit* bindings, but
+    // its calls must be rejected — it can't delete or forge annotations.
+    const result = await page.evaluate(async () => {
+      const f = document.createElement('iframe');
+      f.srcdoc = '<!doctype html><title>ad</title>';
+      document.body.appendChild(f);
+      await new Promise(r => (f.onload = r));
+      const w = f.contentWindow;
+      const del = w.__nitDelete ? await w.__nitDelete('a1') : { noBinding: true };
+      const save = w.__nitSave ? await w.__nitSave({
+        comment: 'forged from iframe', type: 'change-request',
+        target: { component: 'x', selector: 'x', xpath: '/x', tag: 'x', classes: [], text: '', rect: { x: 0, y: 0, w: 1, h: 1 } },
+        route: '/',
+      }) : { noBinding: true };
+      f.remove();
+      return { del, save };
+    });
+    // Bindings exist in the frame but reject; a1 is still present, nothing forged.
+    assert.equal(result.del.ok, false);
+    assert.equal(result.save.ok, false);
+    const after = readAnnotations(S.out).annotations;
+    assert.equal(after.length, before, 'no annotation added or removed by the iframe');
+    assert.ok(after.some(x => x.id === 'a1'), 'a1 not deleted by the iframe');
+  });
+
   await t.test('m2: Esc cancels picking', async () => {
     await page.keyboard.press('Alt');
     assert.equal(await page.evaluate(() => document.documentElement.style.cursor), 'crosshair');

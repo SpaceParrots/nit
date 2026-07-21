@@ -72,3 +72,25 @@ test('store: shotPath sanitizes namespaced ids for the filesystem', () => {
   const store = createStore(dir, { url: 'https://x.test' });
   assert.ok(store.shotPath('kevin:a1').endsWith('kevin_a1.png'));
 });
+
+test('store: flush merges a concurrent external status change instead of clobbering it', async () => {
+  const dir = tmpDir('nit-store-');
+  const store = createStore(dir, { url: 'https://x.test' });
+  store.upsert({ id: 'a1', comment: 'one', status: 'open' });
+  store.upsert({ id: 'a2', comment: 'two', status: 'open' });
+  store.flush();
+
+  // Another process (e.g. an agent via MCP) marks a1 fixed on disk…
+  await new Promise(r => setTimeout(r, 10)); // ensure a newer mtime
+  const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
+  onDisk.annotations.find(a => a.id === 'a1').status = 'fixed';
+  fs.writeFileSync(path.join(dir, 'annotations.json'), JSON.stringify(onDisk));
+
+  // …then our stale in-memory session changes a2 and flushes.
+  store.annotations.find(a => a.id === 'a2').status = 'wontfix';
+  store.flush();
+
+  const result = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
+  assert.equal(result.annotations.find(a => a.id === 'a1').status, 'fixed', 'external change preserved');
+  assert.equal(result.annotations.find(a => a.id === 'a2').status, 'wontfix', 'local change kept');
+});
