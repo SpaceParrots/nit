@@ -2,6 +2,15 @@
 // Layered: selector → xpath → text heuristic scoped to the component tag.
 // Returns the element or null — never throws.
 
+/**
+ * Resolve an annotation target back to a live element for replay.
+ * Layers: CSS `selector` → `xpath` → text/class heuristic scoped to the
+ * component tag. Degrades gracefully: any invalid or stale layer falls through
+ * to the next one.
+ * @param {import('../types.js').Target | null | undefined} target
+ * @param {Document} [doc]
+ * @returns {Element | null} the re-anchored element, or null when no layer matches (never throws)
+ */
 export function anchorTarget(target, doc = globalThis.document) {
   if (!target || typeof target !== 'object') return null;
 

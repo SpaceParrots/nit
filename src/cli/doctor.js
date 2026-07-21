@@ -10,6 +10,16 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const PKG_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+/**
+ * Run the environment checks: Node version, npm dependencies, and the Playwright
+ * Chromium browser. When Chromium is missing, offers to install it (or installs
+ * straight away with `yes`); without a TTY the offer is skipped and the manual
+ * command is printed instead.
+ * @param {object} [opts]
+ * @param {boolean} [opts.yes] install Chromium without asking (non-interactive setup)
+ * @param {(line: string) => void} [opts.log] log sink
+ * @returns {Promise<boolean>} true when the environment is ready to run nit
+ */
 export async function runDoctor({ yes = false, log = console.log } = {}) {
   let ok = true;
   log('nit doctor\n');

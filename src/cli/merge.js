@@ -2,8 +2,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { mergeReviews } from '../store/merge.js';
+import { safeShotPath } from '../store/store.js';
 import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
 
+/**
+ * Read feedback files, merge them ({@link mergeReviews}), copy screenshots into
+ * the shared output dir and write annotations.json + review.md + fix-annotations.md.
+ * @param {string[]} files paths of nit feedback files (one per author)
+ * @param {object} [opts]
+ * @param {string} [opts.out] output directory (default `nit-review-merged`)
+ * @param {(line: string) => void} [opts.log] log sink
+ * @returns {{outDir: string, data: import('../types.js').ReviewData}}
+ * @throws when a file is missing, unreadable, or not a nit feedback file
+ */
 export function runMerge(files, { out = 'nit-review-merged', log = line => console.log(line) } = {}) {
   if (files.length < 1) throw new Error('nit merge needs at least one feedback file');
 
@@ -27,11 +38,19 @@ export function runMerge(files, { out = 'nit-review-merged', log = line => conso
 
   let missingShots = 0;
   for (const c of copies) {
+    // Input feedback files come from other people — never copy a screenshot path
+    // that escapes the file's own directory.
+    const from = safeShotPath(c.fromDir, c.from);
+    if (!from) {
+      missingShots++;
+      log(`! skipped unsafe screenshot path: ${c.from}`);
+      continue;
+    }
     try {
-      fs.copyFileSync(path.join(c.fromDir, c.from), path.join(outDir, c.to));
+      fs.copyFileSync(from, path.join(outDir, c.to));
     } catch {
       missingShots++;
-      log(`! screenshot missing: ${path.join(c.fromDir, c.from)}`);
+      log(`! screenshot missing: ${from}`);
     }
   }
 

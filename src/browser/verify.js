@@ -5,6 +5,18 @@
 import path from 'node:path';
 import { captureElementShot } from '../capture/screenshot.js';
 
+/**
+ * Capture pending after-shots for `fixed` annotations, driven by the overlay's
+ * `ui` events (which carry fresh element rects per re-anchored annotation).
+ * Each annotation is captured once per session; the overlay UI is hidden while
+ * capturing so pins/chips never leak into the evidence.
+ * @param {object} session the live verify session (store, log, capture guard)
+ * @param {import('playwright').Page} page the site page that emitted the event
+ * @param {{placed?: Array<{id: string, rect: import('../types.js').Rect}>, unplaced?: string[]}} evt
+ *   the overlay ui event: re-anchored annotations with live rects, plus the ids
+ *   that could not be re-anchored (their originally recorded region is captured)
+ * @returns {Promise<void>}
+ */
 export async function captureAfterShots(session, page, evt) {
   const { store } = session;
   if (!session._afterCaptured) session._afterCaptured = new Set();

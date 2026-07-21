@@ -1,4 +1,13 @@
 // Numbered pins anchored to elements on the current route (replay + resumed capture).
+
+/**
+ * Create the pins layer: one numbered pin per re-anchored annotation, positioned
+ * in absolute page coordinates so pins scroll with the content.
+ * @param {ShadowRoot} root the overlay shadow root to mount into
+ * @param {object} state shared overlay state (`state.placed` drives rendering)
+ * @param {object} actions overlay actions (focusAnnotation on pin click)
+ * @returns {{render: () => void, focus: (id: string) => void}}
+ */
 export function createPins(root, state, actions) {
   const layer = document.createElement('div');
   layer.className = 'nit-pins';

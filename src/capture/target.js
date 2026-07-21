@@ -5,6 +5,13 @@ const MAX_TEXT = 80;
 const MAX_CLASSES = 8;
 const ANGULAR_RUNTIME_CLASS = /^(ng-star-inserted|ng-trigger.*|ng-tns-.*|ng-animate.*|ng-animating)$/;
 
+/**
+ * Resolve an element to its layered target reference — the stable pointer a coding
+ * agent (and the replay anchorer) uses to find it again. Never throws.
+ * @param {Element} el the annotated DOM element
+ * @param {Window} [win] the window the element lives in (injectable for tests)
+ * @returns {import('../types.js').Target}
+ */
 export function resolveTarget(el, win = globalThis.window) {
   const doc = el.ownerDocument;
   return {
@@ -19,8 +26,12 @@ export function resolveTarget(el, win = globalThis.window) {
   };
 }
 
-/** Nearest ancestor (incl. self) whose tag contains a hyphen — custom element /
- *  Angular component selector. Falls back to the element's own tag. */
+/**
+ * Nearest ancestor (incl. self) whose tag contains a hyphen — a custom element /
+ * Angular component selector like `app-product-tile`.
+ * @param {Element} el
+ * @returns {string} the component tag, or the element's own tag when no custom ancestor exists
+ */
 export function nearestComponentTag(el) {
   for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
     if (n.tagName.includes('-')) return n.tagName.toLowerCase();
@@ -28,8 +39,14 @@ export function nearestComponentTag(el) {
   return el.tagName.toLowerCase();
 }
 
-/** Angular class name via window.ng, walked to the nearest component instance.
- *  Returns null when window.ng is absent (prod builds) or anything goes wrong. */
+/**
+ * Angular component class name via `window.ng.getComponent`, walking up to the
+ * nearest component instance. Dev/staging builds expose `window.ng`; production
+ * builds strip it — then (and on any error) this returns null, never throws.
+ * @param {Element} el
+ * @param {Window | undefined} win
+ * @returns {string | null} e.g. `ProductTileComponent`
+ */
 export function resolveNgComponent(el, win) {
   try {
     const ng = win && win.ng;
@@ -48,13 +65,19 @@ export function resolveNgComponent(el, win) {
 // re-renders far better than anonymous div chains.
 const LANDMARK_TAGS = new Set(['SECTION', 'ARTICLE', 'MAIN', 'NAV', 'HEADER', 'FOOTER', 'ASIDE', 'FORM']);
 
-/** Short, stable CSS selector. Preference order:
- *  1. the element's own unique #id
- *  2. nearest unique anchor (#id, custom element, or landmark tag) + unique class shorthand
+/**
+ * Build a short, stable CSS selector for an element. Preference order:
+ *  1. the element's own unique `#id`
+ *  2. nearest unique anchor (`#id`, custom element, or landmark tag) + unique class shorthand
  *  3. anchor + compressed path of significant nodes (ids, custom elements, landmarks)
  *  4. anchor + full child chain
  *  5. absolute nth-of-type chain
- *  Every candidate is verified unique against the live document before being returned. */
+ * Every candidate is verified unique against the live document before being returned,
+ * so the selector is also the primary replay anchor.
+ * @param {Element} el
+ * @param {Document} [doc] the document to verify uniqueness against
+ * @returns {string}
+ */
 export function buildSelector(el, doc = el.ownerDocument) {
   if (el.id) {
     const idSel = `#${cssEscape(el.id)}`;
@@ -135,7 +158,12 @@ function anchorSelectorFor(n, doc) {
   return null;
 }
 
-/** Absolute XPath with per-tag indices — the replay fallback anchor. */
+/**
+ * Absolute XPath with per-tag sibling indices (`/html[1]/body[1]/…`) — the
+ * secondary replay anchor when the CSS selector no longer matches.
+ * @param {Element} el
+ * @returns {string}
+ */
 export function buildXPath(el) {
   const parts = [];
   for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
@@ -144,6 +172,12 @@ export function buildXPath(el) {
   return '/' + parts.join('/');
 }
 
+/**
+ * The element's class list minus Angular runtime noise (`ng-star-inserted`,
+ * `ng-tns-*`, `ng-trigger*`, …), capped at 8 entries.
+ * @param {Element} el
+ * @returns {string[]}
+ */
 export function cleanClasses(el) {
   const out = [];
   for (const c of el.classList) {
@@ -154,6 +188,12 @@ export function cleanClasses(el) {
   return out;
 }
 
+/**
+ * Whitespace-normalized text content, capped at 80 chars — the last-resort
+ * replay anchor and a human-readable hint in the annotation file.
+ * @param {Element} el
+ * @returns {string}
+ */
 export function cleanText(el) {
   return (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, MAX_TEXT);
 }

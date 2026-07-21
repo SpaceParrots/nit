@@ -8,6 +8,11 @@ const OVERLAY_ENTRY = path.join(path.dirname(fileURLToPath(import.meta.url)), '.
 
 let cachedBundle = null;
 
+/**
+ * Bundle the overlay (src/overlay/main.js + CSS) into a single self-contained
+ * IIFE string with esbuild. Built once per process and cached.
+ * @returns {Promise<string>} the injectable script source
+ */
 export async function buildOverlayBundle() {
   if (!cachedBundle) {
     const result = await esbuild.build({
@@ -25,6 +30,14 @@ export async function buildOverlayBundle() {
   return cachedBundle;
 }
 
+/**
+ * Register the overlay as init scripts on the context: config first, then the
+ * bundle. Init scripts run before page scripts on every navigation, which is
+ * what lets the overlay survive SPA route changes and full reloads alike.
+ * @param {import('playwright').BrowserContext} context
+ * @param {{mode: 'review' | 'view' | 'verify', debug: boolean}} config exposed as `window.__NIT_CONFIG`
+ * @returns {Promise<void>}
+ */
 export async function injectOverlay(context, config) {
   await context.addInitScript(`window.__NIT_CONFIG = ${JSON.stringify(config)};`);
   await context.addInitScript(await buildOverlayBundle());

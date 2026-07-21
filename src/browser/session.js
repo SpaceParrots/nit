@@ -10,11 +10,23 @@ import { createStore } from '../store/store.js';
 import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
 
 /**
+ * Start one nit browser session: launch Chromium, wire the bridge, inject the
+ * overlay, open the side panel window, and navigate to the target url.
+ * The returned session owns the store and resolves `done` when the browser closes.
  * @param {object} opts
- *   mode: 'review' | 'view'
- *   url: page to open (review: required; view: optional override)
- *   reviewFile: feedback file to replay (view mode)
- *   out: output dir (review mode, default nit-review)
+ * @param {'review' | 'view' | 'verify'} [opts.mode] capture, replay, or fix-verification
+ * @param {string} [opts.url] page to open (required for review; optional override for view/verify)
+ * @param {string} [opts.reviewFile] feedback file to load (required for view/verify)
+ * @param {string} [opts.out] output directory for review mode (default `nit-review`)
+ * @param {string} [opts.author] recorded on every annotation (default: OS user name)
+ * @param {'desktop' | 'mobile'} [opts.viewportMode] initial viewport
+ * @param {boolean} [opts.headless] run headless (automation/CI)
+ * @param {boolean} [opts.debug] verbose overlay logging (page clicks hit stdout)
+ * @param {string} [opts.profileDir] browser profile override (tests)
+ * @param {(evt: object) => void} [opts.onEvent] observer for overlay events (tests)
+ * @param {(line: string) => void} [opts.log] log sink (default console.log)
+ * @returns {Promise<object>} the session: `{ mode, store, context, page, sitePage,
+ *   panelPage, viewportMode, done, flush(), setViewport(mode), close() }`
  */
 export async function startSession(opts) {
   const {
@@ -120,6 +132,11 @@ export async function startSession(opts) {
   return session;
 }
 
+/**
+ * Author recorded on annotations when `--author` is not given: the `NIT_AUTHOR`
+ * env var, else the OS user name, else `'anonymous'`.
+ * @returns {string}
+ */
 export function defaultAuthor() {
   if (process.env.NIT_AUTHOR) return process.env.NIT_AUTHOR;
   try { return os.userInfo().username; } catch { return 'anonymous'; }

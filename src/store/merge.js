@@ -3,9 +3,15 @@
 import { fileSafeId } from './store.js';
 
 /**
- * @param {Array<{data: object, dir: string}>} inputs parsed feedback files + their base dirs
- * @param {{now?: Date}} opts injectable clock (annotations keep their own createdAt)
- * @returns {{data: object, copies: Array<{fromDir: string, from: string, to: string}>}}
+ * Merge parsed feedback files into one consolidated review. Pure function — the
+ * caller performs the returned screenshot copies.
+ * @param {Array<{data: import('../types.js').ReviewData, dir: string}>} inputs
+ *   parsed feedback files plus the directory each was loaded from (screenshot
+ *   paths are relative to it)
+ * @param {{now?: Date}} [opts] injectable clock for the merged review's metadata
+ *   (annotations keep their own `createdAt`)
+ * @returns {{data: import('../types.js').ReviewData, copies: Array<{fromDir: string, from: string, to: string}>}}
+ *   the merged review plus the list of screenshot files to copy into the output dir
  */
 export function mergeReviews(inputs, { now = new Date() } = {}) {
   const authors = [];

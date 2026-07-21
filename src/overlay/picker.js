@@ -1,6 +1,15 @@
 // Capture-mode element picker: Alt toggles picking, hover highlights, click selects,
 // Esc cancels. All listeners are capture-phase so the page never sees picking clicks.
 
+/**
+ * Install the element picker: Alt toggles picking, hover highlights, click
+ * selects (and never reaches the page), Esc cancels. Debug mode additionally
+ * reports every page click through the bridge.
+ * @param {object} state shared overlay state (picking flag, mode, hovered element)
+ * @param {{host: HTMLElement, root: ShadowRoot, popover: object, sidebar?: object}} ui mounted overlay parts
+ * @param {object} actions overlay actions (uiChanged is called on picking toggles)
+ * @returns {{highlight: {show: Function, hide: Function}, setPicking: (on: boolean) => void}}
+ */
 export function installPicker(state, ui, actions) {
   const highlight = createHighlight(ui.root);
 

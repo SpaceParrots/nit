@@ -3,6 +3,15 @@
 // never overlays or competes with the site under review — important on mobile viewports.
 // It talks to Node through the same context-wide bindings as the overlay.
 
+/**
+ * Open the panel as a popup window docked next to the browser window and load
+ * its self-contained UI. The popup approach (vs. a tab) is what gives nit a
+ * devtools-like layout without overlaying the site under review.
+ * @param {import('playwright').BrowserContext} context
+ * @param {import('playwright').Page} sitePage the page under review (opens the popup, provides window geometry)
+ * @param {object} session the live session; `session.panelPage` is cleared when the user closes the panel
+ * @returns {Promise<import('playwright').Page>} the panel page
+ */
 export async function openPanel(context, sitePage, session) {
   const [panel] = await Promise.all([
     context.waitForEvent('page', { timeout: 8000 }),

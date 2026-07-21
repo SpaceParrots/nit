@@ -3,6 +3,16 @@
 import { div, button, segmented, labelRow, describeElement } from './dom.js';
 import { resolveTarget } from '../capture/target.js';
 
+/**
+ * Create the annotation popover: comment text, type selector (default
+ * change-request) and viewport-scope toggle (default: the current viewport).
+ * Save resolves the target, hides the overlay for a clean screenshot, and hands
+ * the payload to Node via `__nitSave`.
+ * @param {ShadowRoot} root the overlay shadow root to mount into
+ * @param {object} state shared overlay state (viewport mode for the scope options)
+ * @param {object} actions overlay actions (onSaved, hideHighlight, setUiHidden)
+ * @returns {{open: (el: Element) => void, close: () => void, isOpen: () => boolean}}
+ */
 export function createPopover(root, state, actions) {
   const el = document.createElement('div');
   el.className = 'nit-popover';

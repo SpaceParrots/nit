@@ -1,5 +1,12 @@
 // Pure annotations → review.md renderer (SPEC §5) + the /fix-annotations contract file.
 
+/**
+ * Render a review as human/agent-readable markdown (SPEC §5). Pure function.
+ * Open and reopened change-requests are flagged **ACTIONABLE**; comments are
+ * marked context-only so a fixing agent never acts on them.
+ * @param {import('../types.js').ReviewData} data
+ * @returns {string} the complete review.md content
+ */
 export function renderReviewMd(data) {
   const review = data.review || {};
   const annotations = data.annotations || [];
