@@ -1,5 +1,7 @@
 node_modules/
 dist/
 nit-review/
+nit-review-merged/
+.playwright-mcp/
 *.log
 .DS_Store
