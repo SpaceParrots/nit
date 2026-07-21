@@ -13,7 +13,11 @@ export interface FilterOptions {
   group: GroupKey;
 }
 
-/** One rendered section of the list. `key` is '' for the ungrouped case. */
+/**
+ * One rendered section of the list. `key` is '' for the ungrouped case, a
+ * status for state grouping, or a bare pathname (via `routePath`) for page
+ * grouping — `/products` and `/products?id=5` share one group's `key`.
+ */
 export interface AnnotationGroup {
   key: string;
   label: string;
@@ -36,8 +40,12 @@ export function sortAnnotations(items: readonly Annotation[], sort: SortKey): An
 }
 
 /**
- * Split annotations into rendered sections, sorted inside each. Groups themselves
- * are ordered by the grouping key — routes alphabetically with the current one
+ * Split annotations into rendered sections, sorted inside each. Page groups
+ * bucket by pathname only, via `routePath` — `/products` and `/products?id=5`
+ * land in the same group, so exactly one group can ever be "the page you're
+ * on". Individual annotations are unaffected and keep their full stored route
+ * (`item.route`); only the grouping key is path-only. Groups themselves are
+ * ordered by the grouping key — pathnames alphabetically with the current one
  * first, statuses actionable-first — never by the sort key.
  * @param currentRoute the route the site page is on (`PanelState.route`)
  */
@@ -52,7 +60,7 @@ export function groupAnnotations(
 
   const buckets = new Map<string, Annotation[]>();
   for (const a of sorted) {
-    const key = opts.group === 'state' ? a.status : (a.route || '/');
+    const key = opts.group === 'state' ? a.status : routePath(a.route);
     const bucket = buckets.get(key);
     if (bucket) bucket.push(a);
     else buckets.set(key, [a]);
@@ -62,10 +70,13 @@ export function groupAnnotations(
   if (opts.group === 'state') {
     keys.sort((a, b) => rankOf(a) - rankOf(b));
   } else {
+    // Keys are already bare pathnames (see the bucketing above), so "is this
+    // the current group" is a direct equality check — at most one key can
+    // ever match.
     const here = routePath(currentRoute);
     keys.sort((a, b) => {
-      const aHere = routePath(a) === here;
-      const bHere = routePath(b) === here;
+      const aHere = a === here;
+      const bHere = b === here;
       if (aHere !== bHere) return aHere ? -1 : 1;
       return a.localeCompare(b);
     });
@@ -74,12 +85,15 @@ export function groupAnnotations(
 }
 
 /**
- * Whether a group starts open. Grouped by page, only the route you are standing
- * on is expanded — that is what makes "Go to page" the way you reach the rest.
+ * Whether a group starts open. Grouped by page, `groupKey` is the pathname
+ * produced by `groupAnnotations` (e.g. `/products`, merged across its query
+ * variants), so comparing it against the current route's pathname matches
+ * exactly one group — that group is what makes "Go to page" the way you reach
+ * the rest.
  */
 export function defaultExpanded(groupKey: string, opts: FilterOptions, currentRoute: string): boolean {
   if (opts.group !== 'page') return true;
-  return routePath(groupKey) === routePath(currentRoute);
+  return groupKey === routePath(currentRoute);
 }
 
 function byNewest(a: Annotation, b: Annotation): number {
