@@ -2,6 +2,7 @@
 // Pure merge of N feedback files into one consolidated review (SPEC §2.5, §8).
 // Ids are namespaced by author (kevin:a1); screenshots are renamed into a shared shots/.
 import { fileSafeId } from './store.js';
+import { slugify } from '../util/slug.js';
 import type { Annotation, ReviewData } from '../types.js';
 
 /** One parsed feedback file plus the directory it was loaded from. */
@@ -47,7 +48,7 @@ export function mergeReviews(inputs: MergeInput[], { now = new Date() }: { now?:
       const author = ann.author || 'unknown';
       addUnique(authors, author);
 
-      const base = ann.id.includes(':') ? ann.id : `${slug(author)}:${ann.id}`;
+      const base = ann.id.includes(':') ? ann.id : `${slugify(author)}:${ann.id}`;
       let id = base;
       for (let n = 2; usedIds.has(id); n++) id = `${base}-${n}`;
       usedIds.add(id);
@@ -83,8 +84,4 @@ export function mergeReviews(inputs: MergeInput[], { now = new Date() }: { now?:
 
 function addUnique(arr: string[], v: string | undefined): void {
   if (v && !arr.includes(v)) arr.push(v);
-}
-
-function slug(s: string): string {
-  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
 }

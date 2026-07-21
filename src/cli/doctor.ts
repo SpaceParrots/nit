@@ -43,7 +43,7 @@ export async function runDoctor({ yes = false, log = console.log }: DoctorOption
   }
 
   // 2. npm dependencies
-  for (const dep of ['playwright', 'esbuild', 'commander']) {
+  for (const dep of ['playwright', 'esbuild', 'commander', '@clack/prompts', 'fflate']) {
     const version = readPkgVersion(dep);
     if (version) {
       pass(log, `${dep} ${version}`);

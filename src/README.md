@@ -28,9 +28,14 @@ src/
 ├─ css.d.ts     # lets TS import .css as a string (esbuild `text` loader)
 │
 ├─ cli/         # commander CLI — the entrypoints
-│  ├─ index.ts  # `nit` binary: review / view / verify / merge / mcp / doctor
-│  ├─ merge.ts  # `nit merge`: read feedback files, merge, copy screenshots
-│  └─ doctor.ts # `nit doctor`: env checks + optional Chromium install
+│  ├─ index.ts       # `nit` binary: setup / review / view / verify / export / import
+│  │                 # / merge / mcp / mcp-install / doctor
+│  ├─ setup.ts       # `nit setup`: @clack/prompts wizard (review dir, .gitignore, MCP)
+│  ├─ merge.ts       # `nit merge`: read feedback files, merge, copy screenshots
+│  ├─ export.ts      # `nit export`: pack a review folder into a shareable zip (fflate)
+│  ├─ import.ts      # `nit import`: unpack a review zip (zip-slip guarded)
+│  ├─ mcp-install.ts # `nit mcp-install`: OS-aware .mcp.json entry (create or merge)
+│  └─ doctor.ts      # `nit doctor`: env checks + optional Chromium install
 │
 ├─ browser/     # Node side of a live session (Playwright)
 │  ├─ launch.ts   # Chromium launcher: persistent profile, bypassCSP, viewports
@@ -68,7 +73,8 @@ src/
 │  └─ server.ts # newline-delimited JSON-RPC 2.0, stdlib only, re-reads per call
 │
 └─ util/
-   └─ error.ts  # errorMessage(unknown) — safe narrowing for catch blocks
+   ├─ error.ts  # errorMessage(unknown) — safe narrowing for catch blocks
+   └─ slug.ts   # slugify() for author-derived ids and export file names
 ```
 
 ## Conventions

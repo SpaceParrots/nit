@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { Command, Option } from 'commander';
 import { runMerge } from './merge.js';
 import { runDoctor } from './doctor.js';
+import { runMcpInstall } from './mcp-install.js';
+import { runSetup, confirmReviewDir } from './setup.js';
+import { runExport } from './export.js';
+import { runImport } from './import.js';
 import { startSession } from '../browser/session.js';
 import type { NitSession } from '../browser/session.js';
 import { startMcpServer } from '../mcp/server.js';
@@ -42,6 +46,7 @@ program
   .showSuggestionAfterError()
   .addHelpText('after', `
 The loop:
+  0. nit setup                                   one-time project setup (dir, .gitignore, MCP)
   1. nit review https://staging.example.com      annotate the site -> nit-review/
   2. hand nit-review/ to a coding agent          (or serve it: nit mcp nit-review)
   3. nit verify nit-review/annotations.json      rule each fix Verified / Reopen
@@ -49,8 +54,9 @@ The loop:
 Examples:
   $ nit review http://localhost:4200 --mobile --author Ann
   $ nit view feedback-ann.json --url https://staging.example.com
-  $ nit merge feedback-kevin.json feedback-ann.json --out review-merged
-  $ claude mcp add nit -- nit mcp ./nit-review`);
+  $ nit export                                   pack nit-review/ into a shareable zip
+  $ nit import 2026-07-21-example.com-ann.nit.zip
+  $ nit merge nit-review/annotations.json imported/annotations.json --out review-merged`);
 
 /** Attach the options shared by every command that launches a browser. */
 function withBrowserOptions(cmd: Command): Command {
@@ -75,8 +81,12 @@ withBrowserOptions(
     .argument('<url>', 'page to open (https:// is assumed when no scheme is given)')
     .option('-o, --out <dir>', 'output directory', 'nit-review')
     .option('-a, --author <name>', 'author recorded on each annotation (default: your OS user name)'))
-  .action(async (url: string, opts: BrowserCmdOptions) => {
-    const session = await startBrowser('review', { url, opts });
+  .action(async (url: string, opts: BrowserCmdOptions, cmd: Command) => {
+    // First review in a project: confirm the default output dir is intended here.
+    const out = await confirmReviewDir(opts.out ?? 'nit-review', {
+      explicit: cmd.getOptionValueSource('out') !== 'default',
+    });
+    const session = await startBrowser('review', { url, opts: { ...opts, out } });
     console.log(`nit review — ${url}`);
     console.log('Alt: toggle picking · Esc: cancel · use the panel window · close the browser (or Finish review) when done.');
     await session.done;
@@ -118,6 +128,44 @@ withBrowserOptions(
     await session.done;
   });
 
+program.command('setup')
+  .aliases(['init'])
+  .summary('one-time project setup: review dir, .gitignore, MCP server')
+  .description('Get a project ready for reviews with a short interactive wizard:\n'
+    + '  - pick the review directory (default nit-review/, created if missing)\n'
+    + '  - add it to .gitignore (reviews are working files, usually not committed)\n'
+    + '  - register the nit MCP server in .mcp.json so coding agents can read reviews\n\n'
+    + 'Re-running is safe — every step is idempotent. Use --yes for scripts/CI.')
+  .option('-y, --yes', 'accept all defaults without prompting')
+  .action(async (opts: { yes?: boolean }) => {
+    await runSetup({ yes: Boolean(opts.yes) });
+  });
+
+program.command('export')
+  .aliases(['pack'])
+  .summary('pack a review into a shareable zip')
+  .description('Pack a review folder (annotations.json, review.md, fix-annotations.md and\n'
+    + 'shots/) into a single zip you can send to a co-founder. The default file name\n'
+    + 'carries the review id and author, e.g. 2026-07-21-example.com-ann.nit.zip.\n\n'
+    + 'The other side unpacks it with:  nit import <file>')
+  .argument('[dir]', 'review directory (or an annotations.json path)', 'nit-review')
+  .option('-o, --out <file>', 'output zip path (default: derived from review id + author)')
+  .action((dir: string, opts: { out?: string }) => {
+    runExport(dir, { out: opts.out });
+  });
+
+program.command('import')
+  .aliases(['unpack'])
+  .summary('unpack a review zip from a co-founder')
+  .description('Unpack a zip created by "nit export" into a local review folder, ready for\n'
+    + 'nit view / verify / merge / mcp. The target directory is derived from the zip\n'
+    + 'name (override with --out) and is never overwritten if it already has content.')
+  .argument('<zip>', 'a nit export (.zip)')
+  .option('-o, --out <dir>', 'target directory (default: derived from the zip name)')
+  .action((zip: string, opts: { out?: string }) => {
+    runImport(zip, { out: opts.out });
+  });
+
 program.command('merge')
   .aliases(['combine'])
   .summary('combine feedback files into one consolidated review')
@@ -132,7 +180,6 @@ program.command('merge')
   });
 
 program.command('doctor')
-  .aliases(['setup'])
   .summary('check that nit can run; offer to install Chromium if missing')
   .description('Check everything nit needs: Node >= 18, the npm dependencies, and the\n'
     + 'Playwright Chromium browser. If Chromium is missing, nit offers to download\n'
@@ -156,6 +203,22 @@ program.command('mcp')
   .action((dir: string) => {
     startMcpServer(dir);
     // stays alive while stdin (the MCP client) is connected
+  });
+
+program.command('mcp-install')
+  .aliases(['mcp-config'])
+  .summary('register the nit MCP server in this project (.mcp.json)')
+  .description('Write the nit MCP server into this project\'s .mcp.json — the project-scoped\n'
+    + 'MCP config that Claude Code and other MCP clients pick up automatically.\n\n'
+    + 'The file is created when missing and merged when present: other servers and\n'
+    + 'unknown keys are preserved, and re-running simply updates the nit entry.\n'
+    + 'On Windows the command is wrapped in "cmd /c", because MCP clients spawn\n'
+    + 'servers without a shell and the installed nit command is a .cmd shim there.\n\n'
+    + 'Alternative (user-scoped, via the Claude CLI):  claude mcp add nit -- nit mcp ./nit-review')
+  .argument('[dir]', 'review directory the server should expose', 'nit-review')
+  .option('-n, --name <name>', 'server name inside .mcp.json', 'nit')
+  .action((dir: string, opts: { name: string }) => {
+    runMcpInstall(dir, { name: opts.name });
   });
 
 async function startBrowser(

@@ -40,13 +40,9 @@ test('doctor: missing Chromium is detected and the install command is suggested'
   assert.ok(out.includes('Fix the issues above'));
 });
 
-test('doctor: --yes is offered for non-interactive setup and setup alias works', () => {
+test('doctor: --yes is offered for non-interactive use', () => {
   const help = run(['doctor', '--help']);
   assert.equal(help.code, 0);
   assert.ok(help.out.includes('--yes'));
   assert.ok(help.out.includes('Chromium'));
-
-  const alias = run(['setup', '--help']);
-  assert.equal(alias.code, 0);
-  assert.ok(alias.out.includes('Chromium'));
 });

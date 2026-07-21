@@ -35,14 +35,15 @@ The name is from code-review culture: reviewers prefix minor comments with `nit:
    next to the originals, and you rule each fix **Verified** or **Reopen**. Reopened items become
    actionable again for the next agent round.
 
-Teammates run the same tool, send you their feedback file, and `nit merge` folds everything into
-one consolidated review with per-author attribution.
+Teammates run the same tool, `nit export` their review as a zip, and after `nit import` a
+`nit merge` folds everything into one consolidated review with per-author attribution.
 
 ## Install
 
 ```bash
 npm install -g @spaceparrots/nit
 nit doctor        # checks Node ≥ 18 + dependencies, offers to install Chromium (one-time)
+nit setup         # per project: review dir + .gitignore + MCP server (interactive wizard)
 ```
 
 Or without installing: `npx @spaceparrots/nit review https://example.com`
@@ -51,12 +52,24 @@ Or without installing: `npx @spaceparrots/nit review https://example.com`
 
 | Command | Alias | What it does |
 | --- | --- | --- |
+| `nit setup` | `init` | One-time project setup: review dir, .gitignore, MCP (wizard) |
 | `nit review <url>` | `r`, `annotate` | Open a browser and annotate a site |
 | `nit view <file>` | `v`, `replay` | Replay a feedback file — pins re-anchored on their routes |
 | `nit verify <file>` | `check` | Capture after-shots for fixed items, rule Verified / Reopen |
+| `nit export [dir]` | `pack` | Pack a review into a shareable zip |
+| `nit import <zip>` | `unpack` | Unpack a co-founder's review zip |
 | `nit merge <file...>` | `combine` | Combine feedback files into one consolidated review |
 | `nit mcp [dir]` | `serve` | Serve a review folder as an MCP server (stdio) |
-| `nit doctor` | `setup` | Check the environment, install Chromium if missing |
+| `nit mcp-install [dir]` | `mcp-config` | Register the MCP server in this project's .mcp.json |
+| `nit doctor` | — | Check the environment, install Chromium if missing |
+
+Sharing a review between people:
+
+```bash
+nit export                        # → 2026-07-21-example.com-ann.nit.zip (id + author)
+nit import 2026-07-21-example.com-ann.nit.zip
+nit merge nit-review/annotations.json 2026-07-21-example.com-ann/annotations.json
+```
 
 Every command has detailed help: `nit <command> --help`. Common flags: `--mobile` (start in a
 390×844 viewport), `--headless`, `--out <dir>`, `--author <name>`.
@@ -122,7 +135,9 @@ Point your agent at the folder — `fix-annotations.md` contains the contract: *
 Or let the agent work through MCP tools instead of raw files:
 
 ```bash
-claude mcp add nit -- nit mcp ./nit-review
+nit mcp-install                  # writes the server into this project's .mcp.json
+                                 # (created or merged; OS-aware — uses cmd /c on Windows)
+claude mcp add nit -- nit mcp ./nit-review   # alternative: user-scoped via the Claude CLI
 ```
 
 Tools: `list_annotations` (filterable, reports the actionable count) · `get_annotation` (full
