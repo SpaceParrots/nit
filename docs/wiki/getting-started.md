@@ -27,8 +27,9 @@ nit setup
 ```
 
 The wizard picks a review directory (default `nit-review/`), adds it to `.gitignore` if you want,
-and can register the MCP server in the project's `.mcp.json` so coding agents find the review
-without any extra setup.
+can register the MCP server in the project's `.mcp.json` so coding agents find the review
+without any extra setup, and asks for your author name. The name is stored per user, not per
+project, and is recorded on every annotation you make.
 
 ## 3. Run a review
 

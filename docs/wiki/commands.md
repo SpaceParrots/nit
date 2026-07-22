@@ -15,7 +15,9 @@ Every command also has built-in help: `nit <command> --help`.
 ## nit setup (alias: init)
 
 One-time project setup. An interactive wizard chooses the review directory, offers a
-`.gitignore` entry, and can register the MCP server in the project's `.mcp.json`.
+`.gitignore` entry, can register the MCP server in the project's `.mcp.json`, and asks for your
+author name. The author is saved in a per-user config (`~/.config/nit/config.json`), not in the
+project, so every teammate keeps their own.
 
 | Flag | What it does |
 | --- | --- |
@@ -29,7 +31,7 @@ elements, describe changes, finish the review from the panel.
 | Flag | What it does |
 | --- | --- |
 | `-o, --out <dir>` | Output directory (default `nit-review`) |
-| `-a, --author <name>` | Author recorded on each annotation (default: your OS user name) |
+| `-a, --author <name>` | Author recorded on each annotation (default: the name from `nit setup`, else your OS user name) |
 
 ## nit view \<file\> (aliases: v, replay)
 

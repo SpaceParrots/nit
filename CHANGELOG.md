@@ -7,7 +7,7 @@
   longer need to ask.
 - **Panel author display and filter.** Once a review has more than one distinct annotation author,
   each row gets a small author chip and the filter dropdown gains an "Author" row to narrow the
-  list (and the "couldn't place" list) down to one reviewer. Single-author reviews are unaffected —
+  list (and the "couldn't place" list) down to one reviewer. Single-author reviews are unaffected:
   no chip, no filter row. The expanded detail view always shows an "author" line when the
   annotation has one, regardless of author count.
 

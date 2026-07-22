@@ -29,8 +29,9 @@ The panel opens next to the browser and never overlays the page under review.
 
 - **Viewport toggle**: switch the site between desktop (1440x900) and mobile (390x844).
 - **Filter dropdown** (the funnel icon): sort by time, page or state; group by page or state;
-  filter to the current viewport scope. Page groups collapse, and the page you are on is first
-  and expanded.
+  filter to the current viewport scope. When the review has annotations from more than one
+  author, an Author row appears here too, and each list row shows a small author chip. Page
+  groups collapse, and the page you are on is first and expanded.
 - **Expanded item**: click any annotation to expand it. You see status and scope badges, the
   created/updated stamps, the component, the highlighted selector, the screenshot (before and
   after, once verify ran), and you can:
