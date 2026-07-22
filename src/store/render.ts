@@ -35,7 +35,7 @@ export function renderReviewMd(data: ReviewData): string {
     if (a.screenshot) lines.push(`![${a.id}](${a.screenshot})`);
     if (a.screenshotAfter) lines.push(`![${a.id} after](${a.screenshotAfter})`);
     lines.push(`- component: \`${t.component ?? '?'}\`${t.ngComponent ? ` (${t.ngComponent})` : ''}`);
-    if (t.selector) lines.push(`- selector: \`${t.selector}\``);
+    if (t.selector) lines.push(`- selector: \`${inline(t.selector).replace(/`/g, '')}\``);
     lines.push(`- route: \`${a.route || '/'}\` · author: ${a.author || '—'} · scope: ${a.viewportScope || 'general'}${a.viewport ? ` · captured at ${a.viewport.w}×${a.viewport.h}` : ''}`);
     const extra: string[] = [];
     const issueFragment = a.issueRef ? issueMd(a.issueRef) : null;

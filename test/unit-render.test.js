@@ -287,6 +287,22 @@ test('render: an issueRef longer than 200 characters is capped at 200', () => {
   assert.equal(match[1].length, 200);
 });
 
+test('render: target.selector containing a backtick cannot break out of the code span', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+        route: '/', createdAt: '2026-07-22T00:00:00Z',
+        target: { component: 'app-x', selector: 'div[data-id="x`<img src=n onerror=alert(1)>`y"]' } },
+    ],
+  });
+  const selectorLine = md.split('\n').find(line => line.startsWith('- selector:'));
+  assert.ok(selectorLine);
+  const spanContent = selectorLine.match(/^- selector: `(.*)`$/)?.[1];
+  assert.ok(spanContent !== undefined, 'selector line is a single well-formed code span');
+  assert.equal(spanContent.includes('`'), false, 'no backtick survives inside the span, so it cannot terminate early');
+});
+
 test('render: history renders as a numbered steps list, oldest first', () => {
   const md = renderReviewMd({
     review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: ['Kevin'] },
