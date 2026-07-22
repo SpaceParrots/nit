@@ -39,8 +39,10 @@ header { display: flex; align-items: center; gap: 7px; padding: 10px 14px; borde
 footer { border-top: 1px solid var(--border); padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
 footer .btn { width: 100%; }
 .count { font-size: 11px; color: var(--muted); }
+/* Anchored to .controls (which is position: relative), so it hangs just below the
+   toolbar rather than at a fixed offset from the top of the document. */
 .menu {
-  position: absolute; right: 12px; top: 92px; z-index: 10; width: 210px;
+  position: absolute; right: 12px; top: calc(100% - 4px); z-index: 10; width: 210px;
   background: #26262a; border: 1px solid var(--border); border-radius: 8px;
   padding: 8px; display: flex; flex-direction: column; gap: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
@@ -71,7 +73,9 @@ footer .btn { width: 100%; }
 .nit-del { flex: none; background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 0 2px; }
 .nit-del:hover { color: #ff5f57; }
 .meta { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
-.meta-line { font-size: 11px; color: var(--muted); word-break: break-all; }
+/* `anywhere` breaks only where a line would otherwise overflow (long selectors,
+   xpaths) — unlike `break-all`, which splits ordinary words like "agent" mid-word. */
+.meta-line { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .shot { max-width: 100%; border-radius: 6px; border: 1px solid var(--border); }
 .unplaced { border-top: 1px solid var(--border); padding: 10px; max-height: 34%; overflow-y: auto; }
 .unplaced-head { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
