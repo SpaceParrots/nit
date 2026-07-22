@@ -193,3 +193,65 @@ test('nit panel — expanded item: timestamps, issue ref, go to page', async t =
       ? true : null, { message: 'go-to disables once its route is the current one' });
   });
 });
+
+function makeGotoQueryFeedback(url) {
+  return {
+    review: { id: 'goto-query-fixture', url: `${url}/about?id=9`, createdAt: '2026-07-20T10:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      {
+        id: 'a5', type: 'comment', comment: 'CTA needs the id=5 variant', status: 'open', author: 'Kevin',
+        viewportScope: 'general', viewport: { mode: 'desktop', w: 1440, h: 900 }, route: '/about?id=5',
+        target: { component: 'fake-about', ngComponent: null, selector: '#cta', xpath: '/html[1]/body[1]/main[1]/fake-about[1]/button[1]', tag: 'button', classes: [], text: 'Click me', rect: { x: 20, y: 80, w: 80, h: 30 } },
+        screenshot: null, createdAt: '2026-07-20T10:03:00Z',
+      },
+    ],
+  };
+}
+
+// Regression coverage for the finding: the disabled check used to compare
+// pathnames only (routePath), discarding the query string, while __nitGoTo
+// decides "already on this page" using pathname AND search. That disagreement
+// disabled the button for an annotation on a different query of the *same*
+// path, even though clicking it would have correctly navigated.
+test('nit panel — go to page is enabled across different queries of the same path', async t => {
+  const server = await startFixtureServer();
+  const dir = tmpDir('nit-goto-query-');
+  const reviewFile = path.join(dir, 'annotations.json');
+  fs.writeFileSync(reviewFile, JSON.stringify(makeGotoQueryFeedback(server.url), null, 2));
+
+  // Site starts on /about?id=9; the annotation lives on /about?id=5 — same
+  // path, different query.
+  const S = await startTestSession({ mode: 'view', url: undefined, reviewFile });
+  t.after(async () => {
+    await S.session.close();
+    await server.close();
+  });
+
+  await t.test('go-to is enabled for a different query on the current path, and navigates to the exact route', async () => {
+    const panel = S.session.panelPage;
+    const page = S.session.page;
+
+    await waitFor(async () => {
+      try { return (await page.evaluate(() => location.pathname + location.search)) === '/about?id=9' ? true : null; }
+      catch { return null; }
+    }, { message: 'site page starts on /about?id=9' });
+
+    await panel.locator('.nit-item[data-id="a5"]').click();
+    const goto = panel.locator('.nit-item[data-id="a5"] .nit-goto');
+    await waitFor(async () => (await goto.count()) === 1 ? true : null, { message: 'a5 expands' });
+    assert.equal(await goto.isDisabled(), false,
+      'go-to enabled: same path but a different query is NOT "the current page"');
+
+    await goto.click();
+    await waitFor(async () => {
+      try { return (await page.evaluate(() => location.pathname + location.search)) === '/about?id=5' ? true : null; }
+      catch { return null; }
+    }, { message: 'site page navigated to the annotation\'s exact query (/about?id=5)' });
+
+    // Once the panel's polled state reflects the new query, the button disables
+    // itself again — proving the disabled check and the navigation agree both
+    // ways, not just that the click happened to work.
+    await waitFor(async () => (await panel.locator('.nit-item[data-id="a5"] .nit-goto').isDisabled())
+      ? true : null, { message: 'go-to disables once its exact route is current' });
+  });
+});

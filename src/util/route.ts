@@ -33,3 +33,18 @@ export function routePath(route: string | undefined): string {
   const path = cut === -1 ? value : value.slice(0, cut);
   return path || '/';
 }
+
+/**
+ * The part of a route that identifies "the same page" for navigation purposes:
+ * pathname plus query, with the hash dropped. `__nitGoTo` (src/browser/bridge.ts)
+ * treats two routes as already-the-same-page by this exact rule before deciding
+ * whether a navigation is even needed; the panel's "go to page" button disables
+ * itself using this same helper so the two can never drift apart — a button
+ * that looks enabled always corresponds to a real navigation, and vice versa.
+ */
+export function routeKey(route: string | undefined): string {
+  const value = route ?? '';
+  const cut = value.indexOf('#');
+  const pathAndSearch = cut === -1 ? value : value.slice(0, cut);
+  return pathAndSearch || '/';
+}

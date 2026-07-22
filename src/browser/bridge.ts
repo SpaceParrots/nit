@@ -8,6 +8,7 @@ import { captureAfterShots } from './verify.js';
 import { safeShotPath } from '../store/store.js';
 import { errorMessage } from '../util/error.js';
 import { resolveAnnotationUrl } from '../store/url.js';
+import { currentRoute, routeKey } from '../util/route.js';
 import type { NitSession } from './session.js';
 import type {
   Annotation,
@@ -181,7 +182,7 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
     try {
       const target = new URL(url);
       const current = new URL(page.url());
-      const samePage = current.pathname === target.pathname && current.search === target.search;
+      const samePage = routeKey(currentRoute(current)) === routeKey(currentRoute(target));
       if (!samePage) await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     } catch (e) {
       return { ok: false, error: errorMessage(e) };

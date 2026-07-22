@@ -4,7 +4,7 @@
 // poll loop growing with it. Runs inside the panel window, bundled by esbuild.
 import type { Annotation, PanelCmd, PanelState } from '../types.js';
 import { ICONS } from './icons.js';
-import { routePath } from '../util/route.js';
+import { routeKey } from '../util/route.js';
 
 /** The panel's shared view state: what is expanded, and the last rendered key. */
 export interface PanelView {
@@ -129,7 +129,10 @@ export function renderItem(
     goto.innerHTML = ICONS.externalLink;
     goto.append(document.createTextNode(ann.route || '/'));
     goto.title = `Open ${ann.route || '/'}`;
-    goto.disabled = routePath(s.route) === routePath(ann.route);
+    // Must agree with __nitGoTo's own "already on this page" rule (bridge.ts) —
+    // pathname and search, hash ignored — or the button can refuse a navigation
+    // the binding would have happily performed (or vice versa).
+    goto.disabled = routeKey(s.route) === routeKey(ann.route);
     goto.addEventListener('click', e => {
       e.stopPropagation();
       try { void window.__nitGoTo?.(ann.id); } catch { /* bridge gone */ }
