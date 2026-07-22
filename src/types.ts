@@ -103,6 +103,8 @@ export interface Annotation {
   verifiedAt?: string;
   /** free-form issue key or URL: `FAI-1234`, `#87`, `https://…/browse/FAI-1234` */
   issueRef?: string;
+  /** why the current status was chosen (e.g. the wontfix rationale), set with the status */
+  statusReason?: string;
   /** ISO timestamp of the last change to this annotation (status, issueRef) */
   updatedAt?: string;
   /** who made that change: the session author, or `agent` via MCP */
