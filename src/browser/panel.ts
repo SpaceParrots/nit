@@ -18,6 +18,11 @@ import type { NitSession } from './session.js';
  * @returns the panel page
  */
 export async function openPanel(context: BrowserContext, sitePage: Page, session: NitSession): Promise<Page> {
+  // Build (or reuse the cached) bundle BEFORE opening any window: if esbuild fails
+  // (e.g. a missing dist/panel/panel.css), we must fail here with no popup ever
+  // created, so the caller's existing "side panel unavailable" fallback degrades
+  // cleanly instead of leaving an unowned, unstyled window on screen.
+  const bundle = await buildPanelBundle();
   const [panel] = await Promise.all([
     context.waitForEvent('page', { timeout: 8000 }),
     sitePage.evaluate(() => {
@@ -29,9 +34,16 @@ export async function openPanel(context: BrowserContext, sitePage: Page, session
       );
     }),
   ]);
-  await panel.setViewportSize({ width: 344, height: 860 }).catch(() => {});
-  await panel.setContent(PANEL_HTML, { waitUntil: 'domcontentloaded' });
-  await panel.addScriptTag({ content: await buildPanelBundle() });
+  try {
+    await panel.setViewportSize({ width: 344, height: 860 }).catch(() => {});
+    await panel.setContent(PANEL_HTML, { waitUntil: 'domcontentloaded' });
+    await panel.addScriptTag({ content: bundle });
+  } catch (e) {
+    // The window already exists at this point; if populating it fails, close it
+    // ourselves rather than stranding an unowned, unstyled shell on screen.
+    await panel.close().catch(() => {});
+    throw e;
+  }
   panel.on('close', () => {
     if (session.panelPage === panel) session.panelPage = null;
   });
