@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased
+
+- **Leaner MCP tool payloads.** A field test of the MCP surface showed roughly two thirds of the
+  tokens an agent paid for were waste. Tool results are now a single compact JSON text block:
+  `structuredContent` and the output schemas are gone (arguments are still zod-validated), and
+  nothing is pretty-printed on the wire anymore.
+- **`nit_list_annotations` rows carry the working record.** Summaries now include the target's
+  `classes` and `text` (the fields an agent greps the codebase with) plus `statusReason`, and drop
+  `author` (already in the review envelope) and `createdAt` (never used). The review envelope is
+  only sent on unfiltered calls. For most fixes the list alone is now enough to start working.
+- **`nit_get_annotation` batches.** `id` accepts a single id or an array; batch results come back
+  in request order with a `missing` list for unknown ids. `target.xpath` — the most fragile
+  locator — is omitted unless `includeXpath: true`. Screenshots stay inline by default (they are
+  cheap image tokens and often the only thing that identifies the element);
+  `includeScreenshot: false` is the escape hatch for re-fetches.
+- **Compressed click history.** The trail an annotation carries over MCP now drops clicks on the
+  annotated element itself (prodding the target is the bug, not a repro step), collapses
+  consecutive clicks on the same selector, drops repeated text, and caps at the last 5 steps;
+  `historyCount` still reports the original length. The file on disk keeps the full trail.
+- **`wontfix` reasons persist.** `nit_set_status` and `nit_mark_fixed` take an optional `reason`,
+  stored on the annotation as `statusReason` — so the next session reads why instead of
+  re-litigating the decision. Every status change replaces it, the concurrent-writer merge adopts
+  it together with the status, and review.md renders it.
+- **New resource: `nit://review/brief.md`.** One sanitized line per annotation — the token-lean
+  overview for agents. The server instructions no longer advertise `review.md` to agents (it is
+  the human rendering and a third copy of the same data) and no longer claim resources cost no
+  tool call.
+- **`fix-annotations.md` is tools-first.** The sheet used to tell agents to hand-edit `status` in
+  `annotations.json` while the server instructions said every change goes through the tools; it
+  now says to use the tools when they are available and reserves hand-editing for file-only
+  sessions.
+- **Honest descriptions.** The "verified-unique CSS selector" claim is corrected (the last-resort
+  fallback selector is not verified), the review.md heading now shows the annotation's
+  `viewportScope` instead of the capture viewport (which mislabeled general-scope issues captured
+  on mobile), and the captured-at line names the viewport mode.
+
 ## 1.0.1 (2026-07-22)
 
 - **Node 20.12 is now the minimum.** 1.0.0 declared Node 18 but crashed on it: the prompt

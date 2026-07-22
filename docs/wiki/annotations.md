@@ -58,6 +58,7 @@ from it on every write.
 | `createdAt` | ISO timestamp of capture. |
 | `updatedAt` / `updatedBy` | Set on every status, comment or issue-ref change. `updatedBy` is `"agent"` when the change came through MCP. |
 | `issueRef` | Optional tracker reference, a key like `FAI-1234` or a url. Settable from the panel and by agents through MCP. |
+| `statusReason` | Optional rationale for the current status — most useful on `wontfix`, so the decision is not re-litigated later. Set with the status via MCP (`nit_set_status`/`nit_mark_fixed` `reason`); replaced on every status change. |
 | `history` | The click trail: the reviewer's last clicks (up to 10) on that pathname before capturing. Use it to reproduce states hidden behind menus or tabs. |
 
 ## The target

@@ -28,32 +28,36 @@ tools from other MCP servers.
 
 | Tool | Arguments | What it does |
 | --- | --- | --- |
-| `nit_list_annotations` | `status?`, `type?`, `route?` | Lists annotation summaries, optionally filtered (`route` accepts an exact route or a bare pathname). Reports the actionable count. Summaries include id, type, status, route, comment, `issueRef`, timestamps and `historyCount`. |
-| `nit_get_annotation` | `id` | Returns one annotation in full, including its screenshot (and after-shot, if any) as images the agent can look at, plus the click history when present. |
-| `nit_mark_fixed` | `id` | Sets the status to `fixed`. The agent calls this after making the change. |
-| `nit_set_status` | `id`, `status` | Sets any status explicitly: `open`, `fixed`, `wontfix`, `verified` or `reopened`. |
+| `nit_list_annotations` | `status?`, `type?`, `route?` | Lists the annotations, optionally filtered (`route` accepts an exact route or a bare pathname). Reports the actionable count. Rows carry the working record — id, type, status, comment, route, `viewportScope`, `issueRef`, `statusReason`, the target's component, `ngComponent`, selector, `classes` and `text`, plus `historyCount` — so for most fixes the list alone is enough to start working. |
+| `nit_get_annotation` | `id`, `includeXpath?`, `includeScreenshot?` | Returns annotations in full: `id` takes one id or an array (batch results come back in request order, with a `missing` list for unknown ids). Includes the screenshot (and after-shot, if any) as images and the compressed click history. `target.xpath` is omitted unless `includeXpath: true`; `includeScreenshot: false` skips the images on a re-fetch. |
+| `nit_mark_fixed` | `id`, `reason?` | Sets the status to `fixed`. The agent calls this after making the change. |
+| `nit_set_status` | `id`, `status`, `reason?` | Sets any status explicitly: `open`, `fixed`, `wontfix`, `verified` or `reopened`. `reason` is persisted as `statusReason` — give one with `wontfix` so the next session knows why. |
 | `nit_set_issue_ref` | `id`, `ref` | Attaches a tracker key or url to an annotation. An empty string clears it. |
 
 "Actionable" always means: type `change-request` with status `open` or `reopened`. Comments are
 context, not tasks.
 
-Every tool declares an output schema, so results arrive as `structuredContent` (typed data) as
-well as the JSON text block older clients read — an agent never has to parse a blob to get at a
-status. Arguments are validated against the tool's schema before a handler runs, so a wrong type
-comes back as a clear error instead of a surprising write. The tools also carry the standard MCP
-hints: `nit_list_annotations` and `nit_get_annotation` are marked read-only, the three writers are
-marked non-destructive and idempotent, and none of them touches anything outside the review
-folder. Clients use those hints to decide what may run without asking you first.
+Results are a single compact JSON text block — deliberately lean, because agents pay for every
+token. The click history an annotation carries over MCP is compressed the same way: clicks on the
+annotated element itself are dropped, consecutive clicks on the same selector collapse into one,
+repeated text is elided, and the trail caps at the last 5 steps (`historyCount` still reports the
+original length; the file on disk keeps the full trail). Arguments are validated against each
+tool's schema before a handler runs, so a wrong type comes back as a clear error instead of a
+surprising write. The tools also carry the standard MCP hints: `nit_list_annotations` and
+`nit_get_annotation` are marked read-only, the three writers are marked non-destructive and
+idempotent, and none of them touches anything outside the review folder. Clients use those hints
+to decide what may run without asking you first.
 
 ## Resources
 
-The same review is readable as resources, for when an agent wants context without spending a tool
-call — for example to read the whole review once at the start.
+The same review is readable as resources — mainly for clients and sessions where the tools are
+not available, since reading a resource costs a call of its own in most MCP clients.
 
 | URI | What it is |
 | --- | --- |
+| `nit://review/brief.md` | One line per annotation — the token-lean overview an agent should read first. |
 | `nit://review/annotations.json` | The whole review as nit stores it. |
-| `nit://review/review.md` | The human-readable review, rendered on the fly if the file is not there yet. |
+| `nit://review/review.md` | The human-readable review, rendered on the fly if the file is not there yet. Agents should prefer `brief.md` and the tools. |
 | `nit://review/fix-annotations.md` | The instruction sheet for fixing a review from the files alone. |
 | `nit://annotation/<id>` | One annotation in full (`nit://annotation/a1`). Clients offer id completion. |
 | `nit://annotation/<id>/screenshot` | The cropped element screenshot as a PNG. |
@@ -75,11 +79,13 @@ panel afterwards exactly what the agent touched.
 
 The intended tool loop looks like this:
 
-1. `nit_list_annotations` to see what is actionable. Filtering by `route` helps when the agent
-   wants to work page by page.
-2. `nit_get_annotation` for each actionable item. The record carries several ways to locate the
-   element (component tag, Angular class name, unique CSS selector, XPath, element text) plus
-   the context screenshot and, when present, the click `history` that reproduces the state.
+1. `nit_list_annotations` to see what is actionable. The rows already carry the locating fields
+   (component tag, Angular class name, CSS selector, classes, element text), so this is usually
+   enough to start. Filtering by `route` helps when the agent wants to work page by page.
+2. `nit_get_annotation` — one id or a whole batch — for the items it works on: the context
+   screenshot and, when present, the click `history` that reproduces the state. The CSS selector
+   is verified unique at capture time except in its last-resort nth-of-type fallback form, so
+   treat it as a strong hint, not a guarantee.
 3. Make the change in the source code.
 4. `nit_mark_fixed` for that annotation, and optionally `nit_set_issue_ref` if a ticket exists.
 5. Repeat until `nit_list_annotations` reports zero actionable items.
@@ -88,8 +94,8 @@ A prompt that works well:
 
 > Use the nit MCP tools. List the annotations, then fix every actionable change request at the
 > referenced element and mark each one fixed when you are done. Treat comments as context, do
-> not act on them. If you decide something should not be fixed, set its status to wontfix and
-> say why.
+> not act on them. If you decide something should not be fixed, set its status to wontfix with
+> a reason.
 
 Tips for better agent results:
 
@@ -99,7 +105,8 @@ Tips for better agent results:
 - **The click history is the reproduction recipe.** If an annotation was made inside a dropdown
   or a wizard step, `history` lists the clicks that led there, oldest first.
 - **`wontfix` is allowed.** It is better for an agent to set `wontfix` with a reason than to
-  force a bad change. A human sees the status in the panel and can reopen.
+  force a bad change. The reason is stored on the annotation as `statusReason`, so a human (or
+  the next agent session) sees why instead of re-litigating it. A human can always reopen.
 - **Verification stays human.** Agents mark things `fixed`; a person runs
   `nit verify` and rules `verified` or `reopened`. Reopened items show up as actionable again in
   the next `nit_list_annotations` call.

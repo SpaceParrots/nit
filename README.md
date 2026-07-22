@@ -87,11 +87,13 @@ a click trail for reproducing hidden states. Field-by-field details are in the
 ## Agent handoff
 
 Point your agent at the folder and let it follow `fix-annotations.md`, or register the MCP
-server (`nit mcp-install`) and let it work through tools: `nit_list_annotations`, `nit_get_annotation`
-(screenshots included as images), `nit_mark_fixed`, `nit_set_status`, `nit_set_issue_ref`. The
-review is also readable as resources (`nit://review/annotations.json`, `nit://annotation/<id>`, …)
-when the agent just wants context. [MCP server and coding agents](./docs/wiki/mcp.md) has the
-details and prompt suggestions.
+server (`nit mcp-install`) and let it work through tools: `nit_list_annotations` (rows carry the
+full working record), `nit_get_annotation` (batchable; screenshots included as images),
+`nit_mark_fixed`, `nit_set_status` (with a persisted `reason` for wontfix), `nit_set_issue_ref`.
+Payloads are deliberately token-lean. The review is also readable as resources
+(`nit://review/brief.md`, `nit://review/annotations.json`, `nit://annotation/<id>`, …) for
+sessions without tool access. [MCP server and coding agents](./docs/wiki/mcp.md) has the details
+and prompt suggestions.
 
 ## Documentation
 
