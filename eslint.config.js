@@ -4,7 +4,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['node_modules', 'dist', 'nit-review', 'nit-review-merged', '.playwright-mcp', 'examples'] },
+  { ignores: ['node_modules', 'dist', 'nit-review', 'nit-review-merged', '.playwright-mcp'] },
   js.configs.recommended,
 
   // Type-aware linting for the TypeScript sources.
