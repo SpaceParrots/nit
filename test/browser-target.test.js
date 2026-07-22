@@ -79,6 +79,31 @@ test('target resolution table', async t => {
       },
     };
     window.scrollTo(0, 0);
+
+    // 13: own data-id (no id) → tag[data-id="…"]
+    const card1 = q('[data-id="card-1"]');
+    cases.card1 = verify(R.resolveTarget(card1), card1);
+    // 14: data-id anchors descendants
+    const label2 = document.querySelectorAll('.card-label')[1];
+    cases.label2 = verify(R.resolveTarget(label2), label2);
+    // 15: double quote in the value is escaped and still resolves
+    const weird = document.querySelectorAll('.card')[2];
+    cases.weird = verify(R.resolveTarget(weird), weird);
+    // 16: duplicate data-id is not unique → falls through, still resolves
+    const dup2 = document.querySelectorAll('.dup-mark')[1];
+    cases.dup2 = verify(R.resolveTarget(dup2), dup2);
+    // 17: empty data-id is skipped
+    const emptyMark = q('.empty-mark');
+    cases.emptyMark = verify(R.resolveTarget(emptyMark), emptyMark);
+    // 18: >100-char data-id is skipped
+    card1.setAttribute('data-id', 'x'.repeat(101));
+    cases.longDataId = R.resolveTarget(card1).selector;
+    card1.setAttribute('data-id', 'card-1');
+    // 19: own #id still wins over data-id
+    card1.id = 'card-one';
+    cases.idWins = R.resolveTarget(card1).selector;
+    card1.removeAttribute('id');
+
     return cases;
   });
 
@@ -116,4 +141,23 @@ test('target resolution table', async t => {
   assert.ok(results.postNote.selectorResolves && results.postNote.xpathResolves);
 
   assert.deepEqual(results.rect.got, results.rect.expected);
+
+  assert.equal(results.card1.selector, 'div[data-id="card-1"]');
+  assert.ok(results.card1.selectorResolves && results.card1.xpathResolves);
+
+  assert.match(results.label2.selector, /^div\[data-id="card-2"\]/, `data-id anchored: ${results.label2.selector}`);
+  assert.ok(results.label2.selectorResolves && results.label2.xpathResolves);
+
+  assert.equal(results.weird.selector, 'div[data-id="we\\"ird"]');
+  assert.ok(results.weird.selectorResolves, `escaped quote resolves: ${results.weird.selector}`);
+
+  assert.ok(!results.dup2.selector.includes('data-id'), `dup not used: ${results.dup2.selector}`);
+  assert.ok(results.dup2.selectorResolves);
+
+  assert.ok(!results.emptyMark.selector.includes('data-id'), `empty skipped: ${results.emptyMark.selector}`);
+  assert.ok(results.emptyMark.selectorResolves);
+
+  assert.ok(!results.longDataId.includes('data-id'), `overlong skipped: ${results.longDataId}`);
+
+  assert.equal(results.idWins, '#card-one');
 });

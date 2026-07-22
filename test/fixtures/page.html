@@ -73,5 +73,13 @@
     window.addEventListener('popstate', render);
     render();
   </script>
+  <!-- data-id selector fixtures (kept last so existing sibling indices are stable) -->
+  <div class="cards">
+    <div data-id="card-1" class="card"><span class="card-label">One</span></div>
+    <div data-id="card-2" class="card"><span class="card-label">Two</span></div>
+    <div data-id="we&quot;ird" class="card"><span class="card-label">Three</span></div>
+    <i data-id="dup" class="dup-mark"></i><i data-id="dup" class="dup-mark"></i>
+    <b data-id="" class="empty-mark"></b>
+  </div>
 </body>
 </html>

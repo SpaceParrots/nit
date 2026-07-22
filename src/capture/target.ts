@@ -7,6 +7,26 @@ const MAX_TEXT = 80;
 const MAX_CLASSES = 8;
 const ANGULAR_RUNTIME_CLASS = /^(ng-star-inserted|ng-trigger.*|ng-tns-.*|ng-animate.*|ng-animating)$/;
 
+// data-id is the only attribute treated as identity (Kevin's scope decision) —
+// values longer than this are likely serialized state, not stable ids.
+const MAX_DATA_ID = 100;
+
+function dataIdOf(n: Element): string | null {
+  const v = n.getAttribute('data-id');
+  return v && v.length <= MAX_DATA_ID ? v : null;
+}
+
+// CSS.escape is for identifiers; inside a quoted attribute string only the
+// backslash and the closing quote need escaping.
+function attrEscape(s: string): string {
+  return s.replace(/[\\"]/g, '\\$&');
+}
+
+function dataIdSelector(n: Element): string | null {
+  const v = dataIdOf(n);
+  return v === null ? null : `${n.tagName.toLowerCase()}[data-id="${attrEscape(v)}"]`;
+}
+
 /**
  * Resolve an element to its layered target reference — the stable pointer a coding
  * agent (and the replay anchorer) uses to find it again. Never throws.
@@ -66,10 +86,11 @@ const LANDMARK_TAGS = new Set(['SECTION', 'ARTICLE', 'MAIN', 'NAV', 'HEADER', 'F
 /**
  * Build a short, stable CSS selector for an element. Preference order:
  *  1. the element's own unique `#id`
- *  2. nearest unique anchor (`#id`, custom element, or landmark tag) + unique class shorthand
- *  3. anchor + compressed path of significant nodes (ids, custom elements, landmarks)
- *  4. anchor + full child chain
- *  5. absolute nth-of-type chain
+ *  2. the element's own unique `tag[data-id="…"]`
+ *  3. nearest unique anchor (`#id`, `data-id`, custom element, or landmark tag) + unique class shorthand
+ *  4. anchor + compressed path of significant nodes (ids, data-ids, custom elements, landmarks)
+ *  5. anchor + full child chain
+ *  6. absolute nth-of-type chain
  * Every candidate is verified unique against the live document before being returned,
  * so the selector is also the primary replay anchor.
  * @param doc the document to verify uniqueness against
@@ -79,6 +100,9 @@ export function buildSelector(el: Element, doc: Document = el.ownerDocument): st
     const idSel = `#${cssEscape(el.id)}`;
     if (matchesUnique(doc, idSel, el)) return idSel;
   }
+
+  const ownDataId = dataIdSelector(el);
+  if (ownDataId && matchesUnique(doc, ownDataId, el)) return ownDataId;
 
   // Ancestor path from just below body down to the element itself.
   const path: Element[] = [];
@@ -131,19 +155,23 @@ export function buildSelector(el: Element, doc: Document = el.ownerDocument): st
 }
 
 function isSignificant(n: Element): boolean {
-  return Boolean(n.id) || n.tagName.includes('-') || LANDMARK_TAGS.has(n.tagName);
+  return Boolean(n.id) || dataIdOf(n) !== null || n.tagName.includes('-') || LANDMARK_TAGS.has(n.tagName);
 }
 
 function sigSegment(n: Element): string {
   if (n.id) return `${n.tagName.toLowerCase()}#${cssEscape(n.id)}`;
+  const dataSel = dataIdSelector(n);
+  if (dataSel) return dataSel;
   return segment(n);
 }
 
-function anchorSelectorFor(n: Element, doc: Document): { sel: string; kind: 'id' | 'custom' | 'landmark' } | null {
+function anchorSelectorFor(n: Element, doc: Document): { sel: string; kind: 'id' | 'data-id' | 'custom' | 'landmark' } | null {
   if (n.id) {
     const sel = `#${cssEscape(n.id)}`;
     if (matchesUnique(doc, sel, n)) return { sel, kind: 'id' };
   }
+  const dataSel = dataIdSelector(n);
+  if (dataSel && matchesUnique(doc, dataSel, n)) return { sel: dataSel, kind: 'data-id' };
   if (n.tagName.includes('-') || LANDMARK_TAGS.has(n.tagName)) {
     const tag = n.tagName.toLowerCase();
     const cand = matchesUnique(doc, tag, n) ? tag : `${tag}:nth-of-type(${nthOfType(n)})`;
