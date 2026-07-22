@@ -167,7 +167,7 @@ function handleMessage(dir: string, msg: JsonRpcMessage, send: SendFn): void {
       reply({
         protocolVersion: (typeof params?.protocolVersion === 'string' && params.protocolVersion) || PROTOCOL_FALLBACK,
         capabilities: { tools: {} },
-        serverInfo: { name: 'nit', version: '1.0.0' },
+        serverInfo: { name: 'nit', version: '1.0.1' },
         instructions: INSTRUCTIONS,
       });
     } else if (typeof method === 'string' && method.startsWith('notifications/')) {

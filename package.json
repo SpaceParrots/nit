@@ -1,6 +1,6 @@
 {
   "name": "@spaceparrots/nit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Point-and-click website annotation that hands small UI fixes to a coding agent.",
   "type": "module",
   "bin": {

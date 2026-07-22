@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.1 (2026-07-22)
+
+- **Node 20.12 is now the minimum.** 1.0.0 declared Node 18 but crashed on it: the prompt
+  library uses `node:util`'s `styleText`, which arrived in 20.12, and Node 18 has been end of
+  life since April 2025. `engines`, `nit doctor` and CI now agree on the real floor. Install
+  1.0.1 rather than 1.0.0 if you are on Node 18.
+- **MCP tools are namespaced.** The five tools are now `nit_list_annotations`,
+  `nit_get_annotation`, `nit_mark_fixed`, `nit_set_status` and `nit_set_issue_ref`, so they stay
+  unambiguous next to other MCP servers' tools. Clients discover tools by name at connect time,
+  so nothing needs reconfiguring beyond an agent's own tool allow-lists.
+- **Agent-facing server instructions.** The MCP handshake now carries standing guidance for
+  connected agents: the intended list, get, fix, mark-fixed loop; comments are context and never
+  tasks; `wontfix` instead of forcing a bad change; humans rule on verification. Tool and
+  argument descriptions were rewritten in the same spirit.
+
 ## 1.0.0 (2026-07-22)
 
 First stable release.
@@ -25,11 +40,8 @@ fix Verified or Reopen. Reviews are shareable (`export` / `import`) and mergeabl
   behind a filter dropdown, collapsible page groups with the current page first, created/updated
   stamps, an issue-ref input, editable comment texts, "Go to page" navigation, and a pinned
   footer with the actionable count.
-- **MCP.** A new `nit_set_issue_ref` tool; `nit_list_annotations` summaries carry `issueRef`,
-  timestamps and `historyCount`. All tool names are namespaced with a `nit_` prefix so they stay
-  unambiguous next to other MCP servers' tools, and the server hands connected agents standing
-  instructions (the intended fix loop, comments are not tasks, `wontfix` is allowed) during the
-  handshake.
+- **MCP.** A new `set_issue_ref` tool; `list_annotations` summaries carry `issueRef`, timestamps
+  and `historyCount`. (Renamed with a `nit_` prefix in 1.0.1.)
 - **Context screenshots, captured at pick time.** Screenshots expand to a minimum context window
   (480x360, centered on the element) so a button's surroundings stay visible. They are captured
   the moment the element is picked, so an open dropdown is still in the shot instead of
@@ -53,12 +65,6 @@ fix Verified or Reopen. Reviews are shareable (`export` / `import`) and mergeabl
   list (and the "couldn't place" list) down to one reviewer. Single-author reviews are unaffected:
   no chip, no filter row. The expanded detail view always shows an "author" line when the
   annotation has one, regardless of author count.
-
-### Requirements
-
-- Node 20.12 or newer. The prompt library relies on `node:util`'s `styleText`, which Node 18
-  (end of life since April 2025) does not have. `nit doctor`, `engines` and CI agree on this
-  floor.
 
 ### Security
 
