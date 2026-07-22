@@ -96,6 +96,78 @@ test('store: flush merges a concurrent external status change instead of clobber
   assert.equal(result.annotations.find(a => a.id === 'a2').status, 'wontfix', 'local change kept');
 });
 
+// Regression coverage: the merge used to run only when `status` diverged, so the
+// MCP tool `set_issue_ref` — which touches issueRef and nothing else — was
+// silently overwritten by the next local flush.
+test('store: flush merges a concurrent external issueRef-only change', async () => {
+  const dir = tmpDir('nit-store-');
+  const store = createStore(dir, { url: 'https://x.test' });
+  store.upsert({ id: 'a1', comment: 'one', status: 'open' });
+  store.upsert({ id: 'a2', comment: 'two', status: 'open' });
+  store.flush();
+
+  // An agent attaches a tracker reference to a1 on disk — status untouched.
+  await new Promise(r => setTimeout(r, 10)); // ensure a newer mtime
+  const file = path.join(dir, 'annotations.json');
+  const onDisk = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const extA1 = onDisk.annotations.find(a => a.id === 'a1');
+  extA1.issueRef = 'FAI-777';
+  extA1.updatedAt = '2026-07-22T09:00:00.000Z';
+  extA1.updatedBy = 'agent';
+  fs.writeFileSync(file, JSON.stringify(onDisk));
+
+  // …then our stale in-memory session changes a2 and flushes.
+  store.annotations.find(a => a.id === 'a2').status = 'wontfix';
+  store.flush();
+
+  const result = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const a1 = result.annotations.find(a => a.id === 'a1');
+  assert.equal(a1.issueRef, 'FAI-777', 'external issue ref preserved');
+  assert.equal(a1.status, 'open', 'status untouched');
+  assert.equal(a1.updatedBy, 'agent', 'the stamp of the adopted change comes with it');
+  assert.equal(a1.updatedAt, '2026-07-22T09:00:00.000Z');
+  assert.equal(result.annotations.find(a => a.id === 'a2').status, 'wontfix', 'local change kept');
+});
+
+test('store: a competing local issueRef edit wins over the external one', async () => {
+  const dir = tmpDir('nit-store-');
+  const store = createStore(dir, { url: 'https://x.test' });
+  store.upsert({ id: 'a1', comment: 'one', status: 'open' });
+  store.flush();
+
+  // The agent writes one reference on disk…
+  await new Promise(r => setTimeout(r, 10));
+  const file = path.join(dir, 'annotations.json');
+  const onDisk = JSON.parse(fs.readFileSync(file, 'utf8'));
+  onDisk.annotations[0].issueRef = 'AGENT-1';
+  fs.writeFileSync(file, JSON.stringify(onDisk));
+
+  // …while the reviewer typed a different one in the panel.
+  store.patch('a1', { issueRef: 'HUMAN-2' }, 'Kevin');
+  store.flush();
+
+  const result = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(result.annotations[0].issueRef, 'HUMAN-2', 'our own unflushed edit wins');
+  assert.equal(result.annotations[0].updatedBy, 'Kevin');
+});
+
+test('store: an external clear of issueRef is adopted when we did not touch it', async () => {
+  const dir = tmpDir('nit-store-');
+  const store = createStore(dir, { url: 'https://x.test' });
+  store.upsert({ id: 'a1', comment: 'one', status: 'open', issueRef: 'FAI-1' });
+  store.flush();
+
+  await new Promise(r => setTimeout(r, 10));
+  const file = path.join(dir, 'annotations.json');
+  const onDisk = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete onDisk.annotations[0].issueRef;
+  fs.writeFileSync(file, JSON.stringify(onDisk));
+
+  store.flush();
+  const result = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal('issueRef' in result.annotations[0], false, 'the clear survives our flush');
+});
+
 test('store: patch stamps updatedAt/updatedBy and returns the new annotation', () => {
   const dir = tmpDir('nit-store-');
   const store = createStore(dir, { url: 'https://x.test' });

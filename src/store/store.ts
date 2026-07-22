@@ -70,7 +70,7 @@ export function createStore(dir: string, { url, author, file }: StoreOptions = {
   if (url && !data.review.url) data.review.url = url;
 
   let lastMtimeMs = mtimeMsOf(filePath);
-  let lastStatuses = snapshotStatuses(data);
+  let lastSnapshot = snapshotStatuses(data);
 
   return {
     dir,
@@ -134,13 +134,13 @@ export function createStore(dir: string, { url, author, file }: StoreOptions = {
       // status changes in rather than clobbering them (last-writer-wins otherwise).
       const current = mtimeMsOf(filePath);
       if (current !== null && lastMtimeMs !== null && current > lastMtimeMs) {
-        mergeExternalStatuses(filePath, data, lastStatuses);
+        mergeExternalStatuses(filePath, data, lastSnapshot);
       }
       const tmp = filePath + '.tmp';
       fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', 'utf8');
       fs.renameSync(tmp, filePath);
       lastMtimeMs = mtimeMsOf(filePath);
-      lastStatuses = snapshotStatuses(data);
+      lastSnapshot = snapshotStatuses(data);
     },
   };
 }
@@ -186,24 +186,33 @@ function mtimeMsOf(file: string): number | null {
   try { return fs.statSync(file).mtimeMs; } catch { return null; }
 }
 
-function snapshotStatuses(data: ReviewData): Map<string, AnnotationStatus> {
-  return new Map(data.annotations.map(a => [a.id, a.status]));
+/** The externally-writable fields we track per annotation to detect divergence. */
+interface MergeSnapshot {
+  status: AnnotationStatus;
+  issueRef: string | undefined;
+}
+
+function snapshotStatuses(data: ReviewData): Map<string, MergeSnapshot> {
+  return new Map(data.annotations.map(a => [a.id, { status: a.status, issueRef: a.issueRef }]));
 }
 
 /**
- * Pull `status`/`verifiedAt` changes from the on-disk file into the in-memory
- * data for annotations this session did *not* change since its last flush — so a
- * concurrent status write (e.g. an agent marking `fixed` via MCP) isn't lost,
- * while our own unflushed edits still win. New annotations added externally are
- * left alone — the live session owns creation.
+ * Pull `status`/`verifiedAt` and `issueRef` changes from the on-disk file into the
+ * in-memory data for annotations this session did *not* change since its last
+ * flush — so a concurrent write (an agent marking `fixed` or attaching a tracker
+ * reference via MCP `set_issue_ref`) isn't lost, while our own unflushed edits
+ * still win. `issueRef` is merged independently of `status`: the `set_issue_ref`
+ * tool changes only the reference, so keying the whole merge off a status
+ * divergence would silently drop it. New annotations added externally are left
+ * alone — the live session owns creation.
  * @param filePath the annotations.json path
  * @param data live in-memory data (mutated)
- * @param lastStatuses id → status at our last flush/load
+ * @param lastSnapshot id → status/issueRef at our last flush/load
  */
 function mergeExternalStatuses(
   filePath: string,
   data: ReviewData,
-  lastStatuses: Map<string, AnnotationStatus>,
+  lastSnapshot: Map<string, MergeSnapshot>,
 ): void {
   let onDisk: unknown;
   try { onDisk = JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch { return; }
@@ -211,14 +220,30 @@ function mergeExternalStatuses(
   const byId = new Map(data.annotations.map(a => [a.id, a]));
   for (const ext of onDisk.annotations) {
     const local = byId.get(ext.id);
-    if (!local || !ext.status || ext.status === local.status) continue;
-    const localUnchanged = local.status === lastStatuses.get(ext.id);
-    // Only adopt the external status where we haven't made a competing local edit.
-    if (localUnchanged) {
+    const seen = lastSnapshot.get(ext.id);
+    // No snapshot means we created this annotation after our last flush — it is
+    // ours, so nothing on disk can be an "external change" to it.
+    if (!local || !seen) continue;
+    let adopted = false;
+
+    // Only adopt an external value where we haven't made a competing local edit.
+    if (ext.status && ext.status !== local.status && local.status === seen.status) {
       local.status = ext.status;
       if (ext.verifiedAt) local.verifiedAt = ext.verifiedAt;
-      // the stamp belongs to the status we just adopted — take it too, or the
-      // record would claim our author made the other writer's change
+      adopted = true;
+    }
+    // The file is shared and agent-written: ignore a non-string, non-absent
+    // issueRef rather than adopting garbage (or reading it as "cleared").
+    const extIssueRef = ext.issueRef;
+    if ((extIssueRef === undefined || typeof extIssueRef === 'string')
+      && extIssueRef !== local.issueRef && local.issueRef === seen.issueRef) {
+      local.issueRef = extIssueRef;
+      adopted = true;
+    }
+
+    // the stamp belongs to the change we just adopted — take it too, or the
+    // record would claim our author made the other writer's change
+    if (adopted) {
       if (ext.updatedAt) local.updatedAt = ext.updatedAt;
       if (ext.updatedBy) local.updatedBy = ext.updatedBy;
     }
