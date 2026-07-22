@@ -87,3 +87,18 @@ footer .btn { width: 100%; }
 .nit-group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .nit-group-head .ico { width: 12px; height: 12px; transition: transform 0.12s ease; transform: rotate(90deg); }
 .nit-group--collapsed .nit-group-head .ico { transform: rotate(0deg); }
+.issue-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--muted); }
+.issue-row .ico { width: 13px; height: 13px; }
+.nit-issue {
+  flex: 1; min-width: 0; background: #1c1c1e; color: var(--fg);
+  border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font: inherit; font-size: 11px;
+  transition: border-color 0.12s ease;
+}
+.nit-issue:hover { border-color: var(--muted); }
+.nit-issue:focus { outline: none; border-color: var(--accent); }
+.nit-goto { width: 100%; margin-top: 6px; justify-content: flex-start; font-size: 11px; }
+.issue-chip {
+  flex: none; font-size: 9px; font-weight: 600; color: var(--comment);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; margin-top: 1px;
+  max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

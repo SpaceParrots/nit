@@ -3,6 +3,8 @@
 // Split out of main.ts so the list markup can grow (groups, filters) without the
 // poll loop growing with it. Runs inside the panel window, bundled by esbuild.
 import type { Annotation, PanelCmd, PanelState } from '../types.js';
+import { ICONS } from './icons.js';
+import { routePath } from '../util/route.js';
 
 /** The panel's shared view state: what is expanded, and the last rendered key. */
 export interface PanelView {
@@ -68,6 +70,7 @@ export function renderItem(
     span('comment', ann.comment),
     span('route-chip', ann.route || '/'),
   );
+  if (ann.issueRef) head.append(span('issue-chip nit-issue-chip', ann.issueRef));
   if (s.mode === 'review') {
     const del = document.createElement('button');
     del.className = 'nit-del';
@@ -91,13 +94,48 @@ export function renderItem(
     const meta = document.createElement('div');
     meta.className = 'meta';
     meta.append(
-      line(ann.id + ' · ' + ann.status + ' · scope ' + ann.viewportScope + ' · ' + (ann.route || '/')),
+      line(`${ann.id} · ${ann.status} · scope ${ann.viewportScope}`),
+      line(stamps(ann)),
       line('component: ' + (ann.target?.component || '?')
         + (ann.target?.ngComponent ? ' (' + ann.target.ngComponent + ')' : '')),
     );
     if (ann.target?.selector) meta.append(line('selector: ' + ann.target.selector));
     appendShot(meta, ann.id, 'before', ann.screenshot, ann.screenshotAfter ? 'before' : null);
     appendShot(meta, ann.id, 'after', ann.screenshotAfter, 'after');
+
+    const issueRow = document.createElement('div');
+    issueRow.className = 'issue-row';
+    issueRow.innerHTML = ICONS.tag;
+    const input = document.createElement('input');
+    input.className = 'nit-issue';
+    input.type = 'text';
+    input.placeholder = 'issue ref';
+    input.value = ann.issueRef ?? '';
+    const commit = (): void => {
+      if (input.value.trim() === (ann.issueRef ?? '')) return;
+      try { void window.__nitSetIssueRef?.(ann.id, input.value); } catch { /* bridge gone */ }
+    };
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { input.value = ann.issueRef ?? ''; input.blur(); }
+    });
+    input.addEventListener('blur', commit);
+    input.addEventListener('click', e => e.stopPropagation());
+    issueRow.append(input);
+    meta.append(issueRow);
+
+    const goto = document.createElement('button');
+    goto.className = 'btn nit-goto';
+    goto.innerHTML = ICONS.externalLink;
+    goto.append(document.createTextNode(ann.route || '/'));
+    goto.title = `Open ${ann.route || '/'}`;
+    goto.disabled = routePath(s.route) === routePath(ann.route);
+    goto.addEventListener('click', e => {
+      e.stopPropagation();
+      try { void window.__nitGoTo?.(ann.id); } catch { /* bridge gone */ }
+    });
+    meta.append(goto);
+
     if (s.mode === 'verify' && ann.status === 'fixed') {
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;gap:6px;margin-top:6px';
@@ -181,4 +219,22 @@ export function line(text: string): HTMLElement {
   el.className = 'meta-line';
   el.textContent = text;
   return el;
+}
+
+/** "created 2026-07-21 14:22 · updated 2026-07-22 09:01 by Kevin" */
+function stamps(ann: Annotation): string {
+  const parts = [`created ${shortTime(ann.createdAt)}`];
+  if (ann.updatedAt) {
+    parts.push(`updated ${shortTime(ann.updatedAt)}${ann.updatedBy ? ` by ${ann.updatedBy}` : ''}`);
+  }
+  return parts.join(' · ');
+}
+
+/** ISO timestamp → `2026-07-21 14:22` in local time; the raw value if unparseable. */
+function shortTime(iso: string | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
