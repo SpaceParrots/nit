@@ -197,14 +197,18 @@ function snapshotStatuses(data: ReviewData): Map<string, MergeSnapshot> {
 }
 
 /**
- * Pull `status`/`verifiedAt` and `issueRef` changes from the on-disk file into the
- * in-memory data for annotations this session did *not* change since its last
- * flush — so a concurrent write (an agent marking `fixed` or attaching a tracker
- * reference via MCP `nit_set_issue_ref`) isn't lost, while our own unflushed edits
- * still win. `issueRef` is merged independently of `status`: the `nit_set_issue_ref`
- * tool changes only the reference, so keying the whole merge off a status
- * divergence would silently drop it. New annotations added externally are left
- * alone — the live session owns creation.
+ * Pull `status`/`verifiedAt`/`statusReason` and `issueRef` changes from the
+ * on-disk file into the in-memory data for annotations this session did *not*
+ * change since its last flush — so a concurrent write (an agent marking `fixed`
+ * or attaching a tracker reference via MCP `nit_set_issue_ref`) isn't lost,
+ * while our own unflushed edits still win. `issueRef` is merged independently
+ * of `status`: the `nit_set_issue_ref` tool changes only the reference, so
+ * keying the whole merge off a status divergence would silently drop it.
+ * `statusReason` rides along with `status` — it is only ever set alongside a
+ * status change (MCP `nit_set_status`/`nit_mark_fixed`), never on its own — so
+ * adopting one without the other would leave a reason from a status the
+ * session never adopted. New annotations added externally are left alone —
+ * the live session owns creation.
  * @param filePath the annotations.json path
  * @param data live in-memory data (mutated)
  * @param lastSnapshot id → status/issueRef at our last flush/load
@@ -230,6 +234,10 @@ function mergeExternalStatuses(
     if (ext.status && ext.status !== local.status && local.status === seen.status) {
       local.status = ext.status;
       if (ext.verifiedAt) local.verifiedAt = ext.verifiedAt;
+      // The file is shared and agent-written: ignore a non-string, non-absent
+      // statusReason rather than adopting garbage (or reading it as "cleared").
+      const extStatusReason = ext.statusReason;
+      if (extStatusReason === undefined || typeof extStatusReason === 'string') local.statusReason = extStatusReason;
       adopted = true;
     }
     // The file is shared and agent-written: ignore a non-string, non-absent

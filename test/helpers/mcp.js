@@ -23,13 +23,14 @@ export const PNG_1PX = Buffer.from(
  * A review dir with one open change-request (a1, with a screenshot) and one
  * comment (a2). Options override the a1 fixture (e.g. a query-carrying route)
  * without duplicating the whole thing.
- * @param {{route?: string, history?: object[]}} [options]
+ * @param {{route?: string, history?: object[], a2Screenshot?: boolean}} [options]
  * @returns {string} the review directory
  */
-export function makeReviewDir({ route = '/products', history } = {}) {
+export function makeReviewDir({ route = '/products', history, a2Screenshot = false } = {}) {
   const dir = tmpDir('nit-mcp-');
   fs.mkdirSync(path.join(dir, 'shots'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'shots', 'a1.png'), PNG_1PX);
+  if (a2Screenshot) fs.writeFileSync(path.join(dir, 'shots', 'a2.png'), PNG_1PX);
   const data = {
     review: { id: 'mcp-fixture', url: 'https://example.com', createdAt: '2026-07-20T10:00:00Z', authors: ['Kevin'] },
     annotations: [
@@ -44,7 +45,7 @@ export function makeReviewDir({ route = '/products', history } = {}) {
         id: 'a2', type: 'comment', comment: 'Nice animation', status: 'open', author: 'Ann',
         viewportScope: 'general', viewport: { mode: 'desktop', w: 1440, h: 900 }, route: '/',
         target: { component: 'app-header', ngComponent: null, selector: '#logo', xpath: '/html[1]', tag: 'a', classes: [], text: '', rect: { x: 0, y: 0, w: 10, h: 10 } },
-        screenshot: null, createdAt: '2026-07-20T10:02:00Z',
+        screenshot: a2Screenshot ? 'shots/a2.png' : null, createdAt: '2026-07-20T10:02:00Z',
       },
     ],
   };
@@ -70,9 +71,11 @@ export async function startMcpClient(dir) {
 
 /**
  * Fixture review dir + connected client + a `call(name, args)` shortcut that
- * resolves to the tool result (`{ content, structuredContent?, isError? }`).
+ * resolves to the tool result (`{ content, isError? }`) — there is no
+ * `structuredContent` any more (see `structured()` in `src/mcp/tools.ts`), so
+ * a payload is read back with {@link payload}.
  * @param {import('node:test').TestContext} t closes the client when the test ends
- * @param {{route?: string, history?: object[]}} [options] forwarded to makeReviewDir
+ * @param {{route?: string, history?: object[], a2Screenshot?: boolean}} [options] forwarded to makeReviewDir
  */
 export async function startFixtureMcp(t, options = {}) {
   const dir = makeReviewDir(options);
@@ -83,4 +86,14 @@ export async function startFixtureMcp(t, options = {}) {
     client,
     call: (name, args) => client.callTool({ name, arguments: args }),
   };
+}
+
+/**
+ * Parse a tool result's compact JSON text body — the sole way results carry
+ * data now that `structuredContent` is gone.
+ * @param {{content: {type: string, text?: string}[]}} res a tool call result
+ * @returns {unknown}
+ */
+export function payload(res) {
+  return JSON.parse(res.content[0].text);
 }

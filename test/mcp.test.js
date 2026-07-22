@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The MCP stdio server wraps annotations.json without schema changes. The SDK's
 // own client drives the real `nit mcp` process: initialize → tools/list →
-// tools/call, plus the structured output and tool annotations clients rely on.
+// tools/call, plus the tool annotations clients rely on. Tool results carry
+// their payload only as compact JSON text — there is no `structuredContent`
+// (no `outputSchema` is declared; see `src/mcp/schema.ts`).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { tmpDir, readAnnotations } from './helpers/tmp.js';
-import { startFixtureMcp, startMcpClient } from './helpers/mcp.js';
+import { startFixtureMcp, startMcpClient, payload } from './helpers/mcp.js';
 
 const TOOL_NAMES = ['nit_get_annotation', 'nit_list_annotations', 'nit_mark_fixed', 'nit_set_issue_ref', 'nit_set_status'];
 
@@ -28,14 +30,14 @@ test('mcp server — handshake announces nit, its instructions and its capabilit
   assert.match(instructions, /wontfix/);
 });
 
-test('mcp server — tools carry titles, annotations and output schemas', async t => {
+test('mcp server — tools carry titles and annotations, but no output schema', async t => {
   const { client } = await startFixtureMcp(t);
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map(x => x.name).sort(), TOOL_NAMES);
 
   for (const tool of tools) {
     assert.ok(tool.title, `${tool.name} has a title`);
-    assert.ok(tool.outputSchema, `${tool.name} declares an output schema`);
+    assert.equal(tool.outputSchema, undefined, `${tool.name} declares no output schema`);
     assert.equal(tool.annotations.openWorldHint, false, `${tool.name} is closed-world`);
   }
 
@@ -49,34 +51,44 @@ test('mcp server — tools carry titles, annotations and output schemas', async 
     ['open', 'fixed', 'wontfix', 'verified', 'reopened']);
 });
 
+test('mcp server — result text is compact JSON, not pretty-printed', async t => {
+  const { call } = await startFixtureMcp(t);
+  const list = await call('nit_list_annotations', {});
+  const text = list.content[0].text;
+  assert.equal(text, JSON.stringify(JSON.parse(text)), 'no indentation/newlines added');
+
+  const got = await call('nit_get_annotation', { id: 'a1' });
+  const gotText = got.content[0].text;
+  assert.equal(gotText, JSON.stringify(JSON.parse(gotText)));
+});
+
 test('mcp server — list, get, mark_fixed, set_status', async t => {
   const { dir, call } = await startFixtureMcp(t);
 
-  const list = await call('nit_list_annotations', {});
-  assert.equal(list.structuredContent.total, 2);
-  assert.equal(list.structuredContent.actionable, 1); // only the open change-request
-  assert.equal(list.structuredContent.annotations[0].component, 'app-tile');
-  assert.equal(list.structuredContent.review.id, 'mcp-fixture');
-  // the same payload is mirrored as text for clients that ignore structured content
-  assert.deepEqual(JSON.parse(list.content[0].text), list.structuredContent);
+  const list = payload(await call('nit_list_annotations', {}));
+  assert.equal(list.total, 2);
+  assert.equal(list.actionable, 1); // only the open change-request
+  assert.equal(list.annotations[0].component, 'app-tile');
+  assert.equal(list.review.id, 'mcp-fixture');
 
-  const filtered = await call('nit_list_annotations', { type: 'comment' });
-  assert.equal(filtered.structuredContent.total, 1);
+  const filtered = payload(await call('nit_list_annotations', { type: 'comment' }));
+  assert.equal(filtered.total, 1);
 
-  const got = await call('nit_get_annotation', { id: 'a1' });
-  assert.equal(got.structuredContent.annotation.comment, 'Make the badge yellow');
-  const image = got.content.find(c => c.type === 'image');
+  const got = payload(await call('nit_get_annotation', { id: 'a1' }));
+  assert.equal(got.annotation.comment, 'Make the badge yellow');
+  const gotRes = await call('nit_get_annotation', { id: 'a1' });
+  const image = gotRes.content.find(c => c.type === 'image');
   assert.ok(image, 'screenshot returned as image content');
   assert.equal(image.mimeType, 'image/png');
   assert.ok(image.data.length > 20);
 
-  const fixed = await call('nit_mark_fixed', { id: 'a1' });
-  assert.equal(fixed.structuredContent.annotation.status, 'fixed');
+  const fixed = payload(await call('nit_mark_fixed', { id: 'a1' }));
+  assert.equal(fixed.annotation.status, 'fixed');
   assert.equal(readAnnotations(dir).annotations.find(a => a.id === 'a1').status, 'fixed');
 
-  const reopened = await call('nit_set_status', { id: 'a1', status: 'reopened' });
-  assert.equal(reopened.structuredContent.annotation.status, 'reopened');
-  assert.ok(reopened.structuredContent.annotation.verifiedAt);
+  const reopened = payload(await call('nit_set_status', { id: 'a1', status: 'reopened' }));
+  assert.equal(reopened.annotation.status, 'reopened');
+  assert.ok(reopened.annotation.verifiedAt);
 
   const missing = await call('nit_get_annotation', { id: 'nope' });
   assert.equal(missing.isError, true);
@@ -86,7 +98,31 @@ test('mcp server — list, get, mark_fixed, set_status', async t => {
   assert.equal(unknown.isError, true, 'an unknown tool is an error the agent can read');
 });
 
-test('mcp server — a poisoned screenshot path cannot read files outside the review dir', async t => {
+test('mcp: list rows carry classes/text/statusReason, drop author/createdAt', async t => {
+  const { call } = await startFixtureMcp(t);
+  const list = payload(await call('nit_list_annotations', {}));
+  const a1 = list.annotations.find(a => a.id === 'a1');
+  assert.deepEqual(a1.classes, ['badge']);
+  assert.equal(a1.text, 'New');
+  assert.equal('statusReason' in a1, false, 'never set on this fixture, so absent rather than null/undefined-in-JSON');
+  assert.equal('author' in a1, false, 'one author per review is already in the envelope');
+  assert.equal('createdAt' in a1, false, 'never used, dropped');
+});
+
+test('mcp: list envelope carries review only on an unfiltered call; total/actionable always', async t => {
+  const { call } = await startFixtureMcp(t);
+  const unfiltered = payload(await call('nit_list_annotations', {}));
+  assert.ok(unfiltered.review, 'unfiltered call reports review metadata');
+  assert.equal(typeof unfiltered.total, 'number');
+  assert.equal(typeof unfiltered.actionable, 'number');
+
+  const filtered = payload(await call('nit_list_annotations', { status: 'open' }));
+  assert.equal('review' in filtered, false, 'filtered call already knows what it asked for');
+  assert.equal(typeof filtered.total, 'number');
+  assert.equal(typeof filtered.actionable, 'number');
+});
+
+test('mcp: a poisoned screenshot path cannot read files outside the review dir', async t => {
   const dir = tmpDir('nit-mcp-evil-');
   fs.mkdirSync(path.join(dir, 'shots'), { recursive: true });
   // secret sits next to (outside) the review dir
@@ -110,7 +146,7 @@ test('mcp server — a poisoned screenshot path cannot read files outside the re
 
   const got = await client.callTool({ name: 'nit_get_annotation', arguments: { id: 'a1' } });
   // the record is returned, but the traversal path must NOT be read back as an image
-  assert.ok(got.structuredContent.annotation, 'text record is still served');
+  assert.ok(payload(got).annotation, 'text record is still served');
   const leaked = got.content.find(c => c.type === 'image' && Buffer.from(c.data, 'base64').toString().includes('TOP SECRET'));
   assert.equal(leaked, undefined, 'secret file must not be exfiltrated as an image');
 });
@@ -134,28 +170,28 @@ test('mcp: a hand-trimmed annotations.json is still served, not rejected', async
 
   const list = await client.callTool({ name: 'nit_list_annotations', arguments: {} });
   assert.ok(!list.isError, 'the entry point never fails over one odd record');
-  assert.equal(list.structuredContent.total, 2);
+  assert.equal(payload(list).total, 2);
 
   const got = await client.callTool({ name: 'nit_get_annotation', arguments: { id: 'a1' } });
   assert.ok(!got.isError);
-  assert.equal(got.structuredContent.annotation.comment, 'partial record');
+  assert.equal(payload(got).annotation.comment, 'partial record');
 
   // writes still go through, and are still validated on the way in
   const fixed = await client.callTool({ name: 'nit_mark_fixed', arguments: { id: 'a2' } });
-  assert.equal(fixed.structuredContent.annotation.status, 'fixed');
+  assert.equal(payload(fixed).annotation.status, 'fixed');
 });
 
 test('mcp: set_issue_ref sets and clears the reference', async t => {
   const { call, dir } = await startFixtureMcp(t);
-  const set = await call('nit_set_issue_ref', { id: 'a1', ref: ' FAI-1234 ' });
-  assert.equal(set.structuredContent.annotation.issueRef, 'FAI-1234', 'trimmed and stored');
+  const set = payload(await call('nit_set_issue_ref', { id: 'a1', ref: ' FAI-1234 ' }));
+  assert.equal(set.annotation.issueRef, 'FAI-1234', 'trimmed and stored');
 
   const onDisk = readAnnotations(dir);
   assert.equal(onDisk.annotations[0].issueRef, 'FAI-1234');
   assert.equal(onDisk.annotations[0].updatedBy, 'agent');
 
-  const cleared = await call('nit_set_issue_ref', { id: 'a1', ref: '' });
-  assert.equal(cleared.structuredContent.annotation.issueRef, undefined);
+  const cleared = payload(await call('nit_set_issue_ref', { id: 'a1', ref: '' }));
+  assert.equal(cleared.annotation.issueRef, undefined);
 });
 
 // The caller is a program, so a non-string `ref` is a type error to report — it
@@ -186,7 +222,7 @@ test('mcp: an invalid status is rejected before anything is written', async t =>
 
 test('mcp: set_status stamps updatedBy agent', async t => {
   const { call } = await startFixtureMcp(t);
-  const { annotation } = (await call('nit_mark_fixed', { id: 'a1' })).structuredContent;
+  const { annotation } = payload(await call('nit_mark_fixed', { id: 'a1' }));
   assert.equal(annotation.status, 'fixed');
   assert.equal(annotation.updatedBy, 'agent');
   assert.match(annotation.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
@@ -202,26 +238,107 @@ test('mcp: a write re-renders review.md next to annotations.json', async t => {
 
 test('mcp: list_annotations route filter matches the full route and the path', async t => {
   const { call } = await startFixtureMcp(t, { route: '/products?id=5' });
-  const byFull = (await call('nit_list_annotations', { route: '/products?id=5' })).structuredContent;
-  const byPath = (await call('nit_list_annotations', { route: '/products' })).structuredContent;
+  const byFull = payload(await call('nit_list_annotations', { route: '/products?id=5' }));
+  const byPath = payload(await call('nit_list_annotations', { route: '/products' }));
   assert.equal(byFull.total, 1);
   assert.equal(byPath.total, 1, 'path-only filter still finds a query-carrying route');
   assert.equal(byFull.annotations[0].issueRef, undefined, 'summary carries the field');
 });
 
-test('mcp: list summaries carry historyCount and get_annotation returns the trail', async t => {
+test('mcp: list summaries carry historyCount (raw length); get_annotation compresses the trail', async t => {
   const history = [
     { selector: 'button.menu', tag: 'button', component: 'app-nav', text: 'Menu', at: '2026-07-20T10:00:30Z' },
     { selector: '#tab-2', tag: 'a', component: 'app-tabs', text: 'Details', at: '2026-07-20T10:00:40Z' },
   ];
   const { call } = await startFixtureMcp(t, { history });
 
-  const list = (await call('nit_list_annotations', {})).structuredContent;
+  const list = payload(await call('nit_list_annotations', {}));
   const a1 = list.annotations.find(a => a.id === 'a1');
   const a2 = list.annotations.find(a => a.id === 'a2');
   assert.equal(a1.historyCount, 2);
   assert.equal(a2.historyCount, undefined, 'absent history has no count');
 
-  const full = (await call('nit_get_annotation', { id: 'a1' })).structuredContent.annotation;
-  assert.deepEqual(full.history, history, 'full record carries the trail verbatim');
+  const full = payload(await call('nit_get_annotation', { id: 'a1' })).annotation;
+  assert.deepEqual(full.history, history, 'nothing to compress: no self-clicks, dupes, or overflow');
+});
+
+test('mcp: get_annotation batches ids, reports missing ones, still errors when none are found', async t => {
+  const { call } = await startFixtureMcp(t, { a2Screenshot: true });
+
+  const both = await call('nit_get_annotation', { id: ['a1', 'a2'] });
+  const bothPayload = payload(both);
+  assert.equal(bothPayload.annotations.length, 2);
+  assert.deepEqual(bothPayload.annotations.map(a => a.id), ['a1', 'a2'], 'request order preserved');
+  assert.equal(bothPayload.missing, undefined);
+  const images = both.content.filter(c => c.type === 'image');
+  assert.equal(images.length, 2, 'both screenshots come back as image content');
+
+  const partial = payload(await call('nit_get_annotation', { id: ['a1', 'nope'] }));
+  assert.equal(partial.annotations.length, 1);
+  assert.equal(partial.annotations[0].id, 'a1');
+  assert.deepEqual(partial.missing, ['nope']);
+
+  const none = await call('nit_get_annotation', { id: ['nope', 'also-nope'] });
+  assert.equal(none.isError, true, 'nothing found at all is still an error');
+});
+
+test('mcp: get_annotation omits target.xpath unless includeXpath is set', async t => {
+  const { call } = await startFixtureMcp(t);
+  const byDefault = payload(await call('nit_get_annotation', { id: 'a1' })).annotation;
+  assert.equal('xpath' in byDefault.target, false);
+
+  const withXpath = payload(await call('nit_get_annotation', { id: 'a1' , includeXpath: true })).annotation;
+  assert.equal(withXpath.target.xpath, '/html[1]');
+});
+
+test('mcp: get_annotation skips image content when includeScreenshot is false', async t => {
+  const { call } = await startFixtureMcp(t);
+  const res = await call('nit_get_annotation', { id: 'a1', includeScreenshot: false });
+  assert.equal(res.content.filter(c => c.type === 'image').length, 0);
+  assert.ok(payload(res).annotation, 'text record still comes back');
+});
+
+test('mcp: history compression drops self-clicks, collapses dup selectors, caps at 5, dedupes text', async t => {
+  const rawHistory = [
+    { note: 'malformed — missing selector/text/component' },
+    { selector: '.badge', tag: 'span', component: 'app-tile', text: 'Badge', at: '2026-07-20T09:00:00Z' }, // self-click on the target
+    { selector: 'x1', tag: 'div', component: 'c', text: 'X1', at: '2026-07-20T09:00:10Z' },
+    { selector: 'x2', tag: 'div', component: 'c', text: 'X2', at: '2026-07-20T09:00:20Z' },
+    { selector: 'x3', tag: 'div', component: 'c', text: 'X3', at: '2026-07-20T09:00:30Z' },
+    { selector: 'x4', tag: 'div', component: 'c', text: 'X4', at: '2026-07-20T09:00:40Z' },
+    { selector: 'a.nav', tag: 'a', component: 'app-nav', text: 'Nav', at: '2026-07-20T09:00:50Z' },
+    { selector: 'a.nav', tag: 'a', component: 'app-nav', text: 'Nav again', at: '2026-07-20T09:01:00Z' }, // consecutive dup selector
+    { selector: 'b.item', tag: 'button', component: 'app-list', text: 'Same', at: '2026-07-20T09:01:10Z' },
+    { selector: 'c.item', tag: 'button', component: 'app-list', text: 'Same', at: '2026-07-20T09:01:20Z' }, // repeats prior kept text
+  ];
+  const { call } = await startFixtureMcp(t, { history: rawHistory });
+
+  const full = payload(await call('nit_get_annotation', { id: 'a1' })).annotation;
+  assert.equal(full.historyCount, rawHistory.length, 'historyCount is the ORIGINAL length, including the malformed entry');
+  assert.deepEqual(full.history, [
+    { selector: 'x3', tag: 'div', component: 'c', text: 'X3', at: '2026-07-20T09:00:30Z' },
+    { selector: 'x4', tag: 'div', component: 'c', text: 'X4', at: '2026-07-20T09:00:40Z' },
+    { selector: 'a.nav', tag: 'a', component: 'app-nav', text: 'Nav', at: '2026-07-20T09:00:50Z' },
+    { selector: 'b.item', tag: 'button', component: 'app-list', text: 'Same', at: '2026-07-20T09:01:10Z' },
+    { selector: 'c.item', tag: 'button', component: 'app-list', at: '2026-07-20T09:01:20Z' },
+  ], 'malformed + self-click dropped, dup selector collapsed, capped at 5, repeated text omitted');
+});
+
+test('mcp: reason is persisted as statusReason and cleared/replaced on every status change', async t => {
+  const { call, dir } = await startFixtureMcp(t);
+
+  const wontfix = payload(await call('nit_set_status', { id: 'a1', status: 'wontfix', reason: 'by design' }));
+  assert.equal(wontfix.annotation.statusReason, 'by design');
+  assert.equal(readAnnotations(dir).annotations[0].statusReason, 'by design', 'persisted on disk');
+
+  const fixedNoReason = payload(await call('nit_mark_fixed', { id: 'a1' }));
+  assert.equal(fixedNoReason.annotation.statusReason, undefined, 'a later change without a reason clears the stale one');
+  assert.equal('statusReason' in readAnnotations(dir).annotations[0], false);
+
+  const fixedWithReason = payload(await call('nit_mark_fixed', { id: 'a1', reason: '  trimmed  ' }));
+  assert.equal(fixedWithReason.annotation.statusReason, 'trimmed', 'mark_fixed also accepts and trims a reason');
+
+  const longReason = 'x'.repeat(600);
+  const capped = payload(await call('nit_set_status', { id: 'a1', status: 'open', reason: longReason }));
+  assert.equal(capped.annotation.statusReason.length, 500, 'capped at 500 chars');
 });
