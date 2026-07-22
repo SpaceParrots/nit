@@ -71,10 +71,14 @@ function normalizeIssueRef(ref: string): string {
 /**
  * True only for a value that is safe to embed verbatim as both link text and href: it must look
  * like an http(s) URL and contain none of the characters that could break out of `[text](href)`
- * boundaries (whitespace, backtick, parens, brackets, backslash).
+ * boundaries (whitespace, backtick, parens, brackets, backslash) or out of the surrounding markup
+ * once review.md is rendered to HTML (`<`, `>`, `"`, `'`). None of those are legal in a url that
+ * has not been percent-encoded, so rejecting them costs no legitimate tracker link — it only sends
+ * a value like `https://x.test/<svg/onload=alert(1)>` down the inert code-span branch instead of
+ * emitting it as live link text.
  */
 function isSafeUrl(ref: string): boolean {
-  return /^https?:\/\//i.test(ref) && !/[\s`()[\]\\]/.test(ref);
+  return /^https?:\/\//i.test(ref) && !/[\s`()[\]\\<>"']/.test(ref);
 }
 
 /**

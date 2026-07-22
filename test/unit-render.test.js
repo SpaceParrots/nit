@@ -247,6 +247,32 @@ test('render: a URL ending in a backslash renders as a code span, not a link', (
   assert.equal(/- issue: \[.*\]\(.*\)/.test(md), false);
 });
 
+// review.md may be piped through a markdown→HTML renderer that allows inline
+// HTML. A value on the link branch is emitted verbatim as *link text*, so raw
+// `<`, `>`, `"` and `'` must keep it off that branch. Each payload here uses only
+// the newly rejected characters — no parens/brackets/whitespace — so the test
+// fails if any one of the four is dropped from the class again.
+test('render: a URL carrying raw HTML characters renders as a code span, not a link', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'a', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z',
+        issueRef: 'https://x.test/<svg/onload=alert;>' },
+      { id: 'a2', type: 'change-request', status: 'open', comment: 'b', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z',
+        issueRef: 'https://x.test/a"onmouseover="alert' },
+      { id: 'a3', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z',
+        issueRef: "https://x.test/a'onmouseover='alert" },
+    ],
+  });
+  assert.match(md, /- issue: `https:\/\/x\.test\/<svg\/onload=alert;>`/, '< and > stay inert');
+  assert.match(md, /- issue: `https:\/\/x\.test\/a"onmouseover="alert`/, 'double quote stays inert');
+  assert.match(md, /- issue: `https:\/\/x\.test\/a'onmouseover='alert`/, 'single quote stays inert');
+  assert.equal(/- issue: \[.*\]\(.*\)/.test(md), false, 'none of them became a live link');
+});
+
 test('render: an issueRef longer than 200 characters is capped at 200', () => {
   const long = 'A'.repeat(250);
   const md = renderReviewMd({
