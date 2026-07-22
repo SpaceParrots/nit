@@ -69,7 +69,8 @@ Open `review.md` to double-check your notes. The
 
 Point your coding agent at the review folder and tell it to follow `fix-annotations.md`. Or, if
 you registered the MCP server during setup, just tell the agent to fix the open nit annotations;
-it will find the review through the `nit` MCP tools.
+it will find the review through the `nit` MCP tools. The
+[MCP guide](./mcp.md) explains the tools and what a good agent prompt looks like.
 
 ## 6. Verify the fixes
 

@@ -42,7 +42,8 @@ Two ways to hand the work over:
 - **MCP.** Run `nit mcp-install` once (or let `nit setup` do it), then tell the agent to fix the
   open nit annotations. The agent uses the `nit` MCP tools: `list_annotations` to see what is
   actionable, `get_annotation` for the full record including the screenshot, and `mark_fixed`
-  when it is done. It can also file the issue reference back with `set_issue_ref`.
+  when it is done. It can also file the issue reference back with `set_issue_ref`. The
+  [MCP guide](./wiki/mcp.md) covers the tools and good agent prompts in detail.
 
 Each annotation gives the agent several ways to find the element: the component tag, the Angular
 class name when available, a verified-unique CSS selector, an XPath, the element text, and a
