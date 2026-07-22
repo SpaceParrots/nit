@@ -28,6 +28,8 @@ export interface ListDeps {
   call: (c: PanelCmd) => void;
   /** re-render now instead of waiting for the next poll */
   tick: () => void;
+  /** whether the current review has more than one distinct annotation author */
+  multiAuthor: () => boolean;
 }
 
 let deps: ListDeps | null = null;
@@ -71,6 +73,7 @@ export function renderItem(
     span('comment', ann.comment),
     span('route-chip', ann.route || '/'),
   );
+  if (d.multiAuthor() && ann.author) head.append(span('nit-author-chip', ann.author));
   if (ann.issueRef) head.append(span('issue-chip nit-issue-chip', ann.issueRef));
   if (s.mode === 'review') {
     const del = document.createElement('button');
@@ -128,6 +131,7 @@ export function renderItem(
       + (ann.target?.ngComponent ? ` (${ann.target.ngComponent})` : '')));
     if (ann.target?.selector) meta.append(metaRow(ICONS.code, 'selector', selectorCode(ann.target.selector)));
     meta.append(metaRow(ICONS.hash, 'id', ann.id));
+    if (ann.author) meta.append(metaRow(ICONS.user, 'author', ann.author));
     appendShot(meta, ann.id, 'before', ann.screenshot, ann.screenshotAfter ? 'before' : null);
     appendShot(meta, ann.id, 'after', ann.screenshotAfter, 'after');
 

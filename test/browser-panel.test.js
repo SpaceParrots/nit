@@ -20,7 +20,7 @@ function makeFeedback(url) {
         screenshot: null, createdAt: '2026-07-20T10:01:00Z',
       },
       {
-        id: 'a2', type: 'comment', comment: 'Button label unclear', status: 'open', author: 'Kevin',
+        id: 'a2', type: 'comment', comment: 'Button label unclear', status: 'open', author: 'Alice',
         viewportScope: 'general', viewport: { mode: 'desktop', w: 1440, h: 900 }, route: '/about',
         target: { component: 'fake-about', ngComponent: null, selector: '#cta', xpath: '/html[1]/body[1]/main[1]/fake-about[1]/button[1]', tag: 'button', classes: [], text: 'Click me', rect: { x: 20, y: 80, w: 80, h: 30 } },
         screenshot: null, createdAt: '2026-07-20T10:02:00Z',
@@ -71,6 +71,24 @@ test('nit panel — filter dropdown sort, group and collapse', async t => {
       { message: 'no group sections' });
     await waitFor(async () => (await panel.locator('.nit-item').count()) === 2 ? true : null,
       { message: 'both items shown flat' });
+  });
+
+  await t.test('multiple authors: chip on every row, and the filter menu filters by author', async () => {
+    const panel = S.session.panelPage;
+    await waitFor(async () => (await panel.locator('.nit-author-chip').count()) === 2 ? true : null,
+      { message: 'one author chip per row' });
+
+    if (!(await panel.locator('.nit-filter').isVisible())) await panel.locator('.nit-filter-btn').click();
+    await waitFor(async () => (await panel.locator('.nit-author[data-author="Alice"]').count()) === 1 ? true : null,
+      { message: 'Alice option present in the filter menu' });
+
+    await panel.locator('.nit-author[data-author="Alice"]').click();
+    await waitFor(async () => (await panel.locator('.nit-item').count()) === 1 ? true : null,
+      { message: 'only Alice\'s annotation is shown' });
+
+    await panel.locator('.nit-author[data-author="*"]').click();
+    await waitFor(async () => (await panel.locator('.nit-item').count()) === 2 ? true : null,
+      { message: 'clearing the filter restores both items' });
   });
 
   await t.test('sort row is present and the active sort is highlighted', async () => {
@@ -348,7 +366,11 @@ test('nit panel — editing a comment', async t => {
 
   await t.test('blur commits the new text and stamps the edit', async () => {
     await editor().fill('Heading copy needs the brand voice');
-    await panel.locator('body').click(); // blur → commit
+    // Blur via the footer count line, not `body` — the item's own expanded box
+    // (now with the always-shown author row) reaches far enough down the panel
+    // that a plain `body` click can land back on the item itself and toggle it,
+    // rather than merely blurring the textarea.
+    await panel.locator('#count').click(); // blur → commit
     await waitFor(() => {
       const d = JSON.parse(fs.readFileSync(reviewFile, 'utf8'));
       const a = d.annotations.find(x => x.id === 'a1');
@@ -372,7 +394,7 @@ test('nit panel — editing a comment', async t => {
 
   await t.test('an emptied textarea reverts instead of committing', async () => {
     await editor().fill('');
-    await panel.locator('body').click(); // blur
+    await panel.locator('#count').click(); // blur — see the note above
     await panel.waitForTimeout(300);
     const d = JSON.parse(fs.readFileSync(reviewFile, 'utf8'));
     assert.equal(d.annotations.find(x => x.id === 'a1').comment, 'Heading copy needs the brand voice');
@@ -409,10 +431,15 @@ test('nit panel — editing a comment', async t => {
     // This test earlier committed an edit to a1's comment (the "blur commits
     // the new text and stamps the edit" subtest), which stamps updatedAt — so
     // the updated row is present here, unlike a never-edited annotation.
+    // The author row is a new addition (task 2): it always renders when the
+    // annotation has an author, regardless of single- vs. multi-author reviews,
+    // so this single-author fixture ('Kevin' on both a1 and a3) still grows one
+    // more labeled row and icon than before.
     const labels = await panel.locator('.meta-row .meta-label').allTextContents();
-    assert.deepEqual(labels, ['created', 'updated', 'component', 'selector', 'id'], 'labeled rows in order');
+    assert.deepEqual(labels, ['created', 'updated', 'component', 'selector', 'id', 'author'], 'labeled rows in order');
     assert.equal(await panel.locator('.meta-row .meta-value .sel-code').count(), 1, 'selector row keeps highlighting');
-    assert.equal(await panel.locator('.meta-row .meta-value').last().textContent(), 'a1', 'id row shows the id');
-    assert.equal(await panel.locator('.meta-row .meta-ico svg').count(), 5, 'every row has an icon');
+    assert.equal(await panel.locator('.meta-row .meta-value').nth(4).textContent(), 'a1', 'id row shows the id');
+    assert.equal(await panel.locator('.meta-row .meta-value').last().textContent(), 'Kevin', 'author row shows the author');
+    assert.equal(await panel.locator('.meta-row .meta-ico svg').count(), 6, 'every row has an icon');
   });
 });

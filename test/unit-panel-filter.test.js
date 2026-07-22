@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sortAnnotations, groupAnnotations, defaultExpanded } from '../dist/panel/filter.js';
+import { sortAnnotations, groupAnnotations, defaultExpanded, distinctAuthors, filterByAuthor } from '../dist/panel/filter.js';
 
 const ann = (id, route, status, createdAt) => ({ id, route, status, createdAt, type: 'change-request' });
 
@@ -95,4 +95,29 @@ test('panel filter: time sorting handles a missing createdAt without crashing', 
     ['a2', 'a3', 'a1', 'a4', 'a7'],
     'a missing createdAt coerces to the empty string, which sorts as the oldest',
   );
+});
+
+test('panel filter: distinctAuthors dedupes, sorts, and ignores missing/empty authors', () => {
+  const items = [
+    { id: 'a1', author: 'Bob' },
+    { id: 'a2', author: 'Ann' },
+    { id: 'a3', author: 'Bob' },
+    { id: 'a4', author: '' },
+    { id: 'a5' },
+  ];
+  assert.deepEqual(distinctAuthors(items), ['Ann', 'Bob']);
+});
+
+test('panel filter: filterByAuthor(items, null) returns everything', () => {
+  const items = [{ id: 'a1', author: 'Ann' }, { id: 'a2', author: 'Bob' }];
+  assert.deepEqual(filterByAuthor(items, null), items);
+});
+
+test('panel filter: filterByAuthor(items, "Ann") keeps only Ann\'s annotations', () => {
+  const items = [
+    { id: 'a1', author: 'Ann' },
+    { id: 'a2', author: 'Bob' },
+    { id: 'a3', author: 'Ann' },
+  ];
+  assert.deepEqual(filterByAuthor(items, 'Ann').map(a => a.id), ['a1', 'a3']);
 });

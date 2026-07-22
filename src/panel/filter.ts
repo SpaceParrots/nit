@@ -96,6 +96,21 @@ export function defaultExpanded(groupKey: string, opts: FilterOptions, currentRo
   return groupKey === routePath(currentRoute);
 }
 
+/** Distinct, sorted author names; missing/empty authors are ignored. */
+export function distinctAuthors(items: readonly Annotation[]): string[] {
+  const set = new Set<string>();
+  for (const a of items) {
+    if (a.author) set.add(a.author);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+/** Keep only `author`'s annotations; `null` keeps everything. */
+export function filterByAuthor(items: readonly Annotation[], author: string | null): Annotation[] {
+  if (author === null) return [...items];
+  return items.filter(a => a.author === author);
+}
+
 function byNewest(a: Annotation, b: Annotation): number {
   return String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''));
 }

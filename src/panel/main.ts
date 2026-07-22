@@ -7,7 +7,7 @@ import css from './panel.css';
 import { initList, renderItem } from './list.js';
 import type { PanelView } from './list.js';
 import { ICONS } from './icons.js';
-import { groupAnnotations, defaultExpanded } from './filter.js';
+import { groupAnnotations, defaultExpanded, distinctAuthors, filterByAuthor } from './filter.js';
 import type { FilterOptions, GroupKey, SortKey } from './filter.js';
 import type { PanelCmd, PanelState, ViewportMode } from '../types.js';
 
@@ -30,8 +30,15 @@ const toggledGroups = new Set<string>();
 let menuOpen = false;
 /** the last state we rendered — lets a menu interaction repaint without waiting a tick */
 let lastState: PanelState | null = null;
+/** selected author to filter the list to, or `null` for everyone */
+let authorFilter: string | null = null;
 
-initList({ view, shots: shotCache, call, tick: () => void tick() });
+initList({ view, shots: shotCache, call, tick: () => void tick(), multiAuthor });
+
+/** Whether the current review has more than one distinct annotation author. */
+function multiAuthor(): boolean {
+  return lastState ? distinctAuthors(lastState.annotations).length > 1 : false;
+}
 
 const filterBtn = $('#filter-btn');
 const filterMenu = $('#filter-menu');
@@ -45,8 +52,14 @@ filterBtn.addEventListener('click', () => setMenuOpen(filterMenu.hidden));
 
 document.addEventListener('click', e => {
   if (!menuOpen) return;
-  const t = e.target;
-  if (t instanceof Node && (filterMenu.contains(t) || filterBtn.contains(t))) return;
+  // A menu-row pick (sort/group/author) rebuilds `filterMenu`'s contents
+  // synchronously from inside the click handler, detaching the very button that
+  // was clicked before this bubbles up here — so `filterMenu.contains(e.target)`
+  // would see a detached node and wrongly read as "outside", closing the menu
+  // mid-pick. `composedPath()` is captured when dispatch starts, before that
+  // rebuild runs, so it still reflects the menu as the click's true ancestor.
+  const path = e.composedPath();
+  if (path.includes(filterMenu) || path.includes(filterBtn)) return;
   setMenuOpen(false);
 });
 document.addEventListener('keydown', e => {
@@ -132,7 +145,7 @@ async function tick(): Promise<void> {
   let s: PanelState | undefined;
   try { s = await window.__nitPanelState(); } catch { return; }
   if (!s) return;
-  const key = JSON.stringify([s, view.expandedId, opts, [...toggledGroups], menuOpen]);
+  const key = JSON.stringify([s, view.expandedId, opts, [...toggledGroups], menuOpen, authorFilter]);
   if (key === view.lastKey) return;
   view.lastKey = key;
   render(s);
@@ -153,6 +166,9 @@ function render(s: PanelState): void {
     a => a.type === 'change-request' && (a.status === 'open' || a.status === 'reopened'),
   ).length;
   $('#count').textContent = `${s.annotations.length} annotation${s.annotations.length === 1 ? '' : 's'} · ${actionable} actionable`;
+
+  const authors = distinctAuthors(s.annotations);
+  if (authorFilter && !authors.includes(authorFilter)) authorFilter = null;
 
   filterMenu.innerHTML = '';
   const scope = document.createElement('label');
@@ -176,7 +192,19 @@ function render(s: PanelState): void {
       view.lastKey = '';
       if (lastState) render(lastState);
     });
-  filterMenu.append(sortRow, hr(), groupRow, hr(), scope);
+  filterMenu.append(sortRow, hr(), groupRow, hr());
+  // Only worth a control once a review actually has more than one author —
+  // the whole point of the feature is to stay invisible on single-author reviews.
+  if (authors.length > 1) {
+    const authorRow = radioRow('Author', 'nit-author', 'author',
+      [['*', 'All'], ...authors.map((a): [string, string] => [a, a])], authorFilter ?? '*', v => {
+        authorFilter = v === '*' ? null : v;
+        view.lastKey = '';
+        if (lastState) render(lastState);
+      });
+    filterMenu.append(authorRow, hr());
+  }
+  filterMenu.append(scope);
 
   const placedIndex = new Map<string, number>();
   (s.placed || []).forEach((id, i) => placedIndex.set(id, i + 1));
@@ -184,7 +212,8 @@ function render(s: PanelState): void {
 
   const list = $('#list');
   list.innerHTML = '';
-  const listed = s.annotations.filter(a => !unplacedSet.has(a.id));
+  const filtered = filterByAuthor(s.annotations, authorFilter);
+  const listed = filtered.filter(a => !unplacedSet.has(a.id));
   if (!listed.length) {
     const empty = document.createElement('div');
     empty.className = 'empty';
@@ -220,7 +249,7 @@ function render(s: PanelState): void {
     list.append(section);
   }
 
-  const un = s.annotations.filter(a => unplacedSet.has(a.id));
+  const un = filtered.filter(a => unplacedSet.has(a.id));
   $('#unplaced').hidden = un.length === 0;
   $('#unplaced-head').textContent = 'Couldn\'t place on this page (' + un.length + ')';
   const ul = $('#unplaced-list');

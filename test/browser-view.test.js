@@ -74,6 +74,17 @@ test('nit view — replay flow', async t => {
     assert.ok(text.includes('Ghost element'));
     // and the page is still alive — no crash
     assert.equal(await page.evaluate(() => 1 + 1), 2);
+
+    // single-author fixture (every annotation is 'Kevin'): no author chip, and
+    // no author filter row in the menu.
+    assert.equal(await panel.locator('.nit-author-chip').count(), 0, 'no author chip with a single author');
+    await panel.locator('.nit-filter-btn').click();
+    await waitFor(async () => await panel.locator('.nit-filter').isVisible() ? true : null,
+      { message: 'filter menu open' });
+    assert.equal(await panel.locator('.nit-author').count(), 0, 'no author filter row with a single author');
+    await panel.locator('.nit-filter-btn').click(); // close again, don't disturb later subtests
+    await waitFor(async () => await panel.locator('.nit-filter').isVisible() ? null : true,
+      { message: 'filter menu closed' });
   });
 
   await t.test('SPA route change re-anchors: /about shows its own pin', async () => {
