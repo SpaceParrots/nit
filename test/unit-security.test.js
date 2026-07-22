@@ -82,7 +82,7 @@ test('security: resolveAnnotationUrl rejects same host with a different port or 
   assert.equal(resolveAnnotationUrl(base, 'http://staging.example.com/'), null);
 });
 
-test('security: resolveAnnotationUrl rejects a percent-encoded traversal attempt', () => {
+test('security: resolveAnnotationUrl does not decode percent-encoding into an escape — the value stays on-origin', () => {
   const base = 'https://staging.example.com/';
   // '%2F%2Fevil.com' decodes to '//evil.com', but the URL parser treats the
   // percent-encoding literally (it is not re-decoded before parsing), so this
