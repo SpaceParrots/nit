@@ -8,6 +8,9 @@
 - **Syntax-highlighted selectors in the panel** — the expanded annotation
   detail renders the selector monospace with ids and `data-id` attributes
   highlighted, built from safe text-only spans.
+- **Labeled annotation details** — the expanded panel item shows a color-coded
+  status badge, a scope badge, and icon-labeled rows (created, updated,
+  component, selector, id) instead of run-together text lines.
 
 ## 1.0.0 — 2026-07-22
 

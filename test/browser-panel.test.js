@@ -118,8 +118,11 @@ test('nit panel — expanded item: timestamps, issue ref, go to page', async t =
     await panel.locator('.nit-item[data-id="a1"]').click();
     await waitFor(async () => (await panel.locator('.nit-item[data-id="a1"] .meta').count()) === 1 ? true : null,
       { message: 'item expands' });
+    // "created" and its value are now separate grid cells of a .meta-row
+    // rather than words on one text line, so innerText joins them with a
+    // line break instead of a space.
     const metaText = await panel.locator('.nit-item[data-id="a1"] .meta').innerText();
-    assert.match(metaText, /created 2026-07-20 \d{2}:\d{2}/, 'created stamp rendered');
+    assert.match(metaText, /created\s+2026-07-20 \d{2}:\d{2}/i, 'created stamp rendered');
 
     const input = panel.locator('.nit-item[data-id="a1"] .nit-issue');
     await input.click();
@@ -389,5 +392,27 @@ test('nit panel — editing a comment', async t => {
     assert.equal(await idSpan.count(), 1, 'one id token');
     assert.equal(await idSpan.textContent(), '#hero-title');
     assert.equal(await panel.locator('.sel-code').textContent(), '#hero-title', 'lossless');
+  });
+
+  await t.test('expanded item labels fields with badges and icon rows', async () => {
+    const panel = S.session.panelPage;
+    await waitFor(async () => (await panel.locator('.meta-badges').count()) === 1 ? true : null,
+      { message: 'badge row appears' });
+    const status = panel.locator('.badge-status');
+    assert.equal(await status.count(), 1, 'one status badge');
+    assert.equal(await status.getAttribute('data-status'), 'open');
+    assert.ok((await status.getAttribute('class')).includes('badge-status--open'), 'known status gets modifier');
+    const scope = panel.locator('.badge-scope');
+    assert.equal(await scope.count(), 1, 'one scope badge');
+    assert.equal((await scope.textContent()).trim(), 'general');
+    assert.equal(await scope.locator('svg').count(), 1, 'scope badge has an icon');
+    // This test earlier committed an edit to a1's comment (the "blur commits
+    // the new text and stamps the edit" subtest), which stamps updatedAt — so
+    // the updated row is present here, unlike a never-edited annotation.
+    const labels = await panel.locator('.meta-row .meta-label').allTextContents();
+    assert.deepEqual(labels, ['created', 'updated', 'component', 'selector', 'id'], 'labeled rows in order');
+    assert.equal(await panel.locator('.meta-row .meta-value .sel-code').count(), 1, 'selector row keeps highlighting');
+    assert.equal(await panel.locator('.meta-row .meta-value').last().textContent(), 'a1', 'id row shows the id');
+    assert.equal(await panel.locator('.meta-row .meta-ico svg').count(), 5, 'every row has an icon');
   });
 });

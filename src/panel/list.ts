@@ -118,13 +118,16 @@ export function renderItem(
     edit.addEventListener('click', e => e.stopPropagation());
     meta.append(edit);
 
-    meta.append(
-      line(`${ann.id} · ${ann.status} · scope ${ann.viewportScope}`),
-      line(stamps(ann)),
-      line('component: ' + (ann.target?.component || '?')
-        + (ann.target?.ngComponent ? ' (' + ann.target.ngComponent + ')' : '')),
-    );
-    if (ann.target?.selector) meta.append(selectorLine(ann.target.selector));
+    meta.append(badges(ann));
+    meta.append(metaRow(ICONS.clock, 'created', shortTime(ann.createdAt)));
+    if (ann.updatedAt) {
+      meta.append(metaRow(ICONS.pencil, 'updated',
+        shortTime(ann.updatedAt) + (ann.updatedBy ? ` by ${ann.updatedBy}` : '')));
+    }
+    meta.append(metaRow(ICONS.box, 'component', (ann.target?.component || '?')
+      + (ann.target?.ngComponent ? ` (${ann.target.ngComponent})` : '')));
+    if (ann.target?.selector) meta.append(metaRow(ICONS.code, 'selector', selectorCode(ann.target.selector)));
+    meta.append(metaRow(ICONS.hash, 'id', ann.id));
     appendShot(meta, ann.id, 'before', ann.screenshot, ann.screenshotAfter ? 'before' : null);
     appendShot(meta, ann.id, 'after', ann.screenshotAfter, 'after');
 
@@ -249,24 +252,12 @@ export function line(text: string): HTMLElement {
   return el;
 }
 
-/** "created 2026-07-21 14:22 · updated 2026-07-22 09:01 by Kevin" */
-function stamps(ann: Annotation): string {
-  const parts = [`created ${shortTime(ann.createdAt)}`];
-  if (ann.updatedAt) {
-    parts.push(`updated ${shortTime(ann.updatedAt)}${ann.updatedBy ? ` by ${ann.updatedBy}` : ''}`);
-  }
-  return parts.join(' · ');
-}
-
 /**
- * The `selector:` meta line, syntax-highlighted token by token. Built from
- * `textContent`-only spans — the selector string comes from untrusted
- * annotations.json and must never reach innerHTML.
+ * The highlighted selector value, token by token. Built from `textContent`-only
+ * spans — the selector string comes from untrusted annotations.json and must
+ * never reach innerHTML.
  */
-function selectorLine(sel: string): HTMLElement {
-  const el = document.createElement('div');
-  el.className = 'meta-line';
-  el.append(document.createTextNode('selector: '));
+function selectorCode(sel: string): HTMLElement {
   const code = document.createElement('code');
   code.className = 'sel-code';
   for (const tok of tokenizeSelector(sel)) {
@@ -275,8 +266,48 @@ function selectorLine(sel: string): HTMLElement {
     s.textContent = tok.text;
     code.append(s);
   }
-  el.append(code);
-  return el;
+  return code;
+}
+
+const KNOWN_STATUSES = new Set(['open', 'fixed', 'verified', 'reopened', 'wontfix']);
+
+/**
+ * Status + scope badge row. The status modifier class is only applied for the
+ * known status set — class names are never built from unvalidated file data;
+ * the visible text itself is textContent and therefore safe verbatim.
+ */
+function badges(ann: Annotation): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'meta-badges';
+  const status = document.createElement('span');
+  status.className = 'badge-status' + (KNOWN_STATUSES.has(ann.status) ? ` badge-status--${ann.status}` : '');
+  status.dataset.status = ann.status;
+  status.textContent = ann.status;
+  const scope = document.createElement('span');
+  scope.className = 'badge-scope';
+  scope.innerHTML = ann.viewportScope === 'desktop' ? ICONS.monitor
+    : ann.viewportScope === 'mobile' ? ICONS.smartphone : ICONS.globe;
+  scope.append(document.createTextNode(ann.viewportScope));
+  row.append(status, scope);
+  return row;
+}
+
+/** One icon + label + value row of the expanded meta block. */
+function metaRow(icon: string, label: string, value: string | HTMLElement): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'meta-row';
+  const ic = document.createElement('span');
+  ic.className = 'meta-ico';
+  ic.innerHTML = icon; // static trusted ICONS markup only — never file data
+  const lab = document.createElement('span');
+  lab.className = 'meta-label';
+  lab.textContent = label;
+  const val = document.createElement('span');
+  val.className = 'meta-value';
+  if (typeof value === 'string') val.textContent = value;
+  else val.append(value);
+  row.append(ic, lab, val);
+  return row;
 }
 
 /** ISO timestamp → `2026-07-21 14:22` in local time; the raw value if unparseable. */
