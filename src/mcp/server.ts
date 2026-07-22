@@ -237,7 +237,11 @@ function setStatus(store: Store, { id, status }: Record<string, unknown>): ToolR
 
 function setIssueRef(store: Store, { id, ref }: Record<string, unknown>): ToolResult {
   if (typeof id !== 'string') return toolError('id must be a string');
-  const value = typeof ref === 'string' ? ref.trim().slice(0, 200) : '';
+  // The caller is a program over JSON-RPC, so a wrong type is a bug worth
+  // reporting — coercing it would silently CLEAR the reference instead. Only the
+  // documented empty string clears it.
+  if (typeof ref !== 'string') return toolError('ref must be a string (use "" to clear it)');
+  const value = ref.trim().slice(0, 200);
   return writeAnnotation(store, id, { issueRef: value || undefined });
 }
 

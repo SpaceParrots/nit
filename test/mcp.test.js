@@ -212,6 +212,24 @@ test('mcp: set_issue_ref sets and clears the reference', async () => {
   assert.equal(JSON.parse(cleared.content[0].text).issueRef, undefined);
 });
 
+// The caller is a program, so a non-string `ref` is a type error to report — it
+// used to be coerced to '' and silently WIPE a reference the agent had set.
+test('mcp: set_issue_ref reports a non-string ref instead of clearing the reference', async () => {
+  const { call, dir } = await startFixtureMcp();
+  await call('set_issue_ref', { id: 'a1', ref: 'FAI-1234' });
+
+  for (const ref of [42, null, { key: 'FAI-1' }, ['FAI-1'], true]) {
+    const res = await call('set_issue_ref', { id: 'a1', ref });
+    assert.equal(res.isError, true, `${JSON.stringify(ref)} is rejected`);
+    assert.match(res.content[0].text, /ref must be a string/);
+  }
+  const missing = await call('set_issue_ref', { id: 'a1' });
+  assert.equal(missing.isError, true, 'an omitted ref is rejected too');
+
+  const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
+  assert.equal(onDisk.annotations[0].issueRef, 'FAI-1234', 'the stored reference is untouched');
+});
+
 test('mcp: set_status stamps updatedBy agent', async () => {
   const { call } = await startFixtureMcp();
   const res = await call('mark_fixed', { id: 'a1' });
