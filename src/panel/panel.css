@@ -100,6 +100,15 @@ footer .btn { width: 100%; }
 }
 .nit-issue:hover { border-color: var(--muted); }
 .nit-issue:focus { outline: none; border-color: var(--accent); }
+.nit-comment-edit {
+  width: 100%; resize: vertical; min-height: 40px;
+  background: #1c1c1e; color: var(--fg);
+  border: 1px solid var(--border); border-radius: 5px; padding: 5px 6px;
+  font: inherit; font-size: 12px; line-height: 1.4;
+  transition: border-color 0.12s ease;
+}
+.nit-comment-edit:hover { border-color: var(--muted); }
+.nit-comment-edit:focus { outline: none; border-color: var(--accent); }
 .nit-goto { width: 100%; margin-top: 6px; justify-content: flex-start; font-size: 11px; }
 .issue-chip {
   flex: none; font-size: 9px; font-weight: 600; color: var(--comment);

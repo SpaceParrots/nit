@@ -22,7 +22,8 @@ shareable (`export` / `import`) and mergeable across authors.
   matches on the pathname, so older review files behave unchanged.
 - **Rebuilt panel** — logo, icon toolbar, sort (time/page/state) + grouping (page/state) behind a
   filter dropdown, collapsible page groups with the current page first, created/updated stamps, an
-  issue-ref input, "Go to page" navigation, and a pinned footer with the actionable count.
+  issue-ref input, editable comment texts, "Go to page" navigation, and a pinned footer with the
+  actionable count.
 - **MCP** — new `set_issue_ref` tool; `list_annotations` summaries carry `issueRef`, timestamps and
   `historyCount`.
 - **Context screenshots, captured at pick time** — screenshots expand to a minimum context window

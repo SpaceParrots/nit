@@ -83,7 +83,8 @@ Every command has detailed help: `nit <command> --help`. Common flags: `--mobile
 - The **panel window** next to the browser lists everything, switches desktop ↔ mobile, and — from
   a dropdown behind the filter icon — sorts by page, time or state, groups by page or state, and
   filters to the current viewport scope. It jumps to the page an annotation was found on, records an
-  issue reference, deletes items and finishes the review — nothing overlays the page under review.
+  issue reference, edits comment texts, deletes items and finishes the review — nothing overlays
+  the page under review.
 - Works on CSP-hardened production sites, plain static pages, and SPAs (annotations are pinned to
   client-side routes).
 

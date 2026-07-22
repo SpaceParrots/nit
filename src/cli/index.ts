@@ -77,8 +77,8 @@ withBrowserOptions(
       + 'element, describe the change, pick a type (change request / comment) and a viewport\n'
       + 'scope, then Save. The nit panel window next to the browser lists annotations,\n'
       + 'switches desktop/mobile, sorts and groups them by page, time or state, jumps to\n'
-      + 'the page an annotation was found on, records an issue reference, deletes items,\n'
-      + 'and finishes the review.\n\n'
+      + 'the page an annotation was found on, records an issue reference, edits comment\n'
+      + 'texts, deletes items, and finishes the review.\n\n'
       + 'Writes <out>/annotations.json, review.md, fix-annotations.md and shots/*.png.')
     .argument('<url>', 'page to open (https:// is assumed when no scheme is given)')
     .option('-o, --out <dir>', 'output directory', 'nit-review')

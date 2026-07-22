@@ -62,8 +62,13 @@ document.addEventListener('keydown', e => {
 window.addEventListener('blur', () => {
   if (menuOpen) setMenuOpen(false);
   const active = document.activeElement;
-  if (active instanceof HTMLElement && active.classList.contains('nit-issue')) active.blur();
+  if (active instanceof HTMLElement && isEditor(active)) active.blur();
 });
+
+/** The two text editors whose focus pauses the poll loop (issue ref, comment). */
+function isEditor(el: Element): boolean {
+  return el.classList.contains('nit-issue') || el.classList.contains('nit-comment-edit');
+}
 
 /** Open or close the filter dropdown, keeping `menuOpen` and the DOM in sync. */
 function setMenuOpen(open: boolean): void {
@@ -117,13 +122,13 @@ function viewportOf(b: HTMLElement): ViewportMode | null {
  */
 async function tick(): Promise<void> {
   if (typeof window.__nitPanelState !== 'function') return;
-  // A wholesale repaint mid-typing would steal the caret from the issue input and
+  // A wholesale repaint mid-typing would steal the caret from the text editors and
   // close the dropdown. Skip; the next tick after focus leaves picks the state up.
-  // Match the issue input by class, not by tag: the filter menu's scope checkbox
-  // is an <input> too, and guarding on it froze the panel until the user happened
-  // to click something non-focusable.
+  // Match the editors by class, not by tag: the filter menu's scope checkbox is an
+  // <input> too, and guarding on it froze the panel until the user happened to
+  // click something non-focusable.
   const active = document.activeElement;
-  if (menuOpen || (active instanceof HTMLElement && active.classList.contains('nit-issue'))) return;
+  if (menuOpen || (active instanceof HTMLElement && isEditor(active))) return;
   let s: PanelState | undefined;
   try { s = await window.__nitPanelState(); } catch { return; }
   if (!s) return;

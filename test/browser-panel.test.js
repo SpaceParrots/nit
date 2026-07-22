@@ -323,3 +323,56 @@ test('nit panel — go to page is enabled across different queries of the same p
       ? true : null, { message: 'go-to disables once its exact route is current' });
   });
 });
+
+test('nit panel — editing a comment', async t => {
+  const server = await startFixtureServer();
+  const dir = tmpDir('nit-edit-');
+  const reviewFile = path.join(dir, 'annotations.json');
+  fs.writeFileSync(reviewFile, JSON.stringify(makeGotoFeedback(server.url), null, 2));
+
+  const S = await startTestSession({ mode: 'view', url: undefined, reviewFile });
+  t.after(async () => {
+    await S.session.close();
+    await server.close();
+  });
+  const panel = S.session.panelPage;
+  const editor = () => panel.locator('.nit-item[data-id="a1"] .nit-comment-edit');
+
+  await waitFor(async () => (await panel.locator('.nit-item[data-id="a1"]').count()) === 1 ? true : null,
+    { message: 'item listed' });
+  await panel.locator('.nit-item[data-id="a1"]').click();
+  await waitFor(async () => (await editor().count()) === 1 ? true : null, { message: 'editor visible' });
+
+  await t.test('blur commits the new text and stamps the edit', async () => {
+    await editor().fill('Heading copy needs the brand voice');
+    await panel.locator('body').click(); // blur → commit
+    await waitFor(() => {
+      const d = JSON.parse(fs.readFileSync(reviewFile, 'utf8'));
+      const a = d.annotations.find(x => x.id === 'a1');
+      return a.comment === 'Heading copy needs the brand voice' && a.updatedAt ? a : null;
+    }, { message: 'comment persisted with a stamp' });
+    const logs = S.logs.filter(l => l.includes('comment edited'));
+    assert.equal(logs.length, 1, 'exactly one edit write');
+  });
+
+  await t.test('Escape reverts without a write', async () => {
+    await panel.locator('.nit-item[data-id="a1"]').click(); // collapse
+    await panel.locator('.nit-item[data-id="a1"]').click(); // re-expand fresh
+    await waitFor(async () => (await editor().count()) === 1 ? true : null, { message: 'editor back' });
+    await editor().fill('discarded draft');
+    await editor().press('Escape');
+    await panel.waitForTimeout(300);
+    const d = JSON.parse(fs.readFileSync(reviewFile, 'utf8'));
+    assert.equal(d.annotations.find(x => x.id === 'a1').comment, 'Heading copy needs the brand voice');
+    assert.equal(await editor().inputValue(), 'Heading copy needs the brand voice', 'textarea restored');
+  });
+
+  await t.test('an emptied textarea reverts instead of committing', async () => {
+    await editor().fill('');
+    await panel.locator('body').click(); // blur
+    await panel.waitForTimeout(300);
+    const d = JSON.parse(fs.readFileSync(reviewFile, 'utf8'));
+    assert.equal(d.annotations.find(x => x.id === 'a1').comment, 'Heading copy needs the brand voice');
+    assert.equal(S.logs.filter(l => l.includes('comment edited')).length, 1, 'no second write');
+  });
+});

@@ -93,6 +93,30 @@ export function renderItem(
   if (d.view.expandedId === ann.id) {
     const meta = document.createElement('div');
     meta.className = 'meta';
+
+    // Editable comment — blur / Ctrl+Enter commits, Escape reverts, empty reverts
+    // (clearing the text is the delete button's job). Same discipline as the
+    // issue-ref input below; the poll loop's focus guard covers both.
+    const edit = document.createElement('textarea');
+    edit.className = 'nit-comment-edit';
+    edit.rows = 2;
+    edit.value = ann.comment;
+    const commitComment = (): void => {
+      const value = edit.value.trim();
+      if (!value || value === ann.comment) {
+        edit.value = ann.comment; // reject empty / no-op: restore what is stored
+        return;
+      }
+      try { void window.__nitSetComment?.(ann.id, value); } catch { /* bridge gone */ }
+    };
+    edit.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); edit.blur(); }
+      if (e.key === 'Escape') { edit.value = ann.comment; edit.blur(); }
+    });
+    edit.addEventListener('blur', commitComment);
+    edit.addEventListener('click', e => e.stopPropagation());
+    meta.append(edit);
+
     meta.append(
       line(`${ann.id} · ${ann.status} · scope ${ann.viewportScope}`),
       line(stamps(ann)),

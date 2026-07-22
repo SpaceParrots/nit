@@ -61,6 +61,7 @@ interface RawSavePayload {
  *  - `__nitShot(id, which?)`      screenshot as data-uri ('after' for the verify shot)
  *  - `__nitVerdict(id, verdict)`  verify ruling: 'verified' | 'reopened'
  *  - `__nitSetIssueRef(id, ref)`  attach/clear a tracker issue reference
+ *  - `__nitSetComment(id, text)`  edit an annotation's comment (non-empty)
  *  - `__nitGoTo(id)`              navigate the site page to an annotation's route
  *  - `__nitDelete(id)`            remove annotation + screenshot files
  *  - `__nitFinish()`              flush review and close the session
@@ -185,6 +186,19 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
     if (!ann) return { ok: false, error: `no annotation ${id}` };
     session.flush();
     session.log(value ? `~ ${id} issue ${value}` : `~ ${id} issue cleared`);
+    return { ok: true, annotation: ann };
+  }));
+
+  await context.exposeBinding('__nitSetComment', guard((source, id: unknown, comment: unknown) => {
+    if (typeof id !== 'string') return { ok: false, error: 'id must be a string' };
+    // Same rule as capture (validateSave): a comment is required. Clearing the
+    // text is the delete button's job, not an edit.
+    const value = typeof comment === 'string' ? comment.trim() : '';
+    if (!value) return { ok: false, error: 'comment is required' };
+    const ann = store.patch(id, { comment: value }, session.author);
+    if (!ann) return { ok: false, error: `no annotation ${id}` };
+    session.flush();
+    session.log(`~ ${id} comment edited: ${value.slice(0, 70)}`);
     return { ok: true, annotation: ann };
   }));
 
