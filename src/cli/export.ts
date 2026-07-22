@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { zipSync } from 'fflate';
+import { resolveReviewFile } from '../store/store.js';
 import { slugify } from '../util/slug.js';
 import type { ReviewData } from '../types.js';
 
@@ -31,11 +32,8 @@ export interface ExportResult {
  * @throws when there is no annotations.json to export
  */
 export function runExport(input = 'nit-review', { out, log = line => console.log(line) }: ExportOptions = {}): ExportResult {
-  const inputPath = path.resolve(input);
-  const isFile = fs.existsSync(inputPath) && fs.statSync(inputPath).isFile();
-  const dir = isFile ? path.dirname(inputPath) : inputPath;
-  const annotationsFile = isFile ? inputPath : path.join(dir, 'annotations.json');
-  if (!fs.existsSync(annotationsFile)) {
+  const { dir, file: annotationsFile, exists } = resolveReviewFile(input);
+  if (!exists) {
     throw new Error(`no annotations.json in ${dir} — nothing to export (run: nit review <url>)`);
   }
 

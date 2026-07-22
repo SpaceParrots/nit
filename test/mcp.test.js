@@ -1,173 +1,89 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Milestone 11: the MCP stdio server wraps annotations.json without schema changes.
-// A scripted JSON-RPC client drives initialize → tools/list → tools/call.
-import test, { after } from 'node:test';
+// The MCP stdio server wraps annotations.json without schema changes. The SDK's
+// own client drives the real `nit mcp` process: initialize → tools/list →
+// tools/call, plus the structured output and tool annotations clients rely on.
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { tmpDir } from './helpers/tmp.js';
+import { tmpDir, readAnnotations } from './helpers/tmp.js';
+import { startFixtureMcp, startMcpClient } from './helpers/mcp.js';
 
-const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli', 'index.js');
+const TOOL_NAMES = ['nit_get_annotation', 'nit_list_annotations', 'nit_mark_fixed', 'nit_set_issue_ref', 'nit_set_status'];
 
-const PNG_1PX = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-  'base64',
-);
+test('mcp server — handshake announces nit, its instructions and its capabilities', async t => {
+  const { client } = await startFixtureMcp(t);
 
-// Options let a test override the a1 fixture annotation (e.g. a query-carrying
-// route) without duplicating the whole fixture.
-function makeReviewDir({ route = '/products', history } = {}) {
-  const dir = tmpDir('nit-mcp-');
-  fs.mkdirSync(path.join(dir, 'shots'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'shots', 'a1.png'), PNG_1PX);
-  const data = {
-    review: { id: 'mcp-fixture', url: 'https://example.com', createdAt: '2026-07-20T10:00:00Z', authors: ['Kevin'] },
-    annotations: [
-      {
-        id: 'a1', type: 'change-request', comment: 'Make the badge yellow', status: 'open', author: 'Kevin',
-        viewportScope: 'general', viewport: { mode: 'desktop', w: 1440, h: 900 }, route,
-        target: { component: 'app-tile', ngComponent: null, selector: '.badge', xpath: '/html[1]', tag: 'div', classes: ['badge'], text: 'New', rect: { x: 0, y: 0, w: 10, h: 10 } },
-        screenshot: 'shots/a1.png', createdAt: '2026-07-20T10:01:00Z',
-        ...(history ? { history } : {}),
-      },
-      {
-        id: 'a2', type: 'comment', comment: 'Nice animation', status: 'open', author: 'Ann',
-        viewportScope: 'general', viewport: { mode: 'desktop', w: 1440, h: 900 }, route: '/',
-        target: { component: 'app-header', ngComponent: null, selector: '#logo', xpath: '/html[1]', tag: 'a', classes: [], text: '', rect: { x: 0, y: 0, w: 10, h: 10 } },
-        screenshot: null, createdAt: '2026-07-20T10:02:00Z',
-      },
-    ],
-  };
-  fs.writeFileSync(path.join(dir, 'annotations.json'), JSON.stringify(data, null, 2));
-  return dir;
-}
+  const info = client.getServerVersion();
+  assert.equal(info.name, 'nit');
+  // the real package version, not a hardcoded one
+  assert.equal(info.version, JSON.parse(fs.readFileSync('package.json', 'utf8')).version);
 
-function startClient(dir) {
-  const child = spawn(process.execPath, [CLI, 'mcp', dir], { stdio: ['pipe', 'pipe', 'pipe'] });
-  const pending = new Map();
-  let buffer = '';
-  child.stdout.on('data', chunk => {
-    buffer += chunk.toString();
-    let idx;
-    while ((idx = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, idx).trim();
-      buffer = buffer.slice(idx + 1);
-      if (!line) continue;
-      let msg;
-      try { msg = JSON.parse(line); } catch { continue; }
-      const resolve = pending.get(msg.id);
-      if (resolve) {
-        pending.delete(msg.id);
-        resolve(msg);
-      }
-    }
-  });
-  let nextId = 1;
-  return {
-    child,
-    request(method, params) {
-      const id = nextId++;
-      const promise = new Promise((resolve, reject) => {
-        pending.set(id, resolve);
-        setTimeout(() => reject(new Error(`timeout waiting for ${method}`)), 10000);
-      });
-      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
-      return promise;
-    },
-    notify(method, params) {
-      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n');
-    },
-    close() {
-      child.stdin.end();
-      child.kill();
-    },
-  };
-}
+  const capabilities = client.getServerCapabilities();
+  assert.ok(capabilities.tools, 'tools capability');
+  assert.ok(capabilities.resources, 'resources capability');
 
-// Fixture clients spawned by startFixtureMcp() are closed in bulk after the
-// file's tests finish, since the brief's tests take no `t` to register per-test
-// cleanup with.
-const fixtureClients = [];
-after(() => { for (const c of fixtureClients) c.close(); });
+  const instructions = client.getInstructions();
+  assert.match(instructions, /nit_list_annotations/);
+  assert.match(instructions, /wontfix/);
+});
 
-/**
- * Spin up a fixture review dir + MCP server, complete the initialize handshake,
- * and return a `call(name, args)` helper that resolves to the tool result
- * (`{ content, isError? }`) — the shape the brief's tests assert against.
- * @param {{ route?: string }} [annotationOverrides] forwarded to makeReviewDir
- */
-async function startFixtureMcp(annotationOverrides = {}) {
-  const dir = makeReviewDir(annotationOverrides);
-  const client = startClient(dir);
-  fixtureClients.push(client);
-  await client.request('initialize', {
-    protocolVersion: '2025-06-18',
-    capabilities: {},
-    clientInfo: { name: 'nit-test', version: '0' },
-  });
-  client.notify('notifications/initialized');
-  return {
-    dir,
-    client,
-    async call(name, args) {
-      const res = await client.request('tools/call', { name, arguments: args });
-      return res.result;
-    },
-  };
-}
+test('mcp server — tools carry titles, annotations and output schemas', async t => {
+  const { client } = await startFixtureMcp(t);
+  const { tools } = await client.listTools();
+  assert.deepEqual(tools.map(x => x.name).sort(), TOOL_NAMES);
 
-test('mcp server — list, get, mark_fixed, set_status over stdio JSON-RPC', async t => {
-  const dir = makeReviewDir();
-  const client = startClient(dir);
-  t.after(() => client.close());
+  for (const tool of tools) {
+    assert.ok(tool.title, `${tool.name} has a title`);
+    assert.ok(tool.outputSchema, `${tool.name} declares an output schema`);
+    assert.equal(tool.annotations.openWorldHint, false, `${tool.name} is closed-world`);
+  }
 
-  const init = await client.request('initialize', {
-    protocolVersion: '2025-06-18',
-    capabilities: {},
-    clientInfo: { name: 'nit-test', version: '0' },
-  });
-  assert.equal(init.result.serverInfo.name, 'nit');
-  assert.equal(init.result.protocolVersion, '2025-06-18');
-  client.notify('notifications/initialized');
+  const byName = Object.fromEntries(tools.map(x => [x.name, x]));
+  assert.equal(byName.nit_list_annotations.annotations.readOnlyHint, true);
+  assert.equal(byName.nit_get_annotation.annotations.readOnlyHint, true);
+  assert.equal(byName.nit_mark_fixed.annotations.readOnlyHint, false);
+  assert.equal(byName.nit_mark_fixed.annotations.destructiveHint, false, 'a status change is reversible');
+  // the enum reaches the client, so an agent knows the legal statuses up front
+  assert.deepEqual(byName.nit_set_status.inputSchema.properties.status.enum,
+    ['open', 'fixed', 'wontfix', 'verified', 'reopened']);
+});
 
-  const tools = await client.request('tools/list');
-  const names = tools.result.tools.map(x => x.name);
-  assert.deepEqual(names.sort(), ['nit_get_annotation', 'nit_list_annotations', 'nit_mark_fixed', 'nit_set_issue_ref', 'nit_set_status']);
+test('mcp server — list, get, mark_fixed, set_status', async t => {
+  const { dir, call } = await startFixtureMcp(t);
 
-  const list = await client.request('tools/call', { name: 'nit_list_annotations', arguments: {} });
-  const listed = JSON.parse(list.result.content[0].text);
-  assert.equal(listed.total, 2);
-  assert.equal(listed.actionable, 1); // only the open change-request
-  assert.equal(listed.annotations[0].component, 'app-tile');
+  const list = await call('nit_list_annotations', {});
+  assert.equal(list.structuredContent.total, 2);
+  assert.equal(list.structuredContent.actionable, 1); // only the open change-request
+  assert.equal(list.structuredContent.annotations[0].component, 'app-tile');
+  assert.equal(list.structuredContent.review.id, 'mcp-fixture');
+  // the same payload is mirrored as text for clients that ignore structured content
+  assert.deepEqual(JSON.parse(list.content[0].text), list.structuredContent);
 
-  const filtered = await client.request('tools/call', { name: 'nit_list_annotations', arguments: { type: 'comment' } });
-  assert.equal(JSON.parse(filtered.result.content[0].text).total, 1);
+  const filtered = await call('nit_list_annotations', { type: 'comment' });
+  assert.equal(filtered.structuredContent.total, 1);
 
-  const got = await client.request('tools/call', { name: 'nit_get_annotation', arguments: { id: 'a1' } });
-  const gotAnn = JSON.parse(got.result.content[0].text);
-  assert.equal(gotAnn.comment, 'Make the badge yellow');
-  const image = got.result.content.find(c => c.type === 'image');
+  const got = await call('nit_get_annotation', { id: 'a1' });
+  assert.equal(got.structuredContent.annotation.comment, 'Make the badge yellow');
+  const image = got.content.find(c => c.type === 'image');
   assert.ok(image, 'screenshot returned as image content');
   assert.equal(image.mimeType, 'image/png');
   assert.ok(image.data.length > 20);
 
-  const fixed = await client.request('tools/call', { name: 'nit_mark_fixed', arguments: { id: 'a1' } });
-  assert.equal(JSON.parse(fixed.result.content[0].text).status, 'fixed');
-  const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
-  assert.equal(onDisk.annotations.find(a => a.id === 'a1').status, 'fixed');
+  const fixed = await call('nit_mark_fixed', { id: 'a1' });
+  assert.equal(fixed.structuredContent.annotation.status, 'fixed');
+  assert.equal(readAnnotations(dir).annotations.find(a => a.id === 'a1').status, 'fixed');
 
-  const reopened = await client.request('tools/call', { name: 'nit_set_status', arguments: { id: 'a1', status: 'reopened' } });
-  const reopenedAnn = JSON.parse(reopened.result.content[0].text);
-  assert.equal(reopenedAnn.status, 'reopened');
-  assert.ok(reopenedAnn.verifiedAt);
+  const reopened = await call('nit_set_status', { id: 'a1', status: 'reopened' });
+  assert.equal(reopened.structuredContent.annotation.status, 'reopened');
+  assert.ok(reopened.structuredContent.annotation.verifiedAt);
 
-  const missing = await client.request('tools/call', { name: 'nit_get_annotation', arguments: { id: 'nope' } });
-  assert.equal(missing.result.isError, true);
+  const missing = await call('nit_get_annotation', { id: 'nope' });
+  assert.equal(missing.isError, true);
+  assert.match(missing.content[0].text, /no annotation with id nope/);
 
-  const unknownMethod = await client.request('does/not/exist');
-  assert.equal(unknownMethod.error.code, -32601);
+  const unknown = await call('nit_does_not_exist', {});
+  assert.equal(unknown.isError, true, 'an unknown tool is an error the agent can read');
 });
 
 test('mcp server — a poisoned screenshot path cannot read files outside the review dir', async t => {
@@ -189,79 +105,123 @@ test('mcp server — a poisoned screenshot path cannot read files outside the re
   };
   fs.writeFileSync(path.join(dir, 'annotations.json'), JSON.stringify(data));
 
-  const client = startClient(dir);
+  const client = await startMcpClient(dir);
   t.after(() => client.close());
-  await client.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } });
 
-  const got = await client.request('tools/call', { name: 'nit_get_annotation', arguments: { id: 'a1' } });
-  // text record is returned, but the traversal path must NOT be read back as an image
-  assert.ok(got.result.content.some(c => c.type === 'text'));
-  const leaked = got.result.content.find(c => c.type === 'image' && Buffer.from(c.data, 'base64').toString().includes('TOP SECRET'));
+  const got = await client.callTool({ name: 'nit_get_annotation', arguments: { id: 'a1' } });
+  // the record is returned, but the traversal path must NOT be read back as an image
+  assert.ok(got.structuredContent.annotation, 'text record is still served');
+  const leaked = got.content.find(c => c.type === 'image' && Buffer.from(c.data, 'base64').toString().includes('TOP SECRET'));
   assert.equal(leaked, undefined, 'secret file must not be exfiltrated as an image');
 });
 
-test('mcp: set_issue_ref sets and clears the reference', async () => {
-  const { call, dir } = await startFixtureMcp();
-  const set = await call('nit_set_issue_ref', { id: 'a1', ref: ' FAI-1234 ' });
-  assert.equal(JSON.parse(set.content[0].text).issueRef, 'FAI-1234', 'trimmed and stored');
+// annotations.json is shared and hand-editable, so a trimmed or odd record must
+// still come back readable: validating tool output strictly would fail the whole
+// call and leave the agent with nothing to work from.
+test('mcp: a hand-trimmed annotations.json is still served, not rejected', async t => {
+  const dir = tmpDir('nit-mcp-partial-');
+  fs.writeFileSync(path.join(dir, 'annotations.json'), JSON.stringify({
+    review: { id: 'partial', url: 'https://example.com', createdAt: '2026-07-20T10:00:00Z', authors: [] },
+    annotations: [
+      // no target, no viewport, no author — someone edited the file by hand
+      { id: 'a1', type: 'change-request', comment: 'partial record', status: 'open', route: '/' },
+      // and a status nit itself would never write
+      { id: 'a2', type: 'change-request', comment: 'odd status', status: 'done', route: '/' },
+    ],
+  }));
+  const client = await startMcpClient(dir);
+  t.after(() => client.close());
 
-  const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
+  const list = await client.callTool({ name: 'nit_list_annotations', arguments: {} });
+  assert.ok(!list.isError, 'the entry point never fails over one odd record');
+  assert.equal(list.structuredContent.total, 2);
+
+  const got = await client.callTool({ name: 'nit_get_annotation', arguments: { id: 'a1' } });
+  assert.ok(!got.isError);
+  assert.equal(got.structuredContent.annotation.comment, 'partial record');
+
+  // writes still go through, and are still validated on the way in
+  const fixed = await client.callTool({ name: 'nit_mark_fixed', arguments: { id: 'a2' } });
+  assert.equal(fixed.structuredContent.annotation.status, 'fixed');
+});
+
+test('mcp: set_issue_ref sets and clears the reference', async t => {
+  const { call, dir } = await startFixtureMcp(t);
+  const set = await call('nit_set_issue_ref', { id: 'a1', ref: ' FAI-1234 ' });
+  assert.equal(set.structuredContent.annotation.issueRef, 'FAI-1234', 'trimmed and stored');
+
+  const onDisk = readAnnotations(dir);
   assert.equal(onDisk.annotations[0].issueRef, 'FAI-1234');
   assert.equal(onDisk.annotations[0].updatedBy, 'agent');
 
   const cleared = await call('nit_set_issue_ref', { id: 'a1', ref: '' });
-  assert.equal(JSON.parse(cleared.content[0].text).issueRef, undefined);
+  assert.equal(cleared.structuredContent.annotation.issueRef, undefined);
 });
 
 // The caller is a program, so a non-string `ref` is a type error to report — it
-// used to be coerced to '' and silently WIPE a reference the agent had set.
-test('mcp: set_issue_ref reports a non-string ref instead of clearing the reference', async () => {
-  const { call, dir } = await startFixtureMcp();
+// used to be coerced to '' and silently WIPE a reference the agent had set. The
+// SDK now rejects it against the tool's zod schema before the handler runs.
+test('mcp: set_issue_ref reports a non-string ref instead of clearing the reference', async t => {
+  const { call, dir } = await startFixtureMcp(t);
   await call('nit_set_issue_ref', { id: 'a1', ref: 'FAI-1234' });
 
   for (const ref of [42, null, { key: 'FAI-1' }, ['FAI-1'], true]) {
     const res = await call('nit_set_issue_ref', { id: 'a1', ref });
     assert.equal(res.isError, true, `${JSON.stringify(ref)} is rejected`);
-    assert.match(res.content[0].text, /ref must be a string/);
+    assert.match(res.content[0].text, /Invalid arguments/);
   }
   const missing = await call('nit_set_issue_ref', { id: 'a1' });
   assert.equal(missing.isError, true, 'an omitted ref is rejected too');
 
-  const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
-  assert.equal(onDisk.annotations[0].issueRef, 'FAI-1234', 'the stored reference is untouched');
+  assert.equal(readAnnotations(dir).annotations[0].issueRef, 'FAI-1234', 'the stored reference is untouched');
 });
 
-test('mcp: set_status stamps updatedBy agent', async () => {
-  const { call } = await startFixtureMcp();
-  const res = await call('nit_mark_fixed', { id: 'a1' });
-  const ann = JSON.parse(res.content[0].text);
-  assert.equal(ann.status, 'fixed');
-  assert.equal(ann.updatedBy, 'agent');
-  assert.match(ann.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+test('mcp: an invalid status is rejected before anything is written', async t => {
+  const { call, dir } = await startFixtureMcp(t);
+  const res = await call('nit_set_status', { id: 'a1', status: 'done' });
+  assert.equal(res.isError, true);
+  assert.match(res.content[0].text, /Invalid arguments/);
+  assert.equal(readAnnotations(dir).annotations[0].status, 'open', 'untouched');
 });
 
-test('mcp: list_annotations route filter matches the full route and the path', async () => {
-  const { call } = await startFixtureMcp({ route: '/products?id=5' });
-  const byFull = JSON.parse((await call('nit_list_annotations', { route: '/products?id=5' })).content[0].text);
-  const byPath = JSON.parse((await call('nit_list_annotations', { route: '/products' })).content[0].text);
+test('mcp: set_status stamps updatedBy agent', async t => {
+  const { call } = await startFixtureMcp(t);
+  const { annotation } = (await call('nit_mark_fixed', { id: 'a1' })).structuredContent;
+  assert.equal(annotation.status, 'fixed');
+  assert.equal(annotation.updatedBy, 'agent');
+  assert.match(annotation.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('mcp: a write re-renders review.md next to annotations.json', async t => {
+  const { call, dir } = await startFixtureMcp(t);
+  await call('nit_mark_fixed', { id: 'a1' });
+  const md = fs.readFileSync(path.join(dir, 'review.md'), 'utf8');
+  assert.match(md, /Make the badge yellow/);
+  assert.ok(fs.existsSync(path.join(dir, 'fix-annotations.md')), 'the instruction sheet is written too');
+});
+
+test('mcp: list_annotations route filter matches the full route and the path', async t => {
+  const { call } = await startFixtureMcp(t, { route: '/products?id=5' });
+  const byFull = (await call('nit_list_annotations', { route: '/products?id=5' })).structuredContent;
+  const byPath = (await call('nit_list_annotations', { route: '/products' })).structuredContent;
   assert.equal(byFull.total, 1);
   assert.equal(byPath.total, 1, 'path-only filter still finds a query-carrying route');
   assert.equal(byFull.annotations[0].issueRef, undefined, 'summary carries the field');
 });
 
-test('mcp: list summaries carry historyCount and get_annotation returns the trail', async () => {
+test('mcp: list summaries carry historyCount and get_annotation returns the trail', async t => {
   const history = [
     { selector: 'button.menu', tag: 'button', component: 'app-nav', text: 'Menu', at: '2026-07-20T10:00:30Z' },
     { selector: '#tab-2', tag: 'a', component: 'app-tabs', text: 'Details', at: '2026-07-20T10:00:40Z' },
   ];
-  const { call } = await startFixtureMcp({ history });
+  const { call } = await startFixtureMcp(t, { history });
 
-  const list = JSON.parse((await call('nit_list_annotations', {})).content[0].text);
+  const list = (await call('nit_list_annotations', {})).structuredContent;
   const a1 = list.annotations.find(a => a.id === 'a1');
   const a2 = list.annotations.find(a => a.id === 'a2');
   assert.equal(a1.historyCount, 2);
   assert.equal(a2.historyCount, undefined, 'absent history has no count');
 
-  const full = JSON.parse((await call('nit_get_annotation', { id: 'a1' })).content[0].text);
+  const full = (await call('nit_get_annotation', { id: 'a1' })).structuredContent.annotation;
   assert.deepEqual(full.history, history, 'full record carries the trail verbatim');
 });

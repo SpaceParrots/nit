@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // nit — point-and-click website annotation for coding agents.
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Command, Option } from 'commander';
 import { runMerge } from './merge.js';
 import { runDoctor } from './doctor.js';
@@ -11,15 +8,15 @@ import { runMcpInstall } from './mcp-install.js';
 import { runSetup, confirmReviewDir } from './setup.js';
 import { runExport } from './export.js';
 import { runImport } from './import.js';
+import { runStatus } from './status.js';
+import { isActionable } from '../store/stats.js';
 import { startSession } from '../browser/session.js';
 import type { NitSession } from '../browser/session.js';
 import { startMcpServer } from '../mcp/server.js';
 import { errorMessage } from '../util/error.js';
 import { readUserConfig } from '../util/user-config.js';
+import { pkgVersion } from '../util/version.js';
 import type { SessionMode } from '../types.js';
-
-const pkg = JSON.parse(fs.readFileSync(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf8')) as { version: string };
 
 /** Options shared by every command that launches a browser. */
 interface BrowserCmdOptions {
@@ -42,7 +39,7 @@ program
   .description('Point-and-click website annotation that hands small UI fixes to a coding agent.\n'
     + 'Annotate any site in a real browser; nit writes a structured review folder\n'
     + '(annotations.json + review.md + screenshots) that an agent fixes directly.')
-  .version(pkg.version)
+  .version(pkgVersion())
   .showHelpAfterError('(run "nit <command> --help" for details)')
   .showSuggestionAfterError()
   .addHelpText('after', `
@@ -54,6 +51,7 @@ The loop:
 
 Examples:
   $ nit review http://localhost:4200 --mobile --author Ann
+  $ nit status                                   what is in nit-review/ right now
   $ nit view feedback-ann.json --url https://staging.example.com
   $ nit export                                   pack nit-review/ into a shareable zip
   $ nit import 2026-07-21-example.com-ann.nit.zip
@@ -144,6 +142,20 @@ program.command('setup')
     await runSetup({ yes: Boolean(opts.yes) });
   });
 
+program.command('status')
+  .aliases(['stats'])
+  .summary('show what is in a review: file, last change, counts')
+  .description('A quick read on a review folder, without opening a browser: where the\n'
+    + 'annotations file is, when it last changed and by whom, how many annotations\n'
+    + 'there are by status and type, which routes they sit on, and what to do next.\n\n'
+    + 'Nothing is written — safe to run against a review someone else is editing.\n'
+    + 'Use --json to feed the same numbers to a script or CI.')
+  .argument('[dir]', 'review directory (or an annotations.json path)', 'nit-review')
+  .option('--json', 'print the stats as JSON instead of a report')
+  .action((dir: string, opts: { json?: boolean }) => {
+    runStatus(dir, { json: Boolean(opts.json) });
+  });
+
 program.command('export')
   .aliases(['pack'])
   .summary('pack a review into a shareable zip')
@@ -202,11 +214,14 @@ program.command('mcp')
     + 'nit_get_annotation (full record incl. before/after screenshots as images),\n'
     + 'nit_mark_fixed, nit_set_status (open | fixed | wontfix | verified | reopened),\n'
     + 'nit_set_issue_ref (attach a tracker key or url; empty clears it).\n\n'
+    + 'Resources: nit://review/annotations.json, nit://review/review.md,\n'
+    + 'nit://review/fix-annotations.md and nit://annotation/<id> (plus its screenshots).\n\n'
     + 'Register with Claude Code:  claude mcp add nit -- nit mcp ./nit-review')
   .argument('[dir]', 'review directory containing annotations.json', 'nit-review')
-  .action((dir: string) => {
-    startMcpServer(dir);
+  .action(async (dir: string) => {
+    const server = await startMcpServer(dir);
     // stays alive while stdin (the MCP client) is connected
+    server.onClose(() => process.exit(0));
   });
 
 program.command('mcp-install')
@@ -247,7 +262,7 @@ async function startBrowser(
 
 function summarize(session: NitSession): void {
   const anns = session.store.annotations;
-  const open = anns.filter(a => a.type === 'change-request' && (a.status === 'open' || a.status === 'reopened')).length;
+  const open = anns.filter(isActionable).length;
   console.log(`\n${anns.length} annotation${anns.length === 1 ? '' : 's'} (${open} actionable change-request${open === 1 ? '' : 's'}) -> ${session.store.dir}`);
   if (open) console.log('Hand the folder to your coding agent (see fix-annotations.md) or serve it: nit mcp ' + session.store.dir);
 }

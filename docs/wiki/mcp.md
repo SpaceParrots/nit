@@ -1,8 +1,8 @@
 # MCP server and coding agents
 
 nit ships an MCP (Model Context Protocol) server so coding agents can consume a review as tools
-instead of raw files. It runs over stdio, reads the review folder fresh on every call, and needs
-no backend.
+and resources instead of raw files. It is built on the official `@modelcontextprotocol/sdk`, runs
+over stdio, reads the review folder fresh on every call, and needs no backend.
 
 ## Setting it up
 
@@ -36,6 +36,31 @@ tools from other MCP servers.
 
 "Actionable" always means: type `change-request` with status `open` or `reopened`. Comments are
 context, not tasks.
+
+Every tool declares an output schema, so results arrive as `structuredContent` (typed data) as
+well as the JSON text block older clients read — an agent never has to parse a blob to get at a
+status. Arguments are validated against the tool's schema before a handler runs, so a wrong type
+comes back as a clear error instead of a surprising write. The tools also carry the standard MCP
+hints: `nit_list_annotations` and `nit_get_annotation` are marked read-only, the three writers are
+marked non-destructive and idempotent, and none of them touches anything outside the review
+folder. Clients use those hints to decide what may run without asking you first.
+
+## Resources
+
+The same review is readable as resources, for when an agent wants context without spending a tool
+call — for example to read the whole review once at the start.
+
+| URI | What it is |
+| --- | --- |
+| `nit://review/annotations.json` | The whole review as nit stores it. |
+| `nit://review/review.md` | The human-readable review, rendered on the fly if the file is not there yet. |
+| `nit://review/fix-annotations.md` | The instruction sheet for fixing a review from the files alone. |
+| `nit://annotation/<id>` | One annotation in full (`nit://annotation/a1`). Clients offer id completion. |
+| `nit://annotation/<id>/screenshot` | The cropped element screenshot as a PNG. |
+| `nit://annotation/<id>/screenshot-after` | The after-shot from `nit verify`, where one exists. |
+
+Resources are read-only: every change still goes through the tools, so `updatedAt` / `updatedBy`
+stay honest and `review.md` is re-rendered.
 
 The server also announces standing instructions during the MCP handshake, so a connected agent
 already knows the intended flow (list, get, fix, mark fixed), that comments are not tasks, and

@@ -250,6 +250,30 @@ function mergeExternalStatuses(
   }
 }
 
+/** Where a review's annotations file lives, and whether it is actually there. */
+export interface ReviewLocation {
+  /** absolute review directory (holds shots/) */
+  dir: string;
+  /** absolute annotations.json path */
+  file: string;
+  exists: boolean;
+}
+
+/**
+ * Resolve what the user typed — a review directory, or the path of an
+ * annotations.json inside one (feedback files carry arbitrary names, e.g.
+ * `feedback-ann.json`) — into both paths. Reports a missing file rather than
+ * throwing, so each command can phrase its own next step.
+ * @param input directory or annotations file path
+ */
+export function resolveReviewFile(input: string): ReviewLocation {
+  const resolved = path.resolve(input);
+  const isFile = fs.existsSync(resolved) && fs.statSync(resolved).isFile();
+  const dir = isFile ? path.dirname(resolved) : resolved;
+  const file = isFile ? resolved : path.join(dir, 'annotations.json');
+  return { dir, file, exists: fs.existsSync(file) };
+}
+
 /**
  * Turn an annotation id into a safe filename fragment — merged ids contain `:`
  * which is illegal on Windows (`kevin:a1` → `kevin_a1`).

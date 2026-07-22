@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Pure annotations → review.md renderer (SPEC §5) + the /fix-annotations contract file.
+import { isActionable } from './stats.js';
 import type { Annotation, ClickStep, ReviewData } from '../types.js';
 
 /**
@@ -78,10 +79,6 @@ function historyMd(history: Annotation['history']): string[] {
 /** Whitespace-collapse an untrusted fragment so it cannot open a markdown block. */
 function inline(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
-}
-
-function isActionable(a: Annotation): boolean {
-  return a.type === 'change-request' && (a.status === 'open' || a.status === 'reopened');
 }
 
 function oneLine(s: string | undefined): string {

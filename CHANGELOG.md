@@ -14,6 +14,29 @@
   connected agents: the intended list, get, fix, mark-fixed loop; comments are context and never
   tasks; `wontfix` instead of forcing a bad change; humans rule on verification. Tool and
   argument descriptions were rewritten in the same spirit.
+- **New: `nit status`** (alias `stats`). A quick read on a review folder without opening a
+  browser: the annotations file, when it last changed and by whom, counts by status and type,
+  the routes annotations sit on, what the screenshots weigh, and what to do next. Takes a review
+  directory or a feedback file, writes nothing, and prints JSON with `--json`.
+- **The MCP server now runs on the official SDK.** `nit mcp` is built on
+  `@modelcontextprotocol/sdk` instead of a hand-rolled JSON-RPC loop, so protocol details
+  (version negotiation, cancellation, completions, the resource methods) come from the
+  reference implementation. The five tools, their arguments and everything they write to
+  `annotations.json` are unchanged — existing agent setups keep working as they are.
+- **Typed tool results.** Every tool declares an output schema and returns `structuredContent`
+  alongside the JSON text block it always returned, so an agent gets typed data instead of
+  parsing a blob.
+- **Validated arguments.** Tool arguments are checked against zod schemas before a handler runs.
+  A wrong type (say a numeric `ref`) is reported as an error rather than reaching the store;
+  only the message text changed, the outcome was already safe.
+- **Tool hints and titles.** Tools carry MCP's `readOnlyHint` / `destructiveHint` /
+  `idempotentHint` / `openWorldHint` annotations and display titles, which clients use to decide
+  what may run without confirmation.
+- **The review is now readable as resources.** `nit://review/annotations.json`,
+  `nit://review/review.md`, `nit://review/fix-annotations.md`, `nit://annotation/<id>` (with id
+  completion) and the annotation screenshots. Resources are read-only; writes still go through
+  the tools.
+- **`serverInfo.version` reports the installed version** instead of a hardcoded `1.0.0`.
 
 ## 1.0.0 (2026-07-22)
 

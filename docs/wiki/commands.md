@@ -54,6 +54,39 @@ Verified or Reopen in the panel.
 | --- | --- |
 | `-u, --url <url>` | Open this url instead of the one stored in the feedback file |
 
+## nit status [dir] (alias: stats)
+
+A quick read on a review folder, without opening a browser: where the annotations file is, when
+it last changed and by whom, how many annotations there are by status and type, which routes they
+sit on, how much the screenshots weigh — and what to do next (hand the actionable ones to an
+agent, rule the fixed ones, or capture some).
+
+```
+nit status — nit-review/annotations.json
+
+  review      2026-07-21-example.com
+  url         https://example.com
+  created     2026-07-21 · authors: Kevin, Ann
+  last change 2026-07-22 (2 hours ago) · by agent
+
+  annotations 12 total · 5 actionable
+  by status   open 4 · reopened 1 · fixed 5 · verified 2
+  by type     change-request 10 · comment 2
+  routes      /products 6 · / 4 · /cart 2
+  screenshots 11 files · 2.3 MB
+
+5 actionable change-requests — hand them to an agent:  nit mcp nit-review
+5 fixed, waiting on you to rule:  nit verify nit-review/annotations.json
+```
+
+The argument takes a review directory or an annotations.json path, so a feedback file with its own
+name works too: `nit status feedback-ann.json`. Nothing is written — it is safe to run against a
+review someone else is editing.
+
+| Flag | What it does |
+| --- | --- |
+| `--json` | Print the same stats as JSON, for scripts and CI |
+
 ## nit export [dir] (alias: pack)
 
 Packs a review folder into a shareable zip. The file name is derived from the review id and the
@@ -84,6 +117,8 @@ Screenshots are copied along.
 
 Serves a review folder as an MCP server over stdio. This is what coding agents connect to.
 Tools: `nit_list_annotations`, `nit_get_annotation`, `nit_mark_fixed`, `nit_set_status`, `nit_set_issue_ref`.
+The review is also readable as resources: `nit://review/annotations.json`, `nit://review/review.md`,
+`nit://review/fix-annotations.md` and `nit://annotation/<id>` (plus its screenshots).
 
 ## nit mcp-install [dir] (alias: mcp-config)
 
