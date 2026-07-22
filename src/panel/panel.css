@@ -76,6 +76,11 @@ footer .btn { width: 100%; }
 /* `anywhere` breaks only where a line would otherwise overflow (long selectors,
    xpaths) — unlike `break-all`, which splits ordinary words like "agent" mid-word. */
 .meta-line { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.sel-code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 10.5px; }
+.sel-id, .sel-attr { color: var(--accent); }
+.sel-class { color: var(--comment); }
+.sel-tag { color: var(--fg); }
+.sel-pseudo, .sel-combinator, .sel-text { color: var(--muted); }
 .shot { max-width: 100%; border-radius: 6px; border: 1px solid var(--border); }
 .unplaced { border-top: 1px solid var(--border); padding: 10px; max-height: 34%; overflow-y: auto; }
 .unplaced-head { font-size: 11px; color: var(--muted); margin-bottom: 6px; }

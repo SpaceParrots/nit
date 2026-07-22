@@ -375,4 +375,19 @@ test('nit panel — editing a comment', async t => {
     assert.equal(d.annotations.find(x => x.id === 'a1').comment, 'Heading copy needs the brand voice');
     assert.equal(S.logs.filter(l => l.includes('comment edited')).length, 1, 'no second write');
   });
+
+  await t.test('expanded item shows a syntax-highlighted selector', async () => {
+    const panel = S.session.panelPage;
+    // a1 is still expanded from the previous subtests — collapse, then re-expand
+    // fresh, same as the "Escape reverts" subtest above, so a single click always
+    // lands on the expanded state regardless of what ran before it.
+    await panel.locator('.nit-item[data-id="a1"]').click();
+    await panel.locator('.nit-item[data-id="a1"]').click();
+    await waitFor(async () => (await panel.locator('.sel-code').count()) === 1 ? true : null,
+      { message: 'selector code line appears' });
+    const idSpan = panel.locator('.sel-code .sel-id');
+    assert.equal(await idSpan.count(), 1, 'one id token');
+    assert.equal(await idSpan.textContent(), '#hero-title');
+    assert.equal(await panel.locator('.sel-code').textContent(), '#hero-title', 'lossless');
+  });
 });

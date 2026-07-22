@@ -5,6 +5,7 @@
 import type { Annotation, PanelCmd, PanelState } from '../types.js';
 import { ICONS } from './icons.js';
 import { routeKey } from '../util/route.js';
+import { tokenizeSelector } from './highlight.js';
 
 /** The panel's shared view state: what is expanded, and the last rendered key. */
 export interface PanelView {
@@ -123,7 +124,7 @@ export function renderItem(
       line('component: ' + (ann.target?.component || '?')
         + (ann.target?.ngComponent ? ' (' + ann.target.ngComponent + ')' : '')),
     );
-    if (ann.target?.selector) meta.append(line('selector: ' + ann.target.selector));
+    if (ann.target?.selector) meta.append(selectorLine(ann.target.selector));
     appendShot(meta, ann.id, 'before', ann.screenshot, ann.screenshotAfter ? 'before' : null);
     appendShot(meta, ann.id, 'after', ann.screenshotAfter, 'after');
 
@@ -255,6 +256,27 @@ function stamps(ann: Annotation): string {
     parts.push(`updated ${shortTime(ann.updatedAt)}${ann.updatedBy ? ` by ${ann.updatedBy}` : ''}`);
   }
   return parts.join(' · ');
+}
+
+/**
+ * The `selector:` meta line, syntax-highlighted token by token. Built from
+ * `textContent`-only spans — the selector string comes from untrusted
+ * annotations.json and must never reach innerHTML.
+ */
+function selectorLine(sel: string): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'meta-line';
+  el.append(document.createTextNode('selector: '));
+  const code = document.createElement('code');
+  code.className = 'sel-code';
+  for (const tok of tokenizeSelector(sel)) {
+    const s = document.createElement('span');
+    s.className = 'sel-' + tok.kind;
+    s.textContent = tok.text;
+    code.append(s);
+  }
+  el.append(code);
+  return el;
 }
 
 /** ISO timestamp → `2026-07-21 14:22` in local time; the raw value if unparseable. */

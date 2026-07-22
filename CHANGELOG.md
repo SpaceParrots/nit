@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Selectors anchor on `data-id`** — generated selectors prefer `#id`, then
+  `[data-id="…"]`, on the element itself, as ancestor anchors, and as path
+  waypoints. Values are escaped and uniqueness-verified as before.
+- **Syntax-highlighted selectors in the panel** — the expanded annotation
+  detail renders the selector monospace with ids and `data-id` attributes
+  highlighted, built from safe text-only spans.
+
 ## 1.0.0 — 2026-07-22
 
 First stable release.
