@@ -1,16 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- **Reviewer name in the user config.** `nit setup` prompts for an author name and stores it in a
-  per-user config (defaulting to the OS username), so repeated setups on the same machine no
-  longer need to ask.
-- **Panel author display and filter.** Once a review has more than one distinct annotation author,
-  each row gets a small author chip and the filter dropdown gains an "Author" row to narrow the
-  list (and the "couldn't place" list) down to one reviewer. Single-author reviews are unaffected:
-  no chip, no filter row. The expanded detail view always shows an "author" line when the
-  annotation has one, regardless of author count.
-
 ## 1.0.0 (2026-07-22)
 
 First stable release.
@@ -53,6 +42,20 @@ fix Verified or Reopen. Reviews are shareable (`export` / `import`) and mergeabl
   badge, a scope badge, and icon-labeled rows (created, updated, component, selector, id). The
   selector renders monospace with ids and `data-id` attributes syntax-highlighted, built from
   safe text-only spans.
+- **Reviewer name in the user config.** `nit setup` prompts for an author name and stores it in a
+  per-user config (defaulting to the OS username), so repeated setups on the same machine no
+  longer need to ask.
+- **Panel author display and filter.** Once a review has more than one distinct annotation author,
+  each row gets a small author chip and the filter dropdown gains an "Author" row to narrow the
+  list (and the "couldn't place" list) down to one reviewer. Single-author reviews are unaffected:
+  no chip, no filter row. The expanded detail view always shows an "author" line when the
+  annotation has one, regardless of author count.
+
+### Requirements
+
+- Node 20.12 or newer. The prompt library relies on `node:util`'s `styleText`, which Node 18
+  (end of life since April 2025) does not have. `nit doctor`, `engines` and CI agree on this
+  floor.
 
 ### Security
 

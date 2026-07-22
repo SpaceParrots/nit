@@ -10,7 +10,7 @@ nit's code runs in two very different places, and the directory layout follows t
 
 | Runtime | Directories | Constraints |
 |---|---|---|
-| **Node** (CLI process) | `cli/`, `browser/`, `store/`, `mcp/`, `util/`, `capture/screenshot.ts` | Node 18 or newer, may use `node:*` modules and Playwright |
+| **Node** (CLI process) | `cli/`, `browser/`, `store/`, `mcp/`, `util/`, `capture/screenshot.ts` | Node 20.12 or newer, may use `node:*` modules and Playwright |
 | **Browser** (injected into the inspected page, or the panel popup window) | `overlay/`, `panel/`, `anchor/`, `capture/target.ts` | Bundled by esbuild into a single IIFE. No Node APIs, no framework, and nothing that can throw into or break the host page |
 
 The overlay bundle is built at runtime: `browser/inject.ts` points esbuild at the *compiled*

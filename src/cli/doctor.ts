@@ -33,12 +33,12 @@ export async function runDoctor({ yes = false, log = console.log }: DoctorOption
   let ok = true;
   log('nit doctor\n');
 
-  // 1. Node version
-  const nodeMajor = Number(process.versions.node.split('.')[0]);
-  if (nodeMajor >= 18) {
+  // 1. Node version (20.12 is the floor: node:util styleText via @clack/prompts)
+  const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
+  if (nodeMajor > 20 || (nodeMajor === 20 && nodeMinor >= 12)) {
     pass(log, `Node ${process.versions.node}`);
   } else {
-    fail(log, `Node ${process.versions.node}`, 'nit needs Node >= 18 — https://nodejs.org');
+    fail(log, `Node ${process.versions.node}`, 'nit needs Node >= 20.12 — https://nodejs.org');
     ok = false;
   }
 

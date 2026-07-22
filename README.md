@@ -44,7 +44,7 @@ Teammates review on their own and share zips (`nit export` / `import` / `merge`)
 
 ```bash
 npm install -g @spaceparrots/nit
-nit doctor        # checks Node ≥ 18 and dependencies, offers to install Chromium (one time)
+nit doctor        # checks Node ≥ 20.12 and dependencies, offers to install Chromium (one time)
 nit setup         # per project: review dir, .gitignore, MCP server (interactive wizard)
 ```
 

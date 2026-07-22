@@ -9,7 +9,7 @@ npm install -g @spaceparrots/nit
 nit doctor
 ```
 
-`nit doctor` checks that Node is version 18 or newer, verifies the dependencies, and offers to
+`nit doctor` checks that Node is version 20.12 or newer, verifies the dependencies, and offers to
 install Chromium if Playwright does not have one yet. You only need this once per machine.
 
 If you would rather not install globally, every command also works through npx:
