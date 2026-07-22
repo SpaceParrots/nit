@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Shared types for the injected overlay: the mutable overlay state, the actions
 // the UI parts call, and the contracts of each mounted part.
-import type { Annotation, SessionMode, ViewportMode } from '../types.js';
+import type { Annotation, ClickStep, SessionMode, ViewportMode } from '../types.js';
 
 /** An annotation re-anchored to a live element on the current route. */
 export interface PlacedAnnotation {
@@ -43,6 +43,8 @@ export interface OverlayActions {
   onSaved: (annotation: Annotation) => void;
   /** ask the panel window to expand an annotation */
   focusAnnotation: (id: string) => void;
+  /** snapshot of the click trail on this pathname (review mode; empty otherwise) */
+  historySnapshot: () => ClickStep[];
 }
 
 /** The hover/selection highlight box. */

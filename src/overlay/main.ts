@@ -7,6 +7,7 @@
 import css from './overlay.css';
 import { anchorTarget } from '../anchor/anchor.js';
 import { installPicker } from './picker.js';
+import { installTrail } from './trail.js';
 import { createPopover } from './popover.js';
 import { createPins } from './pins.js';
 import { createChip } from './chip.js';
@@ -64,6 +65,9 @@ async function init(): Promise<void> {
   root.append(style);
   document.documentElement.append(host);
 
+  // Click trail: capture mode only — replay/verify sessions record nothing.
+  const trail = mode === 'review' ? installTrail(state, host) : null;
+
   // `ui` is assembled below; the actions close over it and only run afterwards.
   let ui: OverlayUi;
   const actions: OverlayActions = {
@@ -89,6 +93,7 @@ async function init(): Promise<void> {
     focusAnnotation(id: string): void {
       try { void window.__nitEvent?.({ type: 'focus', id }); } catch { /* bridge gone */ }
     },
+    historySnapshot: () => trail ? trail.snapshot() : [],
   };
 
   const pins = createPins(root, state, actions);

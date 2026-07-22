@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Pure annotations → review.md renderer (SPEC §5) + the /fix-annotations contract file.
-import type { Annotation, ReviewData } from '../types.js';
+import type { Annotation, ClickStep, ReviewData } from '../types.js';
 
 /**
  * Render a review as human/agent-readable markdown (SPEC §5). Pure function.
@@ -42,9 +42,42 @@ export function renderReviewMd(data: ReviewData): string {
     if (issueFragment) extra.push(`issue: ${issueFragment}`);
     if (a.updatedAt) extra.push(`updated ${a.updatedAt.slice(0, 10)}${a.updatedBy ? ` by ${a.updatedBy}` : ''}`);
     if (extra.length) lines.push(`- ${extra.join(' · ')}`);
+    lines.push(...historyMd(a.history));
   }
   lines.push('');
   return lines.join('\n');
+}
+
+/**
+ * Render an annotation's click trail as a numbered steps list. The file may be
+ * hand-edited, so every entry is re-checked and re-flattened here even though the
+ * bridge already sanitized what it stored: malformed entries are dropped, fields
+ * are whitespace-collapsed, and backticks are stripped from code spans — the same
+ * discipline `issueRef` rendering applies.
+ */
+function historyMd(history: Annotation['history']): string[] {
+  if (!Array.isArray(history)) return [];
+  const steps = history
+    .filter((s): s is ClickStep => Boolean(
+      s && typeof s === 'object'
+      && typeof s.selector === 'string' && typeof s.text === 'string'
+      && typeof s.component === 'string',
+    ))
+    .slice(0, 10);
+  if (!steps.length) return [];
+  const lines = ['', 'Steps on this page before this annotation (oldest first):', ''];
+  steps.forEach((s, i) => {
+    const selector = inline(s.selector).replace(/`/g, '');
+    const text = inline(s.text);
+    const component = inline(s.component);
+    lines.push(`${i + 1}. click \`${selector}\`${text ? ` — "${text}"` : ''}${component ? ` (${component})` : ''}`);
+  });
+  return lines;
+}
+
+/** Whitespace-collapse an untrusted fragment so it cannot open a markdown block. */
+function inline(s: string): string {
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 function isActionable(a: Annotation): boolean {
@@ -116,4 +149,8 @@ component (spacing/overflow issues especially). Verify the root cause before edi
 Optional metadata: if you file or resolve a tracker issue for a nit, record its key or url in that
 annotation's \`issueRef\`. Do not hand-edit \`updatedAt\`/\`updatedBy\` — nit stamps them whenever a
 status or issue reference changes.
+
+Reproduction: when an annotation carries \`history\` (the reviewer's last clicks on that page,
+oldest first), the described state may only exist after replaying those clicks — open the route,
+perform the steps, then look at the target element.
 `;

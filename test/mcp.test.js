@@ -18,7 +18,7 @@ const PNG_1PX = Buffer.from(
 
 // Options let a test override the a1 fixture annotation (e.g. a query-carrying
 // route) without duplicating the whole fixture.
-function makeReviewDir({ route = '/products' } = {}) {
+function makeReviewDir({ route = '/products', history } = {}) {
   const dir = tmpDir('nit-mcp-');
   fs.mkdirSync(path.join(dir, 'shots'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'shots', 'a1.png'), PNG_1PX);
@@ -30,6 +30,7 @@ function makeReviewDir({ route = '/products' } = {}) {
         viewportScope: 'general', viewport: { mode: 'desktop', w: 1440, h: 900 }, route,
         target: { component: 'app-tile', ngComponent: null, selector: '.badge', xpath: '/html[1]', tag: 'div', classes: ['badge'], text: 'New', rect: { x: 0, y: 0, w: 10, h: 10 } },
         screenshot: 'shots/a1.png', createdAt: '2026-07-20T10:01:00Z',
+        ...(history ? { history } : {}),
       },
       {
         id: 'a2', type: 'comment', comment: 'Nice animation', status: 'open', author: 'Ann',
@@ -246,4 +247,21 @@ test('mcp: list_annotations route filter matches the full route and the path', a
   assert.equal(byFull.total, 1);
   assert.equal(byPath.total, 1, 'path-only filter still finds a query-carrying route');
   assert.equal(byFull.annotations[0].issueRef, undefined, 'summary carries the field');
+});
+
+test('mcp: list summaries carry historyCount and get_annotation returns the trail', async () => {
+  const history = [
+    { selector: 'button.menu', tag: 'button', component: 'app-nav', text: 'Menu', at: '2026-07-20T10:00:30Z' },
+    { selector: '#tab-2', tag: 'a', component: 'app-tabs', text: 'Details', at: '2026-07-20T10:00:40Z' },
+  ];
+  const { call } = await startFixtureMcp({ history });
+
+  const list = JSON.parse((await call('list_annotations', {})).content[0].text);
+  const a1 = list.annotations.find(a => a.id === 'a1');
+  const a2 = list.annotations.find(a => a.id === 'a2');
+  assert.equal(a1.historyCount, 2);
+  assert.equal(a2.historyCount, undefined, 'absent history has no count');
+
+  const full = JSON.parse((await call('get_annotation', { id: 'a1' })).content[0].text);
+  assert.deepEqual(full.history, history, 'full record carries the trail verbatim');
 });

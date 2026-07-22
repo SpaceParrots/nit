@@ -66,6 +66,19 @@ export interface Target {
   rect: Rect;
 }
 
+/** One recorded page click leading up to an annotation (reproduction trail). */
+export interface ClickStep {
+  /** short CSS selector, built at click time (the element may be gone later) */
+  selector: string;
+  tag: string;
+  /** nearest custom-element tag */
+  component: string;
+  /** visible text, whitespace-normalized, capped at 80 chars */
+  text: string;
+  /** ISO timestamp */
+  at: string;
+}
+
 /** One captured note, tied to a stable element reference. */
 export interface Annotation {
   /** stable id (`a1`, `a2`, …); merge namespaces it per author (`kevin:a1`) */
@@ -94,6 +107,8 @@ export interface Annotation {
   updatedAt?: string;
   /** who made that change: the session author, or `agent` via MCP */
   updatedBy?: string;
+  /** last ≤10 page clicks on this pathname before capture, oldest first */
+  history?: ClickStep[];
 }
 
 /** Review metadata. */
@@ -132,6 +147,8 @@ export interface SavePayload {
   viewportScope: ViewportScope;
   target: Target;
   route: string;
+  /** snapshot of the click trail on this pathname (see {@link ClickStep}) */
+  history?: ClickStep[];
 }
 
 /** Result envelope shared by the mutating bindings. */

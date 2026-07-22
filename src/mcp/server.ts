@@ -203,6 +203,8 @@ function listAnnotations(store: Store, { status, type, route }: Record<string, u
     component: a.target?.component,
     ngComponent: a.target?.ngComponent,
     selector: a.target?.selector,
+    // reproduction-trail length; the full trail comes with get_annotation
+    historyCount: a.history?.length,
   }));
   const actionable = all.filter(a => a.type === 'change-request' && (a.status === 'open' || a.status === 'reopened')).length;
   return text(JSON.stringify({ review: store.data.review, total: summary.length, actionable, annotations: summary }, null, 2));

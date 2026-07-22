@@ -84,12 +84,15 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
       const elementToSave = currentEl;
       close(); // close first — nothing below may keep the popover on screen
       try {
+        const history = actions.historySnapshot();
         const payload: SavePayload = {
           comment,
           type,
           viewportScope: scope,
           target: resolveTarget(elementToSave, window),
           route: currentRoute(location),
+          // absent (not []) when nothing was clicked — keeps the file identical to before
+          history: history.length ? history : undefined,
         };
         actions.setUiHidden(true); // keep our own UI out of the CDP screenshot
         await new Promise(r => setTimeout(r, 80));

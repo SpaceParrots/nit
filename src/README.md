@@ -54,6 +54,8 @@ src/
 │  ├─ state.ts    # OverlayState / OverlayActions / part interfaces (types only)
 │  ├─ picker.ts   # Alt-toggled element picking (capture-phase listeners)
 │  ├─ popover.ts  # the annotation form (comment, type, viewport scope)
+│  ├─ trail.ts    # click-history recorder: last ≤10 page clicks on this pathname,
+│  │              # snapshotted into the save payload (pure appendStep + DOM shell)
 │  ├─ pins.ts     # numbered pins for re-anchored annotations
 │  ├─ chip.ts     # bottom-left status chip
 │  ├─ dom.ts      # tiny DOM helpers (div/span/button/segmented)
@@ -90,10 +92,12 @@ src/
 │  └─ server.ts # newline-delimited JSON-RPC 2.0, stdlib only, re-reads per call
 │
 └─ util/
-   ├─ error.ts  # errorMessage(unknown) — safe narrowing for catch blocks
-   ├─ route.ts  # currentRoute/routePath/routeKey — pure route helpers shared by the
-   │            # overlay (captures routes) and the panel (groups/navigates by them)
-   └─ slug.ts   # slugify() for author-derived ids and export file names
+   ├─ error.ts   # errorMessage(unknown) — safe narrowing for catch blocks
+   ├─ history.ts # MAX_HISTORY + sanitizeHistory() — click-trail caps shared by the
+   │             # overlay (bounds as it records) and the bridge (re-validates saves)
+   ├─ route.ts   # currentRoute/routePath/routeKey — pure route helpers shared by the
+   │             # overlay (captures routes) and the panel (groups/navigates by them)
+   └─ slug.ts    # slugify() for author-derived ids and export file names
 ```
 
 ## Conventions
@@ -107,8 +111,8 @@ src/
   `unknown` first and narrowed/validated before use — annotation files are shared
   and agent-edited, and the inspected site's own JS can call the bindings.
 - **Pure modules stay pure.** `anchor/`, `capture/target.ts`, `store/render.ts`,
-  `store/merge.ts`, `store/url.ts`, `util/route.ts` and `panel/filter.ts` have no
-  side effects and are covered by table-driven tests.
+  `store/merge.ts`, `store/url.ts`, `util/route.ts`, `util/history.ts` and
+  `panel/filter.ts` have no side effects and are covered by table-driven tests.
 - **Imports use `.js` extensions** (`import … from '../types.js'`) — TypeScript
   NodeNext resolution: specifiers name the *emitted* files, so the compiled output
   runs on plain Node without rewriting.

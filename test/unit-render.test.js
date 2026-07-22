@@ -286,3 +286,52 @@ test('render: an issueRef longer than 200 characters is capped at 200', () => {
   assert.ok(match);
   assert.equal(match[1].length, 200);
 });
+
+test('render: history renders as a numbered steps list, oldest first', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+        route: '/products', target: {}, createdAt: '2026-07-22T00:00:00Z',
+        history: [
+          { selector: 'button.menu', tag: 'button', component: 'app-nav', text: 'Menu', at: '2026-07-22T10:00:00Z' },
+          { selector: '#tab-2', tag: 'a', component: 'app-tabs', text: 'Details', at: '2026-07-22T10:00:05Z' },
+        ] },
+    ],
+  });
+  assert.match(md, /Steps on this page before this annotation \(oldest first\):/);
+  assert.match(md, /1\. click `button\.menu` — "Menu" \(app-nav\)/);
+  assert.match(md, /2\. click `#tab-2` — "Details" \(app-tabs\)/);
+  const menuIdx = md.indexOf('button.menu');
+  const tabIdx = md.indexOf('#tab-2');
+  assert.ok(menuIdx !== -1 && menuIdx < tabIdx, 'order preserved');
+});
+
+test('render: history is omitted when absent and hostile entries cannot inject', () => {
+  const clean = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: [] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-22T00:00:00Z' },
+    ],
+  });
+  assert.equal(/Steps on this page/.test(clean), false);
+
+  // hand-edited file: entries with markdown structure and backticks must stay inline
+  const hostile = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: [] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-22T00:00:00Z',
+        history: [
+          { selector: 'a`b\n\n## Fake', tag: 'a', component: 'x', text: 'line\n\n## Heading\nrest', at: 't' },
+          'not an object',
+          { selector: 42, tag: 'a', component: 'x', text: 'skipped', at: 't' },
+        ] },
+    ],
+  });
+  const headings = hostile.split('\n').filter(l => l.startsWith('## ') && !l.startsWith('## a1'));
+  assert.deepEqual(headings, [], 'no injected block-level heading');
+  assert.match(hostile, /1\. click `ab ## Fake` — "line ## Heading rest" \(x\)/);
+  assert.equal(/skipped/.test(hostile), false, 'malformed entry dropped');
+});

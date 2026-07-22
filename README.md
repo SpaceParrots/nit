@@ -123,13 +123,19 @@ One annotation:
   "createdAt": "2026-07-21T02:28:11.550Z",
   "issueRef": "FAI-1234",
   "updatedAt": "2026-07-22T09:01:00.000Z",
-  "updatedBy": "agent"
+  "updatedBy": "agent",
+  "history": [
+    { "selector": "button.menu", "tag": "button", "component": "app-nav",
+      "text": "Menu", "at": "2026-07-21T02:27:41.000Z" }
+  ]
 }
 ```
 
 The full schema is documented in [`src/types.ts`](./src/types.ts). Statuses flow
 `open → fixed → verified | reopened` (plus `wontfix`), and `reopened` change-requests are
-actionable again.
+actionable again. `history` is the reproduction trail: the reviewer's last clicks (≤10) on that
+page before capturing the annotation — states behind "open menu → pick tab" become replayable
+instead of lost. Query-param changes keep the trail; a pathname change resets it.
 
 ## Agent handoff
 

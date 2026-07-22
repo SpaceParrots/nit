@@ -6,6 +6,7 @@ import type { BrowserContext, Frame, Page } from 'playwright';
 import { captureElementShot } from '../capture/screenshot.js';
 import { captureAfterShots } from './verify.js';
 import { safeShotPath } from '../store/store.js';
+import { sanitizeHistory } from '../util/history.js';
 import { errorMessage } from '../util/error.js';
 import { resolveAnnotationUrl } from '../store/url.js';
 import { currentRoute, routeKey } from '../util/route.js';
@@ -43,6 +44,7 @@ interface RawSavePayload {
   viewportScope?: unknown;
   route?: unknown;
   target?: unknown;
+  history?: unknown;
 }
 
 /**
@@ -107,6 +109,8 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
       target,
       screenshot: null,
       createdAt: new Date().toISOString(),
+      // untrusted like the rest of the payload — re-validated, capped, or dropped
+      history: sanitizeHistory(p.history),
     };
     store.upsert(annotation); // claim the id immediately
 
