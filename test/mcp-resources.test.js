@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { tmpDir } from './helpers/tmp.js';
 import { startFixtureMcp, startMcpClient, PNG_1PX } from './helpers/mcp.js';
+import { renderBriefMd } from '../dist/store/render.js';
 
 test('mcp resources — the review is listed as files an agent can read', async t => {
   const { client } = await startFixtureMcp(t);
@@ -16,6 +17,7 @@ test('mcp resources — the review is listed as files an agent can read', async 
 
   assert.ok(uris.includes('nit://review/annotations.json'));
   assert.ok(uris.includes('nit://review/review.md'));
+  assert.ok(uris.includes('nit://review/brief.md'));
   assert.ok(uris.includes('nit://review/fix-annotations.md'));
   // the per-annotation resources are enumerated from the live file
   assert.ok(uris.includes('nit://annotation/a1'), 'the change-request');
@@ -43,8 +45,21 @@ test('mcp resources — annotations.json, review.md and the instruction sheet re
   assert.match(md.contents[0].text, /Make the badge yellow/);
   assert.equal(md.contents[0].mimeType, 'text/markdown');
 
+  // brief.md is never written to disk — always rendered on the fly, from the same data
+  const brief = await client.readResource({ uri: 'nit://review/brief.md' });
+  assert.equal(brief.contents[0].mimeType, 'text/markdown');
+  assert.equal(brief.contents[0].text, renderBriefMd(JSON.parse(json.contents[0].text)));
+  assert.match(brief.contents[0].text, /Make the badge yellow/);
+
   const sheet = await client.readResource({ uri: 'nit://review/fix-annotations.md' });
   assert.match(sheet.contents[0].text, /^# \/fix-annotations/);
+});
+
+test('mcp resources — an annotation resource is compact JSON, not pretty-printed', async t => {
+  const { client } = await startFixtureMcp(t);
+  const one = await client.readResource({ uri: 'nit://annotation/a1' });
+  const text = one.contents[0].text;
+  assert.equal(text, JSON.stringify(JSON.parse(text)), 'no indentation/newlines — same object, minimal encoding');
 });
 
 test('mcp resources — one annotation, its screenshot, and id completion', async t => {

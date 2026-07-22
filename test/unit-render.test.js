@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../dist/store/render.js';
+import { renderReviewMd, renderBriefMd, FIX_ANNOTATIONS_MD } from '../dist/store/render.js';
 
 const DATA = {
   review: {
@@ -76,32 +76,32 @@ const EXPECTED = `# Nit review — https://example.com — 2026-07-20
 
 Authors: Kevin, Ann · 4 annotations · 2 actionable (open/reopened change-requests)
 
-## a1 · change-request · open · desktop — Badge should be yellow
+## a1 · change-request · open · general — Badge should be yellow
 **ACTIONABLE** — make this change, then set \`status\` to \`"fixed"\` in annotations.json.
 ![a1](shots/a1.png)
 - component: \`app-product-tile\` (ProductTileComponent)
 - selector: \`app-product-tile:nth-of-type(3) > .badge\`
-- route: \`/products\` · author: Kevin · scope: general · captured at 1440×900
+- route: \`/products\` · author: Kevin · scope: general · captured at 1440×900 (desktop)
 
 ## a2 · comment · open · mobile — Nice hover animation
 *Context only — do not change code for this.*
 - component: \`app-header\`
 - selector: \`#logo\`
-- route: \`/\` · author: Ann · scope: mobile · captured at 390×844
+- route: \`/\` · author: Ann · scope: mobile · captured at 390×844 (mobile)
 
-## a3 · change-request · fixed · desktop — Fix the footer link
+## a3 · change-request · fixed · general — Fix the footer link
 *Not actionable — status: fixed.*
 - component: \`app-footer\`
 - selector: \`footer a.imprint\`
-- route: \`/\` · author: Kevin · scope: general · captured at 1440×900
+- route: \`/\` · author: Kevin · scope: general · captured at 1440×900 (desktop)
 
-## a4 · change-request · reopened · desktop — Align the price tag
+## a4 · change-request · reopened · general — Align the price tag
 **ACTIONABLE (reopened)** — the previous fix did not hold; fix again, then set \`status\` to \`"fixed"\`.
 ![a4](shots/a4.png)
 ![a4 after](shots/a4-after.png)
 - component: \`app-price\`
 - selector: \`.price\`
-- route: \`/\` · author: Kevin · scope: general · captured at 1440×900
+- route: \`/\` · author: Kevin · scope: general · captured at 1440×900 (desktop)
 `;
 
 test('render: review.md snapshot', () => {
@@ -182,6 +182,46 @@ test('render: link-branch value with ") [" cannot break link boundaries', () => 
   });
   assert.match(md, /- issue: `https:\/\/evil\.com\/x\) \[click\]\(http:\/\/phish`/);
   assert.equal(/- issue: \[.*\]\(.*\)/.test(md), false);
+});
+
+test('render: statusReason renders as a reason line right after the status/ACTIONABLE line', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'wontfix', comment: "rail won't swipe", author: 'Kevin',
+        route: '/product/x', target: { component: 'app-rail' }, createdAt: '2026-07-21T00:00:00Z',
+        statusReason: 'platform scroll behavior' },
+    ],
+  });
+  const lines = md.split('\n');
+  const statusIdx = lines.findIndex(l => l.startsWith('*Not actionable'));
+  assert.ok(statusIdx !== -1);
+  assert.equal(lines[statusIdx + 1], '- reason: platform scroll behavior');
+});
+
+test('render: statusReason with embedded blank lines cannot inject a heading', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: [] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'wontfix', comment: 'c', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z',
+        statusReason: 'ok\n\n## Fake heading\nrest' },
+    ],
+  });
+  assert.match(md, /- reason: ok ## Fake heading rest/);
+  const headings = md.split('\n').filter(l => l.startsWith('## ') && !l.startsWith('## a1'));
+  assert.deepEqual(headings, []);
+});
+
+test('render: no statusReason → no reason line', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: [] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-21T00:00:00Z' },
+    ],
+  });
+  assert.equal(/- reason:/.test(md), false);
 });
 
 test('render: updated stamp is shown, and the line is omitted when there is nothing to show', () => {
@@ -350,4 +390,77 @@ test('render: history is omitted when absent and hostile entries cannot inject',
   assert.deepEqual(headings, [], 'no injected block-level heading');
   assert.match(hostile, /1\. click `ab ## Fake` — "line ## Heading rest" \(x\)/);
   assert.equal(/skipped/.test(hostile), false, 'malformed entry dropped');
+});
+
+// --- renderBriefMd: the token-lean one-line-per-annotation agent overview ---
+
+test('render: brief.md — header and one line per annotation', () => {
+  const brief = renderBriefMd(DATA);
+  const lines = brief.split('\n');
+  assert.equal(lines[0], '# Nit brief — https://example.com — 4 annotations, 2 actionable');
+  assert.equal(lines[1], '');
+  assert.equal(lines[2], '- a1 · change-request · open · general · /products — Badge should be yellow [app-product-tile]');
+  assert.equal(lines[3], '- a2 · comment · open · mobile · / — Nice hover animation [app-header]');
+  assert.equal(lines[4], '- a3 · change-request · fixed · general · / — Fix the footer link [app-footer]');
+  assert.equal(lines[5], '- a4 · change-request · reopened · general · / — Align the price tag [app-price]');
+});
+
+test('render: brief.md — actionable count matches isActionable (open/reopened change-requests only)', () => {
+  const brief = renderBriefMd(DATA);
+  assert.match(brief, /^# Nit brief — .* — 4 annotations, 2 actionable$/m);
+});
+
+test('render: brief.md — empty review renders a zero-count header and no lines', () => {
+  const brief = renderBriefMd({ review: { url: '', createdAt: '', authors: [] }, annotations: [] });
+  assert.equal(brief, '# Nit brief — unknown url — 0 annotations, 0 actionable\n\n');
+});
+
+test('render: brief.md — reason and issue tails append in order when present', () => {
+  const brief = renderBriefMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: [] },
+    annotations: [
+      { id: 'a8', type: 'change-request', status: 'wontfix', comment: "rail won't swipe", author: 'Kevin',
+        viewportScope: 'mobile', route: '/product/x', target: { component: 'app-rail' },
+        createdAt: '2026-07-21T00:00:00Z', statusReason: 'platform scroll behavior' },
+      { id: 'a9', type: 'change-request', status: 'open', comment: 'x', author: 'Kevin',
+        route: '/', target: { component: 'app-x' }, createdAt: '2026-07-21T00:00:00Z',
+        issueRef: 'FAI-42' },
+    ],
+  });
+  assert.match(brief, /^- a8 · change-request · wontfix · mobile · \/product\/x — rail won't swipe \[app-rail\] · reason: platform scroll behavior$/m);
+  assert.match(brief, /^- a9 · change-request · open · general · \/ — x \[app-x\] · issue: FAI-42$/m);
+});
+
+test('render: brief.md sanitizes comment/component/reason/issue — newlines and backticks collapse, length is capped', () => {
+  const longComment = 'A'.repeat(150);
+  const brief = renderBriefMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: [] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open',
+        comment: 'break\n\n## Fake heading\n`code`',
+        author: 'Kevin', route: '/', target: { component: 'app`x\ny' },
+        createdAt: '2026-07-21T00:00:00Z', statusReason: 'why\n`not`', issueRef: 'FAI-1\n`2`' },
+      { id: 'a2', type: 'change-request', status: 'open', comment: longComment, author: 'Kevin',
+        route: '/', target: { component: 'app-x' }, createdAt: '2026-07-21T00:00:00Z' },
+    ],
+  });
+  const lines = brief.split('\n').filter(l => l.startsWith('- '));
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0], '- a1 · change-request · open · general · / — break ## Fake heading code [appx y] · reason: why not · issue: FAI-1 2');
+  assert.equal(lines[0].includes('\n'), false);
+  assert.equal(lines[0].includes('`'), false);
+  const expectedComment = `${'A'.repeat(99)}…`;
+  assert.equal(lines[1], `- a2 · change-request · open · general · / — ${expectedComment} [app-x]`);
+});
+
+test('render: brief.md falls back gracefully on a hand-trimmed record missing target/scope/route', () => {
+  const brief = renderBriefMd({
+    review: { id: 'r', url: '', createdAt: '2026-07-21T00:00:00Z', authors: [] },
+    annotations: [
+      { id: 'a1', type: 'comment', status: 'open', comment: 'ok', author: 'Kevin',
+        createdAt: '2026-07-21T00:00:00Z' },
+    ],
+  });
+  assert.match(brief, /^# Nit brief — unknown url — 1 annotations, 0 actionable$/m);
+  assert.match(brief, /^- a1 · comment · open · general · \/ — ok \[\?\]$/m);
 });

@@ -14,15 +14,16 @@ import { pkgVersion } from '../util/version.js';
 // Sent with the initialize result; MCP clients surface this to the agent as
 // standing guidance for the whole server.
 const INSTRUCTIONS = 'This server exposes a nit review: UI annotations a human reviewer made on a live website, '
-  + 'each pinned to a concrete element. Typical flow: nit_list_annotations to see what is actionable '
-  + '(change-requests with status open or reopened), nit_get_annotation for each one you work on '
-  + '(read the screenshot and, when present, the click history to reproduce the state), make the fix '
-  + 'in the source code, then nit_mark_fixed. Treat comment-type annotations as context, never as tasks. '
-  + 'If a change should not be made, set status wontfix instead of forcing it. '
-  + 'Humans verify fixes afterwards; reopened items come back as actionable. '
-  + 'The same review is also readable as resources (nit://review/annotations.json, nit://review/review.md, '
-  + 'nit://review/fix-annotations.md, nit://annotation/{id} and its screenshots) when you want context '
-  + 'without spending a tool call; every change still goes through the tools.';
+  + 'each pinned to a concrete element. Typical flow: nit_list_annotations to see everything (rows carry '
+  + 'the full record minus click history and xpath; actionable means type change-request with status open '
+  + 'or reopened), then nit_get_annotation — it accepts one id or an array — for the screenshot and click '
+  + 'history of anything you work on, make the fix in the source code, then nit_mark_fixed. Treat '
+  + 'comment-type annotations as context, never as tasks. If a change should not be made, set status '
+  + 'wontfix via nit_set_status and record why in its reason parameter. Humans verify fixes afterwards; '
+  + 'reopened items come back as actionable. Every change goes through the tools. If you cannot call tools, '
+  + 'the review is also readable as resources: nit://review/brief.md (one line per annotation), '
+  + 'nit://review/fix-annotations.md (how to work file-only), nit://review/annotations.json, and '
+  + 'nit://annotation/{id} plus its screenshots.';
 
 /** Options for {@link startMcpServer}. */
 export interface McpServerOptions {
