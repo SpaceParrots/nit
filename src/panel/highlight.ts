@@ -4,8 +4,10 @@
 // anything unmatchable is emitted as a plain `text` token, so a malformed
 // selector (annotations.json is untrusted) still renders in full.
 
+/** The syntax category a selector fragment renders as. */
 export type SelTokenKind = 'id' | 'attr' | 'class' | 'tag' | 'pseudo' | 'combinator' | 'text';
 
+/** One lossless fragment of a tokenized selector. */
 export interface SelToken {
   kind: SelTokenKind;
   text: string;
