@@ -36,9 +36,10 @@ export function renderReviewMd(data: ReviewData): string {
       lines.push(`*Not actionable — status: ${inline(a.status)}.*`);
     }
     if (a.statusReason) lines.push(`- reason: ${oneLine(a.statusReason)}`);
-    if (a.screenshot) lines.push(`![${a.id}](${a.screenshot})`);
-    if (a.screenshotAfter) lines.push(`![${a.id} after](${a.screenshotAfter})`);
-    lines.push(`- component: \`${t.component ?? '?'}\`${t.ngComponent ? ` (${t.ngComponent})` : ''}`);
+    if (isSafeShotRef(a.screenshot)) lines.push(`![${inline(a.id)}](${a.screenshot})`);
+    if (isSafeShotRef(a.screenshotAfter)) lines.push(`![${inline(a.id)} after](${a.screenshotAfter})`);
+    const ngComponent = inline(t.ngComponent);
+    lines.push(`- component: \`${inline(t.component).replace(/`/g, '') || '?'}\`${ngComponent ? ` (${ngComponent})` : ''}`);
     if (t.selector) lines.push(`- selector: \`${inline(t.selector).replace(/`/g, '')}\``);
     const route = inline(a.route || '/').replace(/`/g, '');
     const capturedAt = a.viewport
@@ -162,6 +163,16 @@ function inline(s: unknown): string {
 
 function oneLine(s: string | undefined): string {
   return (s ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+
+/**
+ * Only a plain relative path renders as a markdown image. nit itself writes
+ * `shots/<fileSafeId>.png`, which always passes; a hand-edited value carrying
+ * whitespace, parens or angle brackets could break out of the `![alt](href)`
+ * boundaries, so it is skipped rather than escaped.
+ */
+function isSafeShotRef(rel: unknown): rel is string {
+  return typeof rel === 'string' && /^[^\s()<>]+$/.test(rel);
 }
 
 /**

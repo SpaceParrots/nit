@@ -392,6 +392,33 @@ test('render: route/author/scope/viewport fields on the detail line are defused 
   );
 });
 
+test('render: component line and screenshot refs are defused against injection', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      {
+        id: 'a1',
+        type: 'change-request',
+        status: 'open',
+        comment: 'c',
+        author: 'Kevin',
+        route: '/',
+        viewportScope: 'general',
+        target: { component: 'app-x`\n\n## Fake heading', ngComponent: 'XComponent\n\n## Another fake' },
+        screenshot: 'shots/a1.png) ![evil](https://x.test/evil.png',
+        screenshotAfter: 'shots/a1-after.png',
+        createdAt: '2026-07-22T00:00:00Z',
+      },
+    ],
+  });
+  const headings = md.split('\n').filter(l => l.startsWith('## '));
+  assert.equal(headings.length, 1, 'no heading injected via component/ngComponent');
+  const componentLine = md.split('\n').find(l => l.startsWith('- component:'));
+  assert.equal(componentLine, '- component: `app-x ## Fake heading` (XComponent ## Another fake)');
+  assert.ok(!md.includes('https://x.test/evil.png'), 'a shot ref with parens is skipped, not rendered');
+  assert.ok(md.includes('![a1 after](shots/a1-after.png)'), 'the well-formed shot ref still renders');
+});
+
 test('render: history renders as a numbered steps list, oldest first', () => {
   const md = renderReviewMd({
     review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: ['Kevin'] },
