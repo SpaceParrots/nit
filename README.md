@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/nit-180.png" alt="nit logo" width="90"></p>
+
 # nit
 
 > Point-and-click website annotation that hands small UI fixes straight to a coding agent.
@@ -12,8 +14,9 @@ in prose is lossy ("the third tile… no, on the landing page…").
 
 **nit** is the missing input device: click the element, type the nit, done. Every annotation is
 recorded with a stable reference to the element (component tag, Angular class name when available,
-verified-unique CSS selector, XPath, screenshot), the route, and the viewport — precise enough for a
-coding agent to find the source and fix it without any further context.
+a verified-unique CSS selector anchored on `#id`/`data-id` where possible, XPath, screenshot), the
+route, and the viewport — precise enough for a coding agent to find the source and fix it without
+any further context.
 
 The name is from code-review culture: reviewers prefix minor comments with `nit:`.
 

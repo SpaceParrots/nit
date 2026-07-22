@@ -1,17 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- **Selectors anchor on `data-id`** — generated selectors prefer `#id`, then
-  `[data-id="…"]`, on the element itself, as ancestor anchors, and as path
-  waypoints. Values are escaped and uniqueness-verified as before.
-- **Syntax-highlighted selectors in the panel** — the expanded annotation
-  detail renders the selector monospace with ids and `data-id` attributes
-  highlighted, built from safe text-only spans.
-- **Labeled annotation details** — the expanded panel item shows a color-coded
-  status badge, a scope badge, and icon-labeled rows (created, updated,
-  component, selector, id) instead of run-together text lines.
-
 ## 1.0.0 — 2026-07-22
 
 First stable release.
@@ -45,6 +33,13 @@ shareable (`export` / `import`) and mergeable across authors.
 - **Pins stay glued to fixed and sticky elements** — the pin layer is viewport-anchored and
   repositions on scroll, so annotating a fixed tabbar (or a sticky header, or content in an inner
   scroll pane) keeps the pin on the element instead of drifting with the page.
+- **Selectors anchor on `data-id`** — generated selectors prefer `#id`, then `[data-id="…"]`, on
+  the element itself, as ancestor anchors, and as path waypoints. Values are escaped and
+  uniqueness-verified as before.
+- **Labeled, highlighted annotation details** — the expanded panel item shows a color-coded status
+  badge, a scope badge, and icon-labeled rows (created, updated, component, selector, id); the
+  selector renders monospace with ids and `data-id` attributes syntax-highlighted, built from safe
+  text-only spans.
 
 ### Security
 
