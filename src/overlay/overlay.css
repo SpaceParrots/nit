@@ -42,8 +42,9 @@
   white-space: nowrap;
 }
 
-/* ---- pins (absolute page coords) ---- */
-.nit-pins { position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: visible; z-index: 20; }
+/* ---- pins (viewport coords: the fixed layer keeps pins glued to elements in
+        fixed/sticky containers; pins.ts repositions them on scroll) ---- */
+.nit-pins { position: fixed; top: 0; left: 0; width: 0; height: 0; overflow: visible; z-index: 20; }
 .nit-pin {
   position: absolute;
   width: 22px;
