@@ -121,6 +121,16 @@ interface AnnotationRow {
   historyCount: number | undefined;
 }
 
+/**
+ * The list summary's historyCount: the raw trail length, or omitted for no/empty history.
+ * A hand-edited `history: []` must read the same as absent history — matching
+ * nit_get_annotation, which never emits `historyCount: 0` (see `buildAnnotationRecord`).
+ */
+function summaryHistoryCount(history: Annotation['history']): number | undefined {
+  if (!history || history.length === 0) return undefined;
+  return history.length;
+}
+
 function listAnnotations(store: Store, { status, type, route }: {
   status?: AnnotationStatus;
   type?: Annotation['type'];
@@ -152,7 +162,7 @@ function listAnnotations(store: Store, { status, type, route }: {
     classes: a.target?.classes,
     text: a.target?.text,
     // reproduction-trail length; the (compressed) trail comes with nit_get_annotation
-    historyCount: a.history?.length,
+    historyCount: summaryHistoryCount(a.history),
   }));
   const actionable = all.filter(isActionable).length;
   return structured({
@@ -199,6 +209,11 @@ function omitXpath(target: Annotation['target']): Partial<Annotation['target']> 
   };
 }
 
+/** Drop repeats, keeping first-occurrence order — a batch get must not double-charge tokens (and screenshot bytes) for a repeated id. */
+function dedupe(ids: string[]): string[] {
+  return [...new Set(ids)];
+}
+
 function getAnnotation(
   dir: string,
   store: Store,
@@ -206,7 +221,7 @@ function getAnnotation(
   includeXpath: boolean,
   includeScreenshot: boolean,
 ): CallToolResult {
-  const ids = Array.isArray(id) ? id : [id];
+  const ids = Array.isArray(id) ? dedupe(id) : [id];
   const found: Annotation[] = [];
   const missing: string[] = [];
   for (const oneId of ids) {

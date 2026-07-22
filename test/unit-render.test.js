@@ -343,6 +343,55 @@ test('render: target.selector containing a backtick cannot break out of the code
   assert.equal(spanContent.includes('`'), false, 'no backtick survives inside the span, so it cannot terminate early');
 });
 
+test('render: header fields (id/type/status/scope) are defused against heading injection', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      {
+        id: 'a1\n\n## Fake heading',
+        type: 'change-request',
+        status: 'open\n\n## Another fake',
+        comment: 'c',
+        author: 'Kevin',
+        route: '/',
+        viewportScope: 'general\n\n## Yet another',
+        target: {},
+        createdAt: '2026-07-22T00:00:00Z',
+      },
+    ],
+  });
+  const headings = md.split('\n').filter(l => l.startsWith('## '));
+  assert.equal(headings.length, 1, 'only the real heading — no injected block-level heading');
+  assert.equal(headings[0], '## a1 ## Fake heading · change-request · open ## Another fake · general ## Yet another — c');
+});
+
+test('render: route/author/scope/viewport fields on the detail line are defused against row injection', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      {
+        id: 'a1',
+        type: 'change-request',
+        status: 'open',
+        comment: 'c',
+        author: 'evil`\nauthor',
+        route: '/x\n\n- fake-a99 · change-request · open · general · /y — evil [app-x]',
+        viewportScope: 'general',
+        viewport: { mode: 'desktop\n\n## Fake', w: 1440, h: 900 },
+        target: {},
+        createdAt: '2026-07-22T00:00:00Z',
+      },
+    ],
+  });
+  const fakeRows = md.split('\n').filter(l => l.startsWith('- fake-'));
+  assert.deepEqual(fakeRows, [], 'no fake annotation row injected via a newline in route');
+  const routeLine = md.split('\n').find(l => l.startsWith('- route:'));
+  assert.equal(
+    routeLine,
+    '- route: `/x - fake-a99 · change-request · open · general · /y — evil [app-x]` · author: evil` author · scope: general · captured at 1440×900 (desktop ## Fake)',
+  );
+});
+
 test('render: history renders as a numbered steps list, oldest first', () => {
   const md = renderReviewMd({
     review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: ['Kevin'] },
@@ -451,6 +500,31 @@ test('render: brief.md sanitizes comment/component/reason/issue — newlines and
   assert.equal(lines[0].includes('`'), false);
   const expectedComment = `${'A'.repeat(99)}…`;
   assert.equal(lines[1], `- a2 · change-request · open · general · / — ${expectedComment} [app-x]`);
+});
+
+test('render: brief.md defuses id/type/status/scope/route so a hand-edited value cannot inject a fake row', () => {
+  const brief = renderBriefMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-21T00:00:00Z', authors: [] },
+    annotations: [
+      {
+        id: 'a1',
+        type: 'change-request',
+        status: 'open',
+        comment: 'ok',
+        author: 'Kevin',
+        route: '/x\n\n- fake-a99 · change-request · open · general · /y — evil [app-x]',
+        viewportScope: 'general',
+        target: { component: 'app-x' },
+        createdAt: '2026-07-21T00:00:00Z',
+      },
+    ],
+  });
+  const lines = brief.split('\n').filter(l => l.startsWith('- '));
+  assert.equal(lines.length, 1, 'no extra row injected via route');
+  assert.equal(
+    lines[0],
+    '- a1 · change-request · open · general · /x - fake-a99 · change-request · open · general · /y — evil [app-x] — ok [app-x]',
+  );
 });
 
 test('render: brief.md falls back gracefully on a hand-trimmed record missing target/scope/route', () => {

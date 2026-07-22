@@ -38,7 +38,7 @@ export function compressHistory(
   const valid = history.filter((s): s is ClickStep => Boolean(
     s && typeof s === 'object'
     && typeof s.selector === 'string' && typeof s.text === 'string'
-    && typeof s.component === 'string',
+    && typeof s.component === 'string' && typeof s.tag === 'string' && typeof s.at === 'string',
   ));
 
   const reproduction = valid.filter(s => s.selector !== targetSelector);

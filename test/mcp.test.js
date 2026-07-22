@@ -262,6 +262,40 @@ test('mcp: list summaries carry historyCount (raw length); get_annotation compre
   assert.deepEqual(full.history, history, 'nothing to compress: no self-clicks, dupes, or overflow');
 });
 
+test('mcp: get_annotation — a trail of only self-clicks has no history field but keeps the original historyCount', async t => {
+  const selfClicks = [
+    { selector: '.badge', tag: 'span', component: 'app-tile', text: 'Badge', at: '2026-07-20T09:00:00Z' },
+    { selector: '.badge', tag: 'span', component: 'app-tile', text: 'Badge again', at: '2026-07-20T09:00:10Z' },
+  ];
+  const { call } = await startFixtureMcp(t, { history: selfClicks });
+
+  const full = payload(await call('nit_get_annotation', { id: 'a1' })).annotation;
+  assert.equal('history' in full, false, 'compression drops every step — all are self-clicks on the target');
+  assert.equal(full.historyCount, selfClicks.length, 'historyCount stays the original, uncompressed length');
+});
+
+test('mcp: list omits historyCount for a hand-edited empty history array, matching get_annotation', async t => {
+  const { call } = await startFixtureMcp(t, { history: [] });
+
+  const list = payload(await call('nit_list_annotations', {}));
+  const a1 = list.annotations.find(a => a.id === 'a1');
+  assert.equal('historyCount' in a1, false, 'an empty array reads the same as no history at all');
+
+  const full = payload(await call('nit_get_annotation', { id: 'a1' })).annotation;
+  assert.equal('historyCount' in full, false, 'get_annotation already treated [] this way');
+});
+
+test('mcp: get_annotation dedupes duplicate ids in a batch request', async t => {
+  const { call } = await startFixtureMcp(t);
+
+  const res = await call('nit_get_annotation', { id: ['a1', 'a1'] });
+  const body = payload(res);
+  assert.equal(body.annotations.length, 1, 'the repeated id collapses to one entry');
+  assert.equal(body.annotations[0].id, 'a1');
+  const images = res.content.filter(c => c.type === 'image');
+  assert.equal(images.length, 1, 'the screenshot is not base64-encoded twice for the same id');
+});
+
 test('mcp: get_annotation batches ids, reports missing ones, still errors when none are found', async t => {
   const { call } = await startFixtureMcp(t, { a2Screenshot: true });
 

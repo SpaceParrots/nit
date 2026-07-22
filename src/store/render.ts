@@ -25,7 +25,7 @@ export function renderReviewMd(data: ReviewData): string {
     lines.push('');
     // the header shows the semantic scope (viewportScope), not the capture
     // viewport — a general-scope issue captured on mobile must not read "mobile"
-    lines.push(`## ${a.id} · ${a.type} · ${a.status} · ${a.viewportScope || 'general'} — ${oneLine(a.comment)}`);
+    lines.push(`## ${inline(a.id)} · ${inline(a.type)} · ${inline(a.status)} · ${inline(a.viewportScope || 'general')} — ${oneLine(a.comment)}`);
     if (isActionable(a)) {
       lines.push(a.status === 'reopened'
         ? '**ACTIONABLE (reopened)** — the previous fix did not hold; fix again, then set `status` to `"fixed"`.'
@@ -33,14 +33,18 @@ export function renderReviewMd(data: ReviewData): string {
     } else if (a.type === 'comment') {
       lines.push('*Context only — do not change code for this.*');
     } else {
-      lines.push(`*Not actionable — status: ${a.status}.*`);
+      lines.push(`*Not actionable — status: ${inline(a.status)}.*`);
     }
     if (a.statusReason) lines.push(`- reason: ${oneLine(a.statusReason)}`);
     if (a.screenshot) lines.push(`![${a.id}](${a.screenshot})`);
     if (a.screenshotAfter) lines.push(`![${a.id} after](${a.screenshotAfter})`);
     lines.push(`- component: \`${t.component ?? '?'}\`${t.ngComponent ? ` (${t.ngComponent})` : ''}`);
     if (t.selector) lines.push(`- selector: \`${inline(t.selector).replace(/`/g, '')}\``);
-    lines.push(`- route: \`${a.route || '/'}\` · author: ${a.author || '—'} · scope: ${a.viewportScope || 'general'}${a.viewport ? ` · captured at ${a.viewport.w}×${a.viewport.h} (${a.viewport.mode})` : ''}`);
+    const route = inline(a.route || '/').replace(/`/g, '');
+    const capturedAt = a.viewport
+      ? ` · captured at ${inline(a.viewport.w)}×${inline(a.viewport.h)} (${inline(a.viewport.mode)})`
+      : '';
+    lines.push(`- route: \`${route}\` · author: ${inline(a.author || '—')} · scope: ${inline(a.viewportScope || 'general')}${capturedAt}`);
     const extra: string[] = [];
     const issueFragment = a.issueRef ? issueMd(a.issueRef) : null;
     if (issueFragment) extra.push(`issue: ${issueFragment}`);
@@ -54,6 +58,18 @@ export function renderReviewMd(data: ReviewData): string {
 
 /** brief.md is one line per annotation — a single hand-edited free-text field must never grow past this. */
 const BRIEF_FIELD_CAP = 100;
+
+/**
+ * Coerce a hand-edited JSON value to text without ever risking Object's default
+ * `[object Object]` stringification: only string/number/boolean pass through (numbers
+ * and booleans via `String`, which is safe for them); an object, array, `null` or
+ * `undefined` becomes `''` — the same "nothing useful here" outcome as an absent field.
+ */
+function toText(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
+}
 
 /**
  * Render the token-lean agent overview (SPEC-adjacent, but not part of SPEC §5):
@@ -78,9 +94,14 @@ export function renderBriefMd(data: ReviewData): string {
 /** One `- id · type · status · scope · route — comment [component]` line, plus optional reason/issue tails. */
 function briefLine(a: Annotation): string {
   const t = a.target ?? {} as Partial<Annotation['target']>;
+  const id = briefField(a.id ?? '?');
+  const type = briefField(a.type ?? '?');
+  const status = briefField(a.status ?? '?');
+  const scope = briefField(a.viewportScope || 'general');
+  const route = briefField(a.route || '/');
   const comment = briefField(a.comment ?? '');
   const component = briefField(t.component ?? '?');
-  let line = `- ${a.id} · ${a.type} · ${a.status} · ${a.viewportScope || 'general'} · ${a.route || '/'} — ${comment} [${component}]`;
+  let line = `- ${id} · ${type} · ${status} · ${scope} · ${route} — ${comment} [${component}]`;
   const reason = a.statusReason ? briefField(a.statusReason) : '';
   if (reason) line += ` · reason: ${reason}`;
   const issue = a.issueRef ? briefField(a.issueRef) : '';
@@ -91,11 +112,14 @@ function briefLine(a: Annotation): string {
 /**
  * Whitespace-collapse and strip backticks from an untrusted brief.md field, then cap it at
  * {@link BRIEF_FIELD_CAP}. This file is a token-lean, one-line-per-annotation overview: a single
- * hand-edited comment, component, reason or issueRef must never be able to inject a newline that
- * turns one annotation into two lines, or grow the resource past its whole reason for existing.
+ * hand-edited comment, component, reason, issueRef, or any of the id/type/status/scope/route enum-ish
+ * fields must never be able to inject a newline that turns one annotation into two lines (or a fake
+ * extra one), or grow the resource past its whole reason for existing. Every field on `Annotation` is
+ * typed as a string (or a narrow string union), but the file is hand-editable — a non-string value
+ * is coerced to text (see {@link toText}) rather than thrown on.
  */
-function briefField(s: string): string {
-  const line = s.replace(/\s+/g, ' ').trim().replace(/`/g, '');
+function briefField(s: unknown): string {
+  const line = toText(s).replace(/\s+/g, ' ').trim().replace(/`/g, '');
   return line.length > BRIEF_FIELD_CAP ? `${line.slice(0, BRIEF_FIELD_CAP - 1)}…` : line;
 }
 
@@ -112,7 +136,7 @@ function historyMd(history: Annotation['history']): string[] {
     .filter((s): s is ClickStep => Boolean(
       s && typeof s === 'object'
       && typeof s.selector === 'string' && typeof s.text === 'string'
-      && typeof s.component === 'string',
+      && typeof s.component === 'string' && typeof s.tag === 'string' && typeof s.at === 'string',
     ))
     .slice(0, 10);
   if (!steps.length) return [];
@@ -126,9 +150,14 @@ function historyMd(history: Annotation['history']): string[] {
   return lines;
 }
 
-/** Whitespace-collapse an untrusted fragment so it cannot open a markdown block. */
-function inline(s: string): string {
-  return s.replace(/\s+/g, ' ').trim();
+/**
+ * Whitespace-collapse an untrusted fragment so it cannot open a markdown block.
+ * The field is typed as `string` (or a narrow union) but annotations.json is
+ * hand-editable, so a non-string value must not throw — it is coerced to text
+ * first (see {@link toText}).
+ */
+function inline(s: unknown): string {
+  return toText(s).replace(/\s+/g, ' ').trim();
 }
 
 function oneLine(s: string | undefined): string {
