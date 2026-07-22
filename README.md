@@ -170,7 +170,7 @@ under review; output is plain files.
 npm install
 npm run build   # compile TypeScript (src/ -> dist/)
 node dist/cli/index.js doctor
-npm test        # builds first, then unit tables (target/anchor/store/render/merge) + headless browser integration
+npm test        # builds first, then unit tables (target/anchor/store/render/merge/route/url/panel-filter) + headless browser integration
 npm run lint
 ```
 

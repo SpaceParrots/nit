@@ -76,7 +76,9 @@ withBrowserOptions(
       + 'Press Alt (or click the nit chip bottom-left) to toggle element picking, click an\n'
       + 'element, describe the change, pick a type (change request / comment) and a viewport\n'
       + 'scope, then Save. The nit panel window next to the browser lists annotations,\n'
-      + 'switches desktop/mobile, deletes items, and finishes the review.\n\n'
+      + 'switches desktop/mobile, sorts and groups them by page, time or state, jumps to\n'
+      + "the page an annotation was found on, records an issue reference, deletes items,\n"
+      + 'and finishes the review.\n\n'
       + 'Writes <out>/annotations.json, review.md, fix-annotations.md and shots/*.png.')
     .argument('<url>', 'page to open (https:// is assumed when no scheme is given)')
     .option('-o, --out <dir>', 'output directory', 'nit-review')
@@ -197,7 +199,8 @@ program.command('mcp')
   .description('Expose a nit review folder to coding agents as an MCP server over stdio.\n\n'
     + 'Tools: list_annotations (filterable; reports the actionable count),\n'
     + 'get_annotation (full record incl. before/after screenshots as images),\n'
-    + 'mark_fixed, set_status (open | fixed | wontfix | verified | reopened).\n\n'
+    + 'mark_fixed, set_status (open | fixed | wontfix | verified | reopened),\n'
+    + 'set_issue_ref (attach a tracker key or url; empty clears it).\n\n'
     + 'Register with Claude Code:  claude mcp add nit -- nit mcp ./nit-review')
   .argument('[dir]', 'review directory containing annotations.json', 'nit-review')
   .action((dir: string) => {
