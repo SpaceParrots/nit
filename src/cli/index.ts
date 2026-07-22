@@ -15,6 +15,7 @@ import { startSession } from '../browser/session.js';
 import type { NitSession } from '../browser/session.js';
 import { startMcpServer } from '../mcp/server.js';
 import { errorMessage } from '../util/error.js';
+import { readUserConfig } from '../util/user-config.js';
 import type { SessionMode } from '../types.js';
 
 const pkg = JSON.parse(fs.readFileSync(
@@ -82,7 +83,7 @@ withBrowserOptions(
       + 'Writes <out>/annotations.json, review.md, fix-annotations.md and shots/*.png.')
     .argument('<url>', 'page to open (https:// is assumed when no scheme is given)')
     .option('-o, --out <dir>', 'output directory', 'nit-review')
-    .option('-a, --author <name>', 'author recorded on each annotation (default: your OS user name)'))
+    .option('-a, --author <name>', 'author recorded on each annotation (default: from nit setup, else your OS user name)'))
   .action(async (url: string, opts: BrowserCmdOptions, cmd: Command) => {
     // First review in a project: confirm the default output dir is intended here.
     const out = await confirmReviewDir(opts.out ?? 'nit-review', {
@@ -233,7 +234,7 @@ async function startBrowser(
     url: url ? normalizeUrl(url) : opts.url ? normalizeUrl(opts.url) : undefined,
     reviewFile: file,
     out: opts.out,
-    author: opts.author,
+    author: opts.author ?? readUserConfig().author,
     viewportMode: opts.mobile || opts.device === 'mobile' ? 'mobile' : 'desktop',
     headless: Boolean(opts.headless),
     debug: Boolean(opts.debug),

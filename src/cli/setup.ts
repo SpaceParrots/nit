@@ -3,10 +3,12 @@
 // directory, keep it out of git, and register the MCP server in .mcp.json.
 // All effects live in applySetup() so the wizard stays a thin prompt layer.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import * as p from '@clack/prompts';
 import { runMcpInstall } from './mcp-install.js';
 import type { McpInstallResult } from './mcp-install.js';
+import { readUserConfig, writeUserConfig } from '../util/user-config.js';
 
 export const DEFAULT_REVIEW_DIR = 'nit-review';
 
@@ -18,6 +20,8 @@ export interface SetupChoices {
   gitignore: boolean;
   /** register the nit MCP server in .mcp.json */
   mcp: boolean;
+  /** author name to store in the user config; null = do not store */
+  author: string | null;
 }
 
 /** Options for {@link applySetup} / {@link runSetup}. */
@@ -28,6 +32,8 @@ export interface SetupOptions {
   platform?: NodeJS.Platform;
   /** log sink */
   log?: (line: string) => void;
+  /** user config directory override (tests) */
+  configDir?: string;
 }
 
 /** What {@link applySetup} did. */
@@ -37,6 +43,8 @@ export interface SetupResult {
   reviewDirCreated: boolean;
   gitignore: GitignoreOutcome | 'skipped';
   mcp: McpInstallResult | null;
+  /** author stored in the user config; null when nothing was stored */
+  author: string | null;
 }
 
 export type GitignoreOutcome = 'created' | 'added' | 'present';
@@ -74,7 +82,7 @@ export function validateReviewDir(dir: string): string | undefined {
  * register the MCP server. Pure effects, no prompting — the wizard and the
  * `--yes` path both end up here.
  */
-export function applySetup(choices: SetupChoices, { projectDir = process.cwd(), platform = process.platform }: SetupOptions = {}): SetupResult {
+export function applySetup(choices: SetupChoices, { projectDir = process.cwd(), platform = process.platform, configDir }: SetupOptions = {}): SetupResult {
   const invalid = validateReviewDir(choices.reviewDir);
   if (invalid) throw new Error(`invalid review directory "${choices.reviewDir}": ${invalid}`);
 
@@ -84,7 +92,12 @@ export function applySetup(choices: SetupChoices, { projectDir = process.cwd(), 
 
   const gitignore = choices.gitignore ? ensureGitignoreEntry(projectDir, `${choices.reviewDir.replace(/[\\/]+$/, '')}/`) : 'skipped';
   const mcp = choices.mcp ? runMcpInstall(choices.reviewDir, { projectDir, platform, log: () => {} }) : null;
-  return { reviewDir: choices.reviewDir, reviewDirCreated, gitignore, mcp };
+  // An empty string means "do not store", same as null — normalized away
+  // before falling back with `??` (satisfies @typescript-eslint/prefer-nullish-coalescing).
+  const trimmedAuthor = choices.author?.trim();
+  const author = trimmedAuthor === '' ? null : trimmedAuthor ?? null;
+  if (author) writeUserConfig({ author }, configDir);
+  return { reviewDir: choices.reviewDir, reviewDirCreated, gitignore, mcp, author };
 }
 
 /** Options for {@link runSetup}. */
@@ -98,12 +111,16 @@ export interface RunSetupOptions extends SetupOptions {
  * `--yes` (or without a TTY) it applies the defaults straight away: review dir
  * `nit-review`, .gitignore entry, MCP registration.
  */
-export async function runSetup({ yes = false, projectDir = process.cwd(), platform, log = line => console.log(line) }: RunSetupOptions = {}): Promise<SetupResult | null> {
-  const defaults: SetupChoices = { reviewDir: DEFAULT_REVIEW_DIR, gitignore: true, mcp: true };
-
+export async function runSetup({ yes = false, projectDir = process.cwd(), platform, configDir, log = line => console.log(line) }: RunSetupOptions = {}): Promise<SetupResult | null> {
   if (yes || !process.stdin.isTTY || !process.stdout.isTTY) {
     if (!yes) log('non-interactive terminal — applying the defaults (same as --yes)');
-    const result = applySetup(defaults, { projectDir, platform });
+    const defaults: SetupChoices = {
+      reviewDir: DEFAULT_REVIEW_DIR,
+      gitignore: true,
+      mcp: true,
+      author: readUserConfig(configDir).author ?? os.userInfo().username,
+    };
+    const result = applySetup(defaults, { projectDir, platform, configDir });
     for (const line of summarize(result, projectDir)) log(line);
     return result;
   }
@@ -130,7 +147,15 @@ export async function runSetup({ yes = false, projectDir = process.cwd(), platfo
   });
   if (p.isCancel(mcp)) return cancelled();
 
-  const result = applySetup({ reviewDir, gitignore, mcp }, { projectDir, platform });
+  const storedAuthor = readUserConfig(configDir).author;
+  const author = await p.text({
+    message: 'Who is reviewing? (author name recorded on your annotations)',
+    placeholder: storedAuthor ?? os.userInfo().username,
+    defaultValue: storedAuthor ?? os.userInfo().username,
+  });
+  if (p.isCancel(author)) return cancelled();
+
+  const result = applySetup({ reviewDir, gitignore, mcp, author: author.trim() || null }, { projectDir, platform, configDir });
   p.note(summarize(result, projectDir).join('\n'), 'Done');
   p.outro(`Start reviewing:  nit review <url>${result.reviewDir === DEFAULT_REVIEW_DIR ? '' : ` --out ${result.reviewDir}`}`);
   return result;
@@ -151,6 +176,9 @@ function summarize(result: SetupResult, projectDir: string): string[] {
   }
   if (result.mcp) {
     lines.push(`mcp server        ${result.mcp.created ? '.mcp.json created' : '.mcp.json updated'}  (${result.mcp.entry.command} ${result.mcp.entry.args.join(' ')})`);
+  }
+  if (result.author) {
+    lines.push(`author            ${result.author}  (saved for your user, not the project)`);
   }
   return lines;
 }

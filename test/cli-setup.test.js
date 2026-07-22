@@ -8,10 +8,11 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { applySetup, ensureGitignoreEntry, validateReviewDir } from '../dist/cli/setup.js';
+import { readUserConfig, writeUserConfig } from '../dist/util/user-config.js';
 import { tmpDir } from './helpers/tmp.js';
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli', 'index.js');
-const DEFAULTS = { reviewDir: 'nit-review', gitignore: true, mcp: true };
+const DEFAULTS = { reviewDir: 'nit-review', gitignore: true, mcp: true, author: null };
 
 test('setup: applySetup creates review dir, .gitignore and .mcp.json', () => {
   const dir = tmpDir('nit-setup-');
@@ -75,10 +76,51 @@ test('setup: validateReviewDir rejects escaping and absolute paths', () => {
 
 test('setup: CLI --yes applies the defaults non-interactively', () => {
   const dir = tmpDir('nit-setup-');
-  const res = spawnSync(process.execPath, [CLI, 'setup', '--yes'], { cwd: dir, encoding: 'utf8', timeout: 30000 });
+  // Point os.homedir() (and so the user config dir) at the tmp dir — the
+  // subprocess must never touch the real ~/.config/nit.
+  const env = { ...process.env, HOME: dir, USERPROFILE: dir };
+  const res = spawnSync(process.execPath, [CLI, 'setup', '--yes'], { cwd: dir, encoding: 'utf8', timeout: 30000, env });
   assert.equal(res.status, 0, res.stderr);
   assert.ok(fs.existsSync(path.join(dir, 'nit-review')));
   assert.ok(fs.existsSync(path.join(dir, '.gitignore')));
   assert.ok(fs.existsSync(path.join(dir, '.mcp.json')));
   assert.ok(res.stdout.includes('review directory'));
+  assert.ok(fs.existsSync(path.join(dir, '.config', 'nit', 'config.json')), 'user config written under the isolated home');
+});
+
+test('user-config: readUserConfig on a missing dir returns {}', () => {
+  const dir = tmpDir('nit-userconfig-');
+  assert.deepEqual(readUserConfig(path.join(dir, 'does-not-exist')), {});
+});
+
+test('user-config: writeUserConfig then readUserConfig round-trips and merges', () => {
+  const dir = tmpDir('nit-userconfig-');
+  writeUserConfig({ author: 'Ann' }, dir);
+  assert.deepEqual(readUserConfig(dir), { author: 'Ann' });
+
+  writeUserConfig({}, dir);
+  assert.deepEqual(readUserConfig(dir), { author: 'Ann' }, 'an empty patch keeps the existing author');
+});
+
+test('user-config: a corrupt config.json yields {} without throwing', () => {
+  const dir = tmpDir('nit-userconfig-');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config.json'), '{nope', 'utf8');
+  assert.deepEqual(readUserConfig(dir), {});
+});
+
+test('setup: applySetup stores the author in the user config, null stores nothing', () => {
+  const projectDir = tmpDir('nit-setup-');
+  const configDir = tmpDir('nit-userconfig-');
+  const res = applySetup({ ...DEFAULTS, author: 'Ann' }, { projectDir, configDir, platform: 'linux' });
+
+  assert.equal(res.author, 'Ann');
+  assert.deepEqual(readUserConfig(configDir), { author: 'Ann' });
+
+  const projectDir2 = tmpDir('nit-setup-');
+  const configDir2 = tmpDir('nit-userconfig-');
+  const res2 = applySetup({ ...DEFAULTS, author: null }, { projectDir: projectDir2, configDir: configDir2, platform: 'linux' });
+
+  assert.equal(res2.author, null);
+  assert.deepEqual(readUserConfig(configDir2), {});
 });
