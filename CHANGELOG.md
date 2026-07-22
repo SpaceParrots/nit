@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (2026-07-22)
 
 - **Leaner MCP tool payloads.** A field test of the MCP surface showed roughly two thirds of the
   tokens an agent paid for were waste. Tool results are now a single compact JSON text block:
