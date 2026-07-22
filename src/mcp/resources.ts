@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Read-only MCP resources over a review folder: the whole review, the rendered
 // markdown, the agent instruction sheet, and one resource per annotation (plus
-// its screenshots). Resources let an agent pull context by uri instead of
-// spending a tool call — the tools stay the way to *change* anything.
+// its screenshots). A resource read is still a tool call in most clients (e.g.
+// Claude Code's ReadMcpResourceTool), so these exist as a fallback for tools-off
+// sessions and for humans browsing the folder — the tools stay the way to
+// *change* anything, and nit_list_annotations/nit_get_annotation stay the
+// leaner path when tools are available.
 import fs from 'node:fs';
 import path from 'node:path';
 import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Variables } from '@modelcontextprotocol/sdk/shared/uriTemplate.js';
 import { createStore, safeShotPath } from '../store/store.js';
-import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
+import { renderReviewMd, renderBriefMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
 import type { Annotation } from '../types.js';
 
 const ANNOTATION_URI = 'nit://annotation/{id}';
@@ -33,11 +36,20 @@ export function registerResources(server: McpServer, dir: string): void {
 
   server.registerResource('review-md', 'nit://review/review.md', {
     title: 'review.md',
-    description: 'The human-readable review: annotations grouped by route, with status and screenshots.',
+    description: 'The human-readable review, grouped by route with status and screenshots — for humans; agents should prefer brief.md and the tools.',
     mimeType: 'text/markdown',
   }, uri => ({
     // rendered on the fly when the file has not been written yet
     contents: [{ uri: uri.href, mimeType: 'text/markdown', text: readOr(path.join(dir, 'review.md'), () => renderReviewMd(createStore(dir).data)) }],
+  }));
+
+  server.registerResource('brief-md', 'nit://review/brief.md', {
+    title: 'brief.md',
+    description: 'One line per annotation — the token-lean overview for agents; read this before annotations.json or review.md.',
+    mimeType: 'text/markdown',
+  }, uri => ({
+    // always rendered on the fly: unlike review.md, nothing ever writes this to disk
+    contents: [{ uri: uri.href, mimeType: 'text/markdown', text: renderBriefMd(createStore(dir).data) }],
   }));
 
   server.registerResource('fix-annotations-md', 'nit://review/fix-annotations.md', {
@@ -65,7 +77,9 @@ export function registerResources(server: McpServer, dir: string): void {
     description: 'One annotation in full, by id.',
     mimeType: 'application/json',
   }, (uri, variables) => ({
-    contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(annotationById(dir, variables), null, 2) }],
+    // compact: a pretty-printed annotation costs ~35% more tokens once its
+    // indentation and newlines are escaped into contents[].text
+    contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(annotationById(dir, variables)) }],
   }));
 
   registerShotResource(server, dir, {

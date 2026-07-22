@@ -23,7 +23,9 @@ export function renderReviewMd(data: ReviewData): string {
   for (const a of annotations) {
     const t = a.target ?? {} as Partial<Annotation['target']>;
     lines.push('');
-    lines.push(`## ${a.id} · ${a.type} · ${a.status} · ${a.viewport ? a.viewport.mode : 'general'} — ${oneLine(a.comment)}`);
+    // the header shows the semantic scope (viewportScope), not the capture
+    // viewport — a general-scope issue captured on mobile must not read "mobile"
+    lines.push(`## ${a.id} · ${a.type} · ${a.status} · ${a.viewportScope || 'general'} — ${oneLine(a.comment)}`);
     if (isActionable(a)) {
       lines.push(a.status === 'reopened'
         ? '**ACTIONABLE (reopened)** — the previous fix did not hold; fix again, then set `status` to `"fixed"`.'
@@ -33,11 +35,12 @@ export function renderReviewMd(data: ReviewData): string {
     } else {
       lines.push(`*Not actionable — status: ${a.status}.*`);
     }
+    if (a.statusReason) lines.push(`- reason: ${oneLine(a.statusReason)}`);
     if (a.screenshot) lines.push(`![${a.id}](${a.screenshot})`);
     if (a.screenshotAfter) lines.push(`![${a.id} after](${a.screenshotAfter})`);
     lines.push(`- component: \`${t.component ?? '?'}\`${t.ngComponent ? ` (${t.ngComponent})` : ''}`);
     if (t.selector) lines.push(`- selector: \`${inline(t.selector).replace(/`/g, '')}\``);
-    lines.push(`- route: \`${a.route || '/'}\` · author: ${a.author || '—'} · scope: ${a.viewportScope || 'general'}${a.viewport ? ` · captured at ${a.viewport.w}×${a.viewport.h}` : ''}`);
+    lines.push(`- route: \`${a.route || '/'}\` · author: ${a.author || '—'} · scope: ${a.viewportScope || 'general'}${a.viewport ? ` · captured at ${a.viewport.w}×${a.viewport.h} (${a.viewport.mode})` : ''}`);
     const extra: string[] = [];
     const issueFragment = a.issueRef ? issueMd(a.issueRef) : null;
     if (issueFragment) extra.push(`issue: ${issueFragment}`);
@@ -47,6 +50,53 @@ export function renderReviewMd(data: ReviewData): string {
   }
   lines.push('');
   return lines.join('\n');
+}
+
+/** brief.md is one line per annotation — a single hand-edited free-text field must never grow past this. */
+const BRIEF_FIELD_CAP = 100;
+
+/**
+ * Render the token-lean agent overview (SPEC-adjacent, but not part of SPEC §5):
+ * a one-line header plus one line per annotation, carrying just enough to triage
+ * without reading annotations.json or review.md. Pure function.
+ * @param data the full review data
+ * @returns the complete brief.md content
+ */
+export function renderBriefMd(data: ReviewData): string {
+  const review = data.review ?? {} as Partial<ReviewData['review']>;
+  const annotations = data.annotations ?? [];
+  const actionable = annotations.filter(isActionable).length;
+
+  const lines = [
+    `# Nit brief — ${review.url || 'unknown url'} — ${annotations.length} annotations, ${actionable} actionable`,
+    '',
+    ...annotations.map(briefLine),
+  ];
+  return `${lines.join('\n')}\n`;
+}
+
+/** One `- id · type · status · scope · route — comment [component]` line, plus optional reason/issue tails. */
+function briefLine(a: Annotation): string {
+  const t = a.target ?? {} as Partial<Annotation['target']>;
+  const comment = briefField(a.comment ?? '');
+  const component = briefField(t.component ?? '?');
+  let line = `- ${a.id} · ${a.type} · ${a.status} · ${a.viewportScope || 'general'} · ${a.route || '/'} — ${comment} [${component}]`;
+  const reason = a.statusReason ? briefField(a.statusReason) : '';
+  if (reason) line += ` · reason: ${reason}`;
+  const issue = a.issueRef ? briefField(a.issueRef) : '';
+  if (issue) line += ` · issue: ${issue}`;
+  return line;
+}
+
+/**
+ * Whitespace-collapse and strip backticks from an untrusted brief.md field, then cap it at
+ * {@link BRIEF_FIELD_CAP}. This file is a token-lean, one-line-per-annotation overview: a single
+ * hand-edited comment, component, reason or issueRef must never be able to inject a newline that
+ * turns one annotation into two lines, or grow the resource past its whole reason for existing.
+ */
+function briefField(s: string): string {
+  const line = s.replace(/\s+/g, ' ').trim().replace(/`/g, '');
+  return line.length > BRIEF_FIELD_CAP ? `${line.slice(0, BRIEF_FIELD_CAP - 1)}…` : line;
 }
 
 /**
@@ -129,11 +179,18 @@ function issueMd(ref: string): string | null {
 
 export const FIX_ANNOTATIONS_MD = `# /fix-annotations
 
+If the nit MCP tools are available (\`nit_list_annotations\`, \`nit_get_annotation\`, \`nit_mark_fixed\`,
+\`nit_set_status\`, \`nit_set_issue_ref\`), use them for every read and every change — do not edit
+\`annotations.json\` by hand. The rest of this sheet is for working from the files alone.
+
+## File-only mode
+
 Read \`annotations.json\` in this directory. For each annotation of \`type: "change-request"\` whose
 \`status\` is \`"open"\` **or** \`"reopened"\` (a fix that did not hold), make the change described in
 \`comment\` at the referenced element, then set that annotation's \`status\` to \`"fixed"\`. Treat
 \`type: "comment"\` annotations as context — do not change code for them; surface them to the user
-instead.
+instead. If a change should not be made, set \`status\` to \`"wontfix"\` and record why in
+\`statusReason\`.
 
 Locating each spot: use \`target.component\` (custom-element tag ≈ Angular component selector) and
 \`route\` first. \`target.ngComponent\` is the Angular class name when the build exposed it —
@@ -144,8 +201,8 @@ Note: the target marks where the reviewer SAW the problem — the defect may liv
 component (spacing/overflow issues especially). Verify the root cause before editing.
 
 Optional metadata: if you file or resolve a tracker issue for a nit, record its key or url in that
-annotation's \`issueRef\`. Do not hand-edit \`updatedAt\`/\`updatedBy\` — nit stamps them whenever a
-status or issue reference changes.
+annotation's \`issueRef\`. Do not hand-edit \`updatedAt\`/\`updatedBy\` in file-only mode — nit stamps
+them itself whenever a change goes through the tools.
 
 Reproduction: when an annotation carries \`history\` (the reviewer's last clicks on that page,
 oldest first), the described state may only exist after replaying those clicks — open the route,
