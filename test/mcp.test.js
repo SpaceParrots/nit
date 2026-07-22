@@ -134,18 +134,18 @@ test('mcp server — list, get, mark_fixed, set_status over stdio JSON-RPC', asy
 
   const tools = await client.request('tools/list');
   const names = tools.result.tools.map(x => x.name);
-  assert.deepEqual(names.sort(), ['get_annotation', 'list_annotations', 'mark_fixed', 'set_issue_ref', 'set_status']);
+  assert.deepEqual(names.sort(), ['nit_get_annotation', 'nit_list_annotations', 'nit_mark_fixed', 'nit_set_issue_ref', 'nit_set_status']);
 
-  const list = await client.request('tools/call', { name: 'list_annotations', arguments: {} });
+  const list = await client.request('tools/call', { name: 'nit_list_annotations', arguments: {} });
   const listed = JSON.parse(list.result.content[0].text);
   assert.equal(listed.total, 2);
   assert.equal(listed.actionable, 1); // only the open change-request
   assert.equal(listed.annotations[0].component, 'app-tile');
 
-  const filtered = await client.request('tools/call', { name: 'list_annotations', arguments: { type: 'comment' } });
+  const filtered = await client.request('tools/call', { name: 'nit_list_annotations', arguments: { type: 'comment' } });
   assert.equal(JSON.parse(filtered.result.content[0].text).total, 1);
 
-  const got = await client.request('tools/call', { name: 'get_annotation', arguments: { id: 'a1' } });
+  const got = await client.request('tools/call', { name: 'nit_get_annotation', arguments: { id: 'a1' } });
   const gotAnn = JSON.parse(got.result.content[0].text);
   assert.equal(gotAnn.comment, 'Make the badge yellow');
   const image = got.result.content.find(c => c.type === 'image');
@@ -153,17 +153,17 @@ test('mcp server — list, get, mark_fixed, set_status over stdio JSON-RPC', asy
   assert.equal(image.mimeType, 'image/png');
   assert.ok(image.data.length > 20);
 
-  const fixed = await client.request('tools/call', { name: 'mark_fixed', arguments: { id: 'a1' } });
+  const fixed = await client.request('tools/call', { name: 'nit_mark_fixed', arguments: { id: 'a1' } });
   assert.equal(JSON.parse(fixed.result.content[0].text).status, 'fixed');
   const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
   assert.equal(onDisk.annotations.find(a => a.id === 'a1').status, 'fixed');
 
-  const reopened = await client.request('tools/call', { name: 'set_status', arguments: { id: 'a1', status: 'reopened' } });
+  const reopened = await client.request('tools/call', { name: 'nit_set_status', arguments: { id: 'a1', status: 'reopened' } });
   const reopenedAnn = JSON.parse(reopened.result.content[0].text);
   assert.equal(reopenedAnn.status, 'reopened');
   assert.ok(reopenedAnn.verifiedAt);
 
-  const missing = await client.request('tools/call', { name: 'get_annotation', arguments: { id: 'nope' } });
+  const missing = await client.request('tools/call', { name: 'nit_get_annotation', arguments: { id: 'nope' } });
   assert.equal(missing.result.isError, true);
 
   const unknownMethod = await client.request('does/not/exist');
@@ -193,7 +193,7 @@ test('mcp server — a poisoned screenshot path cannot read files outside the re
   t.after(() => client.close());
   await client.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } });
 
-  const got = await client.request('tools/call', { name: 'get_annotation', arguments: { id: 'a1' } });
+  const got = await client.request('tools/call', { name: 'nit_get_annotation', arguments: { id: 'a1' } });
   // text record is returned, but the traversal path must NOT be read back as an image
   assert.ok(got.result.content.some(c => c.type === 'text'));
   const leaked = got.result.content.find(c => c.type === 'image' && Buffer.from(c.data, 'base64').toString().includes('TOP SECRET'));
@@ -202,14 +202,14 @@ test('mcp server — a poisoned screenshot path cannot read files outside the re
 
 test('mcp: set_issue_ref sets and clears the reference', async () => {
   const { call, dir } = await startFixtureMcp();
-  const set = await call('set_issue_ref', { id: 'a1', ref: ' FAI-1234 ' });
+  const set = await call('nit_set_issue_ref', { id: 'a1', ref: ' FAI-1234 ' });
   assert.equal(JSON.parse(set.content[0].text).issueRef, 'FAI-1234', 'trimmed and stored');
 
   const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
   assert.equal(onDisk.annotations[0].issueRef, 'FAI-1234');
   assert.equal(onDisk.annotations[0].updatedBy, 'agent');
 
-  const cleared = await call('set_issue_ref', { id: 'a1', ref: '' });
+  const cleared = await call('nit_set_issue_ref', { id: 'a1', ref: '' });
   assert.equal(JSON.parse(cleared.content[0].text).issueRef, undefined);
 });
 
@@ -217,14 +217,14 @@ test('mcp: set_issue_ref sets and clears the reference', async () => {
 // used to be coerced to '' and silently WIPE a reference the agent had set.
 test('mcp: set_issue_ref reports a non-string ref instead of clearing the reference', async () => {
   const { call, dir } = await startFixtureMcp();
-  await call('set_issue_ref', { id: 'a1', ref: 'FAI-1234' });
+  await call('nit_set_issue_ref', { id: 'a1', ref: 'FAI-1234' });
 
   for (const ref of [42, null, { key: 'FAI-1' }, ['FAI-1'], true]) {
-    const res = await call('set_issue_ref', { id: 'a1', ref });
+    const res = await call('nit_set_issue_ref', { id: 'a1', ref });
     assert.equal(res.isError, true, `${JSON.stringify(ref)} is rejected`);
     assert.match(res.content[0].text, /ref must be a string/);
   }
-  const missing = await call('set_issue_ref', { id: 'a1' });
+  const missing = await call('nit_set_issue_ref', { id: 'a1' });
   assert.equal(missing.isError, true, 'an omitted ref is rejected too');
 
   const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
@@ -233,7 +233,7 @@ test('mcp: set_issue_ref reports a non-string ref instead of clearing the refere
 
 test('mcp: set_status stamps updatedBy agent', async () => {
   const { call } = await startFixtureMcp();
-  const res = await call('mark_fixed', { id: 'a1' });
+  const res = await call('nit_mark_fixed', { id: 'a1' });
   const ann = JSON.parse(res.content[0].text);
   assert.equal(ann.status, 'fixed');
   assert.equal(ann.updatedBy, 'agent');
@@ -242,8 +242,8 @@ test('mcp: set_status stamps updatedBy agent', async () => {
 
 test('mcp: list_annotations route filter matches the full route and the path', async () => {
   const { call } = await startFixtureMcp({ route: '/products?id=5' });
-  const byFull = JSON.parse((await call('list_annotations', { route: '/products?id=5' })).content[0].text);
-  const byPath = JSON.parse((await call('list_annotations', { route: '/products' })).content[0].text);
+  const byFull = JSON.parse((await call('nit_list_annotations', { route: '/products?id=5' })).content[0].text);
+  const byPath = JSON.parse((await call('nit_list_annotations', { route: '/products' })).content[0].text);
   assert.equal(byFull.total, 1);
   assert.equal(byPath.total, 1, 'path-only filter still finds a query-carrying route');
   assert.equal(byFull.annotations[0].issueRef, undefined, 'summary carries the field');
@@ -256,12 +256,12 @@ test('mcp: list summaries carry historyCount and get_annotation returns the trai
   ];
   const { call } = await startFixtureMcp({ history });
 
-  const list = JSON.parse((await call('list_annotations', {})).content[0].text);
+  const list = JSON.parse((await call('nit_list_annotations', {})).content[0].text);
   const a1 = list.annotations.find(a => a.id === 'a1');
   const a2 = list.annotations.find(a => a.id === 'a2');
   assert.equal(a1.historyCount, 2);
   assert.equal(a2.historyCount, undefined, 'absent history has no count');
 
-  const full = JSON.parse((await call('get_annotation', { id: 'a1' })).content[0].text);
+  const full = JSON.parse((await call('nit_get_annotation', { id: 'a1' })).content[0].text);
   assert.deepEqual(full.history, history, 'full record carries the trail verbatim');
 });

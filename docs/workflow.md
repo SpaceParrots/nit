@@ -40,9 +40,9 @@ Two ways to hand the work over:
   contract is: fix every change request with status `open` or `reopened` at the referenced
   element, then set its status to `fixed`.
 - **MCP.** Run `nit mcp-install` once (or let `nit setup` do it), then tell the agent to fix the
-  open nit annotations. The agent uses the `nit` MCP tools: `list_annotations` to see what is
-  actionable, `get_annotation` for the full record including the screenshot, and `mark_fixed`
-  when it is done. It can also file the issue reference back with `set_issue_ref`. The
+  open nit annotations. The agent uses the `nit` MCP tools: `nit_list_annotations` to see what is
+  actionable, `nit_get_annotation` for the full record including the screenshot, and `nit_mark_fixed`
+  when it is done. It can also file the issue reference back with `nit_set_issue_ref`. The
   [MCP guide](./wiki/mcp.md) covers the tools and good agent prompts in detail.
 
 Each annotation gives the agent several ways to find the element: the component tag, the Angular
@@ -98,7 +98,7 @@ route.
 - **Mobile issues**: start with `nit review --mobile`, or switch the viewport from the panel.
   Scope annotations to the viewport where they matter.
 - **Issue tracking**: put a ticket key or url into an annotation's issue-ref field from the
-  panel, or let the agent do it through `set_issue_ref`. It shows up as a chip in the list and
+  panel, or let the agent do it through `nit_set_issue_ref`. It shows up as a chip in the list and
   as a link in `review.md`.
 - **Keep review folders out of git**: `nit setup` offers the `.gitignore` entry. The zips from
   `nit export` are the sharing format instead.

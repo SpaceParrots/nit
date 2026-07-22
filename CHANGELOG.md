@@ -25,8 +25,11 @@ fix Verified or Reopen. Reviews are shareable (`export` / `import`) and mergeabl
   behind a filter dropdown, collapsible page groups with the current page first, created/updated
   stamps, an issue-ref input, editable comment texts, "Go to page" navigation, and a pinned
   footer with the actionable count.
-- **MCP.** A new `set_issue_ref` tool; `list_annotations` summaries carry `issueRef`, timestamps
-  and `historyCount`.
+- **MCP.** A new `nit_set_issue_ref` tool; `nit_list_annotations` summaries carry `issueRef`,
+  timestamps and `historyCount`. All tool names are namespaced with a `nit_` prefix so they stay
+  unambiguous next to other MCP servers' tools, and the server hands connected agents standing
+  instructions (the intended fix loop, comments are not tasks, `wontfix` is allowed) during the
+  handshake.
 - **Context screenshots, captured at pick time.** Screenshots expand to a minimum context window
   (480x360, centered on the element) so a button's surroundings stay visible. They are captured
   the moment the element is picked, so an open dropdown is still in the shot instead of

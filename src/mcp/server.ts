@@ -42,40 +42,48 @@ interface ToolResult {
 
 type SendFn = (msg: object) => void;
 
+// Tool names carry a `nit_` prefix so they stay unambiguous next to other MCP
+// servers' tools in an agent's combined tool list.
 const TOOLS = [
   {
-    name: 'list_annotations',
-    description: 'List annotations of the nit review, optionally filtered. Actionable = type "change-request" with status "open" or "reopened".',
+    name: 'nit_list_annotations',
+    description: 'List the review\'s annotations as summaries (id, comment, status, route, component, selector, historyCount, ...). '
+      + 'Start here: the result reports the actionable count, and actionable means type "change-request" with status "open" or "reopened". '
+      + 'Comments are context, not tasks. Filter by status, type, or route (exact route or bare pathname). '
+      + 'Follow up with nit_get_annotation for anything you intend to fix.',
     inputSchema: {
       type: 'object',
       properties: {
-        status: { type: 'string', enum: STATUSES },
-        type: { type: 'string', enum: ['change-request', 'comment'] },
-        route: { type: 'string' },
+        status: { type: 'string', enum: STATUSES, description: 'only annotations with this status' },
+        type: { type: 'string', enum: ['change-request', 'comment'], description: 'only this annotation type' },
+        route: { type: 'string', description: 'only annotations on this route; an exact route or a bare pathname like /products' },
       },
     },
   },
   {
-    name: 'get_annotation',
-    description: 'Get one annotation in full, including its screenshot(s) as images.',
+    name: 'nit_get_annotation',
+    description: 'Get one annotation in full, including its screenshot(s) as images and the click history (the reviewer\'s clicks that led to the annotated state, oldest first) when present. '
+      + 'Look at the screenshot: it shows the element in context and resolves most ambiguity. '
+      + 'The target offers several ways to locate the element: component tag, Angular class name (ngComponent), a verified-unique CSS selector, an XPath, and the element text.',
     inputSchema: {
       type: 'object',
-      properties: { id: { type: 'string' } },
+      properties: { id: { type: 'string', description: 'annotation id, e.g. a1' } },
       required: ['id'],
     },
   },
   {
-    name: 'mark_fixed',
-    description: 'Mark an annotation as fixed after making the change it describes.',
+    name: 'nit_mark_fixed',
+    description: 'Mark an annotation as fixed. Call this once per annotation, after making the change it describes; a human verifies (or reopens) it later with nit verify.',
     inputSchema: {
       type: 'object',
-      properties: { id: { type: 'string' } },
+      properties: { id: { type: 'string', description: 'annotation id, e.g. a1' } },
       required: ['id'],
     },
   },
   {
-    name: 'set_status',
-    description: 'Set an annotation status explicitly (open | fixed | wontfix | verified | reopened).',
+    name: 'nit_set_status',
+    description: 'Set an annotation status explicitly (open | fixed | wontfix | verified | reopened). '
+      + 'Prefer nit_mark_fixed for the normal case. Use wontfix, with your reasoning in the conversation, when a requested change should not be made; leave verified/reopened rulings to humans.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -86,18 +94,28 @@ const TOOLS = [
     },
   },
   {
-    name: 'set_issue_ref',
-    description: 'Attach a tracker issue key or url to an annotation (empty string clears it).',
+    name: 'nit_set_issue_ref',
+    description: 'Attach a tracker issue key (e.g. PROJ-123) or url to an annotation; an empty string clears it. Use it to link an annotation to the ticket or PR that covers it.',
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string' },
-        ref: { type: 'string' },
+        ref: { type: 'string', description: 'tracker key or url; empty string clears' },
       },
       required: ['id', 'ref'],
     },
   },
 ];
+
+// Sent with the initialize result; MCP clients surface this to the agent as
+// standing guidance for the whole server.
+const INSTRUCTIONS = 'This server exposes a nit review: UI annotations a human reviewer made on a live website, '
+  + 'each pinned to a concrete element. Typical flow: nit_list_annotations to see what is actionable '
+  + '(change-requests with status open or reopened), nit_get_annotation for each one you work on '
+  + '(read the screenshot and, when present, the click history to reproduce the state), make the fix '
+  + 'in the source code, then nit_mark_fixed. Treat comment-type annotations as context, never as tasks. '
+  + 'If a change should not be made, set status wontfix instead of forcing it. '
+  + 'Humans verify fixes afterwards; reopened items come back as actionable.';
 
 /** Options for {@link startMcpServer}. */
 export interface McpServerOptions {
@@ -150,6 +168,7 @@ function handleMessage(dir: string, msg: JsonRpcMessage, send: SendFn): void {
         protocolVersion: (typeof params?.protocolVersion === 'string' && params.protocolVersion) || PROTOCOL_FALLBACK,
         capabilities: { tools: {} },
         serverInfo: { name: 'nit', version: '1.0.0' },
+        instructions: INSTRUCTIONS,
       });
     } else if (typeof method === 'string' && method.startsWith('notifications/')) {
       // notifications need no response
@@ -171,11 +190,11 @@ function callTool(dir: string, name: unknown, args: Record<string, unknown>): To
   // Reload per call: the file is shared with humans and other agents.
   const store = createStore(dir);
   try {
-    if (name === 'list_annotations') return listAnnotations(store, args);
-    if (name === 'get_annotation') return getAnnotation(dir, store, args);
-    if (name === 'mark_fixed') return setStatus(store, { id: args.id, status: 'fixed' });
-    if (name === 'set_status') return setStatus(store, args);
-    if (name === 'set_issue_ref') return setIssueRef(store, args);
+    if (name === 'nit_list_annotations') return listAnnotations(store, args);
+    if (name === 'nit_get_annotation') return getAnnotation(dir, store, args);
+    if (name === 'nit_mark_fixed') return setStatus(store, { id: args.id, status: 'fixed' });
+    if (name === 'nit_set_status') return setStatus(store, args);
+    if (name === 'nit_set_issue_ref') return setIssueRef(store, args);
     return toolError(`unknown tool: ${String(name)}`);
   } catch (e) {
     return toolError(errorMessage(e));
@@ -203,7 +222,7 @@ function listAnnotations(store: Store, { status, type, route }: Record<string, u
     component: a.target?.component,
     ngComponent: a.target?.ngComponent,
     selector: a.target?.selector,
-    // reproduction-trail length; the full trail comes with get_annotation
+    // reproduction-trail length; the full trail comes with nit_get_annotation
     historyCount: a.history?.length,
   }));
   const actionable = all.filter(a => a.type === 'change-request' && (a.status === 'open' || a.status === 'reopened')).length;

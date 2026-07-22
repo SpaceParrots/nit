@@ -200,8 +200,8 @@ function snapshotStatuses(data: ReviewData): Map<string, MergeSnapshot> {
  * Pull `status`/`verifiedAt` and `issueRef` changes from the on-disk file into the
  * in-memory data for annotations this session did *not* change since its last
  * flush — so a concurrent write (an agent marking `fixed` or attaching a tracker
- * reference via MCP `set_issue_ref`) isn't lost, while our own unflushed edits
- * still win. `issueRef` is merged independently of `status`: the `set_issue_ref`
+ * reference via MCP `nit_set_issue_ref`) isn't lost, while our own unflushed edits
+ * still win. `issueRef` is merged independently of `status`: the `nit_set_issue_ref`
  * tool changes only the reference, so keying the whole merge off a status
  * divergence would silently drop it. New annotations added externally are left
  * alone — the live session owns creation.

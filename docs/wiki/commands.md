@@ -83,7 +83,7 @@ Screenshots are copied along.
 ## nit mcp [dir] (alias: serve)
 
 Serves a review folder as an MCP server over stdio. This is what coding agents connect to.
-Tools: `list_annotations`, `get_annotation`, `mark_fixed`, `set_status`, `set_issue_ref`.
+Tools: `nit_list_annotations`, `nit_get_annotation`, `nit_mark_fixed`, `nit_set_status`, `nit_set_issue_ref`.
 
 ## nit mcp-install [dir] (alias: mcp-config)
 

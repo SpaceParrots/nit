@@ -23,16 +23,24 @@ newline-delimited JSON-RPC 2.0 on stdin/stdout.
 
 ## The tools
 
+All tool names carry a `nit_` prefix, so they stay unambiguous when an agent sees them next to
+tools from other MCP servers.
+
 | Tool | Arguments | What it does |
 | --- | --- | --- |
-| `list_annotations` | `status?`, `type?`, `route?` | Lists annotation summaries, optionally filtered. Reports the actionable count. Summaries include id, type, status, route, comment, `issueRef`, timestamps and `historyCount`. |
-| `get_annotation` | `id` | Returns one annotation in full, including its screenshot (and after-shot, if any) as images the agent can look at. |
-| `mark_fixed` | `id` | Sets the status to `fixed`. The agent calls this after making the change. |
-| `set_status` | `id`, `status` | Sets any status explicitly: `open`, `fixed`, `wontfix`, `verified` or `reopened`. |
-| `set_issue_ref` | `id`, `ref` | Attaches a tracker key or url to an annotation. An empty string clears it. |
+| `nit_list_annotations` | `status?`, `type?`, `route?` | Lists annotation summaries, optionally filtered (`route` accepts an exact route or a bare pathname). Reports the actionable count. Summaries include id, type, status, route, comment, `issueRef`, timestamps and `historyCount`. |
+| `nit_get_annotation` | `id` | Returns one annotation in full, including its screenshot (and after-shot, if any) as images the agent can look at, plus the click history when present. |
+| `nit_mark_fixed` | `id` | Sets the status to `fixed`. The agent calls this after making the change. |
+| `nit_set_status` | `id`, `status` | Sets any status explicitly: `open`, `fixed`, `wontfix`, `verified` or `reopened`. |
+| `nit_set_issue_ref` | `id`, `ref` | Attaches a tracker key or url to an annotation. An empty string clears it. |
 
 "Actionable" always means: type `change-request` with status `open` or `reopened`. Comments are
 context, not tasks.
+
+The server also announces standing instructions during the MCP handshake, so a connected agent
+already knows the intended flow (list, get, fix, mark fixed), that comments are not tasks, and
+that `wontfix` is the right answer for changes that should not be made. You get sensible agent
+behavior even without writing any prompt yourself.
 
 Writes made through these tools go through the same store as the panel, so `review.md` is
 re-rendered, `updatedAt` is stamped, and `updatedBy` is set to `"agent"`. You can see in the
@@ -42,14 +50,14 @@ panel afterwards exactly what the agent touched.
 
 The intended tool loop looks like this:
 
-1. `list_annotations` to see what is actionable. Filtering by `route` helps when the agent wants
-   to work page by page.
-2. `get_annotation` for each actionable item. The record carries several ways to locate the
+1. `nit_list_annotations` to see what is actionable. Filtering by `route` helps when the agent
+   wants to work page by page.
+2. `nit_get_annotation` for each actionable item. The record carries several ways to locate the
    element (component tag, Angular class name, unique CSS selector, XPath, element text) plus
    the context screenshot and, when present, the click `history` that reproduces the state.
 3. Make the change in the source code.
-4. `mark_fixed` for that annotation, and optionally `set_issue_ref` if a ticket exists.
-5. Repeat until `list_annotations` reports zero actionable items.
+4. `nit_mark_fixed` for that annotation, and optionally `nit_set_issue_ref` if a ticket exists.
+5. Repeat until `nit_list_annotations` reports zero actionable items.
 
 A prompt that works well:
 
@@ -60,7 +68,7 @@ A prompt that works well:
 
 Tips for better agent results:
 
-- **Let the agent look at the screenshots.** `get_annotation` returns them as images. The
+- **Let the agent look at the screenshots.** `nit_get_annotation` returns them as images. The
   screenshot shows the element in context, which resolves most ambiguity about what the comment
   refers to.
 - **The click history is the reproduction recipe.** If an annotation was made inside a dropdown
@@ -69,7 +77,7 @@ Tips for better agent results:
   force a bad change. A human sees the status in the panel and can reopen.
 - **Verification stays human.** Agents mark things `fixed`; a person runs
   `nit verify` and rules `verified` or `reopened`. Reopened items show up as actionable again in
-  the next `list_annotations` call.
+  the next `nit_list_annotations` call.
 
 ## Working with files instead
 

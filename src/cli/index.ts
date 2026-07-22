@@ -198,10 +198,10 @@ program.command('mcp')
   .aliases(['serve'])
   .summary('serve a review folder as an MCP server (stdio)')
   .description('Expose a nit review folder to coding agents as an MCP server over stdio.\n\n'
-    + 'Tools: list_annotations (filterable; reports the actionable count),\n'
-    + 'get_annotation (full record incl. before/after screenshots as images),\n'
-    + 'mark_fixed, set_status (open | fixed | wontfix | verified | reopened),\n'
-    + 'set_issue_ref (attach a tracker key or url; empty clears it).\n\n'
+    + 'Tools: nit_list_annotations (filterable; reports the actionable count),\n'
+    + 'nit_get_annotation (full record incl. before/after screenshots as images),\n'
+    + 'nit_mark_fixed, nit_set_status (open | fixed | wontfix | verified | reopened),\n'
+    + 'nit_set_issue_ref (attach a tracker key or url; empty clears it).\n\n'
     + 'Register with Claude Code:  claude mcp add nit -- nit mcp ./nit-review')
   .argument('[dir]', 'review directory containing annotations.json', 'nit-review')
   .action((dir: string) => {

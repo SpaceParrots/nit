@@ -97,7 +97,7 @@ test('store: flush merges a concurrent external status change instead of clobber
 });
 
 // Regression coverage: the merge used to run only when `status` diverged, so the
-// MCP tool `set_issue_ref` — which touches issueRef and nothing else — was
+// MCP tool `nit_set_issue_ref` — which touches issueRef and nothing else — was
 // silently overwritten by the next local flush.
 test('store: flush merges a concurrent external issueRef-only change', async () => {
   const dir = tmpDir('nit-store-');
