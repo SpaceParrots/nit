@@ -26,41 +26,42 @@ Try your changes for real: `npm run build && node dist/cli/index.js review https
 
 ## Project layout
 
-The source is TypeScript (strict mode) under `src/` and compiles to `dist/` — see
-[src/README.md](./src/README.md) for the full scaffolding walkthrough.
+The source is TypeScript (strict mode) under `src/` and compiles to `dist/`. See
+[src/README.md](./src/README.md) for the full walkthrough.
 
 ```
 src/
 ├─ cli/        # commander CLI: review / view / verify / merge / mcp / doctor
 ├─ browser/    # Playwright session: launch, overlay injection, bridge, panel window, verify capture
-├─ overlay/    # injected page UI — vanilla TS/CSS in a Shadow DOM (highlight, popover, pins, chip)
-├─ capture/    # element → target reference + CDP element screenshots
-├─ anchor/     # re-anchor targets to live elements for replay (selector → xpath → text)
+├─ overlay/    # injected page UI: vanilla TS/CSS in a Shadow DOM (highlight, popover, pins, chip)
+├─ panel/      # the panel window UI, bundled by esbuild
+├─ capture/    # element-to-target references and CDP element screenshots
+├─ anchor/     # re-anchor targets to live elements for replay (selector, then xpath, then text)
 ├─ store/      # annotations.json read/write, review.md renderer, merge
 ├─ mcp/        # stdio MCP server over a review folder
-├─ util/       # small shared helpers (error narrowing)
-└─ types.ts    # the annotations.json schema types + the overlay↔Node bridge contract
+├─ util/       # small shared helpers
+└─ types.ts    # the annotations.json schema types and the overlay/Node bridge contract
 ```
 
 Guidelines:
 
-- `capture/target.ts`, `anchor/`, `store/` are pure or near-pure — please keep them that way
+- `capture/target.ts`, `anchor/` and `store/` are pure or near-pure. Please keep them that way
   and cover changes with the existing table-driven tests.
-- The overlay runs inside arbitrary third-party pages: no framework or runtime dependencies,
-  everything scoped to the shadow root, never break the host page.
+- The overlay runs inside arbitrary third-party pages. Use no framework and no runtime
+  dependencies, keep everything scoped to the shadow root, and never break the host page.
 - The `annotations.json` schema (see `src/types.ts`) is a public contract consumed by coding
-  agents and the MCP server — additive changes only.
+  agents and the MCP server. Make additive changes only.
 
-## Commits & PRs
+## Commits and PRs
 
-- Conventional Commits, one line: `feat(nit): …`, `fix(nit): …`, `docs(nit): …`.
+- Conventional Commits, one line: `feat(nit): ...`, `fix(nit): ...`, `docs(nit): ...`.
 - PRs should pass `npm run lint` and `npm test` (CI enforces both) and include tests for
   behavior changes.
 
 ## Licensing of contributions
 
-nit is licensed under the [GNU AGPL-3.0](./LICENSE). By submitting a contribution you agree that it
-is licensed under the same terms. The project maintainer (spaceparrots) also offers nit under a
-separate commercial license; by contributing you grant spaceparrots the right to include your
-contribution in those commercially-licensed distributions as well. If you're contributing on behalf
-of an employer, make sure you have the right to do so.
+nit is licensed under the [GNU AGPL-3.0](./LICENSE). By submitting a contribution you agree that
+it is licensed under the same terms. The project maintainer (spaceparrots) also offers nit under
+a separate commercial license; by contributing you grant spaceparrots the right to include your
+contribution in those commercially licensed distributions as well. If you are contributing on
+behalf of an employer, make sure you have the right to do so.
