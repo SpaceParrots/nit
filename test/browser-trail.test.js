@@ -21,7 +21,7 @@ test('nit review — click trail', async t => {
     { message: 'overlay booted' },
   );
 
-  const save = async (comment) => {
+  const save = async comment => {
     const box = await page.locator('#hero-title').boundingBox();
     await page.keyboard.press('Alt');
     await page.mouse.click(box.x + 10, box.y + 10);
