@@ -100,7 +100,8 @@ test('nit view — replay flow', async t => {
     }, { message: 'viewport switched' });
     await waitFor(async () => (await page.locator('.nit-pin').count()) === 2 ? true : null, { message: 'general + mobile pins' });
 
-    // showing all scopes is a toggle away
+    // the scope filter now lives in the filter dropdown
+    await panel.locator('.nit-filter-btn').click();
     await panel.locator('.nit-filter').click();
     await waitFor(async () => (await page.locator('.nit-pin').count()) === 2 ? true : null, { message: 'all pins (a4 still anchorable)' });
   });

@@ -23,12 +23,19 @@ const shotCache = new Map<string, string>();
 
 initList({ view, shots: shotCache, call, tick: () => void tick() });
 
+const filterBtn = $('#filter-btn');
+const filterMenu = $('#filter-menu');
+
 $('#pick').addEventListener('click', () => call({ cmd: 'togglePick' }));
-$('#filter').addEventListener('click', () => call({ cmd: 'toggleShowAll' }));
 $('#finish').addEventListener('click', () => finish());
 for (const b of document.querySelectorAll<HTMLElement>('[data-vp]')) {
   b.addEventListener('click', () => setViewport(viewportOf(b)));
 }
+filterBtn.addEventListener('click', () => {
+  const open = filterMenu.hidden;
+  filterMenu.hidden = !open;
+  filterBtn.setAttribute('aria-expanded', String(open));
+});
 
 // Node calls this when the overlay reports a focus request from the page.
 window.__nitPanelFocus = (id: string): void => {
@@ -83,11 +90,24 @@ function render(s: PanelState): void {
   $('#pick').hidden = s.mode !== 'review';
   $('#finish').hidden = s.mode !== 'review';
   $('#pick').classList.toggle('active', Boolean(s.picking));
-  $('#pick').textContent = s.picking ? 'Picking… (Esc to stop)' : 'Pick element (Alt)';
+  $('#pick-label').textContent = s.picking ? 'Picking… (Esc to stop)' : 'Pick element';
   document.querySelectorAll<HTMLElement>('[data-vp]').forEach(b =>
     b.classList.toggle('active', s.viewportMode === b.dataset.vp));
-  $('#filter').textContent = s.showAll ? 'Showing: all scopes' : 'Showing: general + ' + s.viewportMode;
-  $('#filter').classList.toggle('active', Boolean(s.showAll));
+
+  const actionable = s.annotations.filter(
+    a => a.type === 'change-request' && (a.status === 'open' || a.status === 'reopened'),
+  ).length;
+  $('#count').textContent = `${s.annotations.length} annotation${s.annotations.length === 1 ? '' : 's'} · ${actionable} actionable`;
+
+  filterMenu.innerHTML = '';
+  const scope = document.createElement('label');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.className = 'nit-filter';
+  box.checked = !s.showAll;
+  box.addEventListener('change', () => { call({ cmd: 'toggleShowAll' }); view.lastKey = ''; });
+  scope.append(box, document.createTextNode(`Only general + ${s.viewportMode}`));
+  filterMenu.append(scope);
 
   const placedIndex = new Map<string, number>();
   (s.placed || []).forEach((id, i) => placedIndex.set(id, i + 1));
