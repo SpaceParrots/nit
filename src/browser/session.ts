@@ -36,6 +36,16 @@ export interface NitSession {
   log: (line: string) => void;
   store: Store;
   viewportMode: ViewportMode;
+  /**
+   * The url this session actually opened — `--url` when given, else the feedback
+   * file's `review.url`. Navigation gating (see `__nitGoTo`) resolves against
+   * this, never against `store.data.review.url`: that value comes out of a file
+   * that teammates share and agents write, so it is untrusted, and a `--url`
+   * override must not be able to send the reviewer to the file's origin.
+   * Anchored to what the user asked to review, not to `sitePage.url()`, which
+   * the site may legitimately have changed (e.g. a login redirect).
+   */
+  readonly targetUrl: string;
   context: BrowserContext;
   /** the initial page (same as `sitePage`) */
   page: Page | null;
@@ -134,6 +144,7 @@ export async function startSession(opts: StartSessionOptions): Promise<NitSessio
     log,
     store,
     viewportMode,
+    targetUrl,
     context,
     page: null,
     sitePage: null,

@@ -175,7 +175,13 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
   await context.exposeBinding('__nitGoTo', guard(async (source, id: unknown) => {
     const ann = store.annotations.find(a => a.id === id);
     if (!ann) return { ok: false, error: `no annotation ${String(id)}` };
-    const url = resolveAnnotationUrl(store.data.review.url, ann.route);
+    // Gate on the origin this session actually opened, not on `review.url`:
+    // that field lives in the same shared/agent-written file as `ann.route`, so
+    // trusting it would let a crafted file navigate the site page off-origin —
+    // and the page-identity `trusted()` check above would then hand that origin
+    // full bridge access. It also keeps `--url` honest: a session opened on
+    // localhost must never jump to the staging url recorded in the file.
+    const url = resolveAnnotationUrl(session.targetUrl, ann.route);
     if (!url) return { ok: false, error: `route is not on the review origin: ${String(ann.route)}` };
     const page = session.sitePage;
     if (!page) return { ok: false, error: 'no site page' };
