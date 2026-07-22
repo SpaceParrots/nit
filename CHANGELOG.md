@@ -25,6 +25,13 @@ shareable (`export` / `import`) and mergeable across authors.
   issue-ref input, "Go to page" navigation, and a pinned footer with the actionable count.
 - **MCP** — new `set_issue_ref` tool; `list_annotations` summaries carry `issueRef`, timestamps and
   `historyCount`.
+- **Context screenshots, captured at pick time** — screenshots expand to a minimum context window
+  (480×360, centered on the element) so a button's surroundings are visible, and they are captured
+  the moment the element is picked — an open dropdown is still in the shot instead of collapsing
+  while the comment is typed. Verify after-shots use the same rules, so before/after compare.
+- **Pins stay glued to fixed and sticky elements** — the pin layer is viewport-anchored and
+  repositions on scroll, so annotating a fixed tabbar (or a sticky header, or content in an inner
+  scroll pane) keeps the pin on the element instead of drifting with the page.
 
 ### Security
 

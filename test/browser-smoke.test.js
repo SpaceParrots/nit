@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { startFixtureServer } from './helpers/server.js';
 import { startTestSession, waitFor, readAnnotations } from './helpers/session.js';
-import { pngSize, SHOT_PADDING } from '../dist/capture/screenshot.js';
+import { pngSize, SHOT_PADDING, MIN_SHOT_W, MIN_SHOT_H } from '../dist/capture/screenshot.js';
 
 test('nit review — capture flow', async t => {
   const server = await startFixtureServer();
@@ -117,7 +117,7 @@ test('nit review — capture flow', async t => {
     assert.equal(await page.evaluate(() => document.documentElement.style.cursor), '');
   });
 
-  await t.test('m4: screenshot is a non-empty PNG sized to element rect + padding', async () => {
+  await t.test('m4: screenshot is a non-empty PNG with minimum context size', async () => {
     const data = readAnnotations(S.out);
     const a = data.annotations.find(x => x.id === 'a1');
     assert.ok(a.screenshot, 'annotation has a screenshot');
@@ -125,9 +125,11 @@ test('nit review — capture flow', async t => {
     assert.ok(buf.length > 200, 'png is not empty');
     const size = pngSize(buf);
     const r = a.target.rect;
-    const pad = SHOT_PADDING * 2;
-    assert.ok(Math.abs(size.width - (r.w + pad)) <= 2, `png width ${size.width} ≈ rect ${r.w}+${pad}`);
-    assert.ok(Math.abs(size.height - (r.h + pad)) <= 2, `png height ${size.height} ≈ rect ${r.h}+${pad}`);
+    // The badge is small, so the clip expands to the context minimum — a tight
+    // rect+padding crop is useless to the fixing agent.
+    assert.ok(r.w + SHOT_PADDING * 2 < MIN_SHOT_W, 'fixture element is genuinely small');
+    assert.ok(Math.abs(size.width - MIN_SHOT_W) <= 2, `png width ${size.width} ≈ ${MIN_SHOT_W}`);
+    assert.ok(Math.abs(size.height - MIN_SHOT_H) <= 2, `png height ${size.height} ≈ ${MIN_SHOT_H}`);
   });
 
   await t.test('m6: viewport switch via the panel window, recorded on annotations', async () => {

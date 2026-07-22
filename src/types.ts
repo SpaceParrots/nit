@@ -243,6 +243,8 @@ declare global {
     __nitVerdict?: (id: string, verdict: 'verified' | 'reopened') => Promise<VerdictResult>;
     __nitSetIssueRef?: (id: string, ref: string) => Promise<AnnotationResult>;
     __nitGoTo?: (id: string) => Promise<GoToResult>;
+    /** stage a screenshot at pick time, while transient state (dropdowns) is still visible */
+    __nitStageShot?: (rect: Rect) => Promise<{ ok: boolean }>;
     __nitDelete?: (id: string) => Promise<{ ok: boolean }>;
     __nitFinish?: () => Promise<{ ok: boolean }>;
     __nitEvent?: (evt: OverlayEvent) => Promise<void>;

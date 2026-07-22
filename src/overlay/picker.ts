@@ -85,11 +85,38 @@ export function installPicker(state: OverlayState, ui: PickerUi, actions: Overla
     if (!(t instanceof Element)) return;
     api.setPicking(false);
     state.selected = t;
-    highlight.show(t, true);
-    ui.popover.open(t);
+    void (async () => {
+      // Stage the screenshot NOW, before the popover opens: the mouse has not
+      // moved and focus has not shifted, so transient state (an open dropdown)
+      // is still visible. Our own UI is hidden for the capture. A failure or a
+      // slow bridge never blocks annotating — save falls back to capturing then.
+      try {
+        actions.setUiHidden(true);
+        await new Promise(r => setTimeout(r, 80)); // let the hide paint (matches save)
+        await Promise.race([
+          window.__nitStageShot?.(pageRectOf(t)),
+          new Promise(r => setTimeout(r, 1500)),
+        ]);
+      } catch { /* bridge gone — save-time capture covers it */ } finally {
+        actions.setUiHidden(false);
+      }
+      highlight.show(t, true);
+      ui.popover.open(t);
+    })();
   }, true);
 
   return api;
+}
+
+/** Element bounds in absolute page coordinates (what the capture clip expects). */
+function pageRectOf(el: Element): { x: number; y: number; w: number; h: number } {
+  const r = el.getBoundingClientRect();
+  return {
+    x: Math.round(r.x + window.scrollX),
+    y: Math.round(r.y + window.scrollY),
+    w: Math.round(r.width),
+    h: Math.round(r.height),
+  };
 }
 
 function createHighlight(root: ShadowRoot): Highlight {

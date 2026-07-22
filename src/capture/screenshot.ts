@@ -7,6 +7,13 @@ import type { Page } from 'playwright';
 import type { Rect } from '../types.js';
 
 export const SHOT_PADDING = 24;
+/**
+ * Minimum context a screenshot carries: a tight crop of a small element (a button)
+ * is useless to the fixing agent — the clip expands to at least this, centered on
+ * the element, so the component's neighbourhood is visible.
+ */
+export const MIN_SHOT_W = 480;
+export const MIN_SHOT_H = 360;
 
 // Hard cap on a capture clip dimension (px) — the rect is page-supplied.
 const MAX_CLIP = 20000;
@@ -39,12 +46,25 @@ function clamp(n: number, lo: number, hi: number): number {
  * @returns the clip actually captured
  * @throws when the rect is invalid or the CDP call fails
  */
-export async function captureElementShot(
-  page: Page,
+/** Page dimensions the clip is clamped to (scrollWidth/scrollHeight). */
+export interface PageBounds {
+  w: number;
+  h: number;
+}
+
+/**
+ * Compute the capture clip for an element rect: padding around the element,
+ * expanded to at least {@link MIN_SHOT_W}×{@link MIN_SHOT_H} centered on it, and
+ * clamped to the page bounds (the window slides inward at edges rather than
+ * hanging off; a page smaller than the minimum caps the clip to the page). Pure.
+ * @param rect element bounds in absolute page coordinates (page-supplied, re-validated)
+ * @param options padding (default {@link SHOT_PADDING}) and page bounds (omit to skip clamping)
+ * @throws when the rect is invalid
+ */
+export function contextClip(
   rect: Rect,
-  filePath: string,
-  { padding = SHOT_PADDING }: { padding?: number } = {},
-): Promise<CaptureClip> {
+  { padding = SHOT_PADDING, bounds }: { padding?: number; bounds?: PageBounds } = {},
+): CaptureClip {
   if (!isFiniteNumber(rect?.x) || !isFiniteNumber(rect.y)
     || !(rect.w >= 0) || !(rect.h >= 0) || rect.w === Infinity || rect.h === Infinity) {
     throw new Error('invalid rect');
@@ -55,13 +75,53 @@ export async function captureElementShot(
   const y = clamp(rect.y, 0, MAX_CLIP);
   const w = clamp(rect.w, 0, MAX_CLIP);
   const h = clamp(rect.h, 0, MAX_CLIP);
-  const clip: CaptureClip = {
-    x: Math.max(0, Math.round(x - padding)),
-    y: Math.max(0, Math.round(y - padding)),
-    width: Math.max(1, Math.round(w + padding * 2)),
-    height: Math.max(1, Math.round(h + padding * 2)),
-    scale: 1,
-  };
+
+  let width = Math.max(1, Math.round(w + padding * 2), MIN_SHOT_W);
+  let height = Math.max(1, Math.round(h + padding * 2), MIN_SHOT_H);
+  // Center the window on the element, not on the padded box — for a small
+  // element that puts its neighbourhood evenly around it.
+  let clipX = Math.round(x + w / 2 - width / 2);
+  let clipY = Math.round(y + h / 2 - height / 2);
+  if (bounds && isFiniteNumber(bounds.w) && isFiniteNumber(bounds.h)) {
+    width = Math.min(width, Math.max(1, Math.round(bounds.w)));
+    height = Math.min(height, Math.max(1, Math.round(bounds.h)));
+    clipX = clamp(clipX, 0, Math.max(0, Math.round(bounds.w) - width));
+    clipY = clamp(clipY, 0, Math.max(0, Math.round(bounds.h) - height));
+  } else {
+    clipX = Math.max(0, clipX);
+    clipY = Math.max(0, clipY);
+  }
+  return { x: clipX, y: clipY, width, height, scale: 1 };
+}
+
+/** Best-effort page bounds for clip clamping; null when the page won't answer. */
+async function pageBounds(page: Page): Promise<PageBounds | null> {
+  try {
+    return await page.evaluate(() => ({
+      w: document.documentElement.scrollWidth,
+      h: document.documentElement.scrollHeight,
+    }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Capture a CDP screenshot of an element's context clip as a PNG buffer. Uses
+ * `Page.captureScreenshot` with `captureBeyondViewport`, so elements outside the
+ * current scroll position work too.
+ * @param page the page to capture from
+ * @param rect element bounds in absolute page coordinates
+ * @returns the PNG bytes and the clip actually captured
+ * @throws when the rect is invalid or the CDP call fails
+ */
+export async function captureElementBuffer(
+  page: Page,
+  rect: Rect,
+  options: { padding?: number } = {},
+): Promise<{ buffer: Buffer; clip: CaptureClip }> {
+  const bounds = await pageBounds(page);
+  const clip = contextClip(rect, { ...options, bounds: bounds ?? undefined });
   const cdp = await page.context().newCDPSession(page);
   try {
     const { data } = await cdp.send('Page.captureScreenshot', {
@@ -69,11 +129,30 @@ export async function captureElementShot(
       clip,
       captureBeyondViewport: true,
     });
-    fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
-    return clip;
+    return { buffer: Buffer.from(data, 'base64'), clip };
   } finally {
     await cdp.detach().catch(() => {});
   }
+}
+
+/**
+ * Capture an element's context screenshot and write it as a PNG file.
+ * @param page the page to capture from
+ * @param rect element bounds in absolute page coordinates (page-supplied, re-validated here)
+ * @param filePath destination PNG path
+ * @param options context padding in px around the rect (default {@link SHOT_PADDING})
+ * @returns the clip actually captured
+ * @throws when the rect is invalid or the CDP call fails
+ */
+export async function captureElementShot(
+  page: Page,
+  rect: Rect,
+  filePath: string,
+  options: { padding?: number } = {},
+): Promise<CaptureClip> {
+  const { buffer, clip } = await captureElementBuffer(page, rect, options);
+  fs.writeFileSync(filePath, buffer);
+  return clip;
 }
 
 /**

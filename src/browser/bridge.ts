@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { BrowserContext, Frame, Page } from 'playwright';
-import { captureElementShot } from '../capture/screenshot.js';
+import { captureElementBuffer, captureElementShot } from '../capture/screenshot.js';
 import { captureAfterShots } from './verify.js';
 import { safeShotPath } from '../store/store.js';
 import { sanitizeHistory } from '../util/history.js';
@@ -20,6 +20,7 @@ import type {
   PanelCmd,
   PanelState,
   PlacedRef,
+  Rect,
   Target,
   ViewportScope,
 } from '../types.js';
@@ -32,6 +33,9 @@ interface BindingSource {
 }
 
 const SCOPES: readonly ViewportScope[] = ['general', 'desktop', 'mobile'];
+
+/** How long a pick-time staged screenshot stays usable for the next save. */
+const PENDING_SHOT_TTL_MS = 120_000;
 
 function isViewportScope(v: unknown): v is ViewportScope {
   return typeof v === 'string' && (SCOPES as readonly string[]).includes(v);
@@ -117,7 +121,15 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
     if (target.rect) {
       try {
         const shotFile = store.shotPath(id);
-        await captureElementShot(source.page, target.rect, shotFile);
+        // Prefer the shot staged at pick time — it shows transient state (an open
+        // dropdown) that collapsed while the reviewer typed the comment.
+        const pending = session.pendingShot;
+        if (pending && Date.now() - pending.at < PENDING_SHOT_TTL_MS) {
+          fs.writeFileSync(shotFile, pending.buffer);
+        } else {
+          await captureElementShot(source.page, target.rect, shotFile);
+        }
+        session.pendingShot = null;
         annotation.screenshot = `shots/${path.basename(shotFile)}`;
       } catch (e) {
         session.log(`! screenshot failed for ${id}: ${errorMessage(e)}`);
@@ -201,6 +213,22 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
     // as soon as it reports this id placed.
     session.pendingFocus = { id: ann.id, expiresAt: Date.now() + 10000 };
     return { ok: true, url };
+  }));
+
+  await context.exposeBinding('__nitStageShot', guard(async (source, rect: unknown) => {
+    // Site page only: the picker calls this the moment an element is selected, so
+    // transient state (an open dropdown) is captured before the popover steals it.
+    if (source.page !== session.sitePage) return { ok: false, error: 'staging is site-page only' };
+    if (session.mode !== 'review') return { ok: false, error: 'staging is review-mode only' };
+    try {
+      // rect is page-supplied; captureElementBuffer re-validates and clamps it
+      const { buffer } = await captureElementBuffer(source.page, rect as Rect);
+      session.pendingShot = { buffer, at: Date.now() };
+      return { ok: true };
+    } catch (e) {
+      session.pendingShot = null;
+      return { ok: false, error: errorMessage(e) };
+    }
   }));
 
   await context.exposeBinding('__nitDelete', guard((source, id: unknown) => {

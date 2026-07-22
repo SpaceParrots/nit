@@ -60,6 +60,12 @@ export interface NitSession {
    * anchors cannot fire a stale focus on some unrelated later page.
    */
   pendingFocus?: { id: string; expiresAt: number } | null;
+  /**
+   * @internal set by `__nitStageShot` at pick time: the screenshot captured while
+   * transient state (an open dropdown) was still visible. Consumed by the next
+   * save; expires so a stale pick cannot become some later annotation's shot.
+   */
+  pendingShot?: { buffer: Buffer; at: number } | null;
   /** resolves when the browser closes */
   done: Promise<void>;
   /** persist annotations.json + the derived review.md / fix-annotations.md */
@@ -151,6 +157,7 @@ export async function startSession(opts: StartSessionOptions): Promise<NitSessio
     panelPage: null,
     uiState: {},
     pendingFocus: null,
+    pendingShot: null,
     _closing: false,
 
     done: new Promise<void>(resolve => {

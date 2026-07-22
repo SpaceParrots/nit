@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { startFixtureServer } from './helpers/server.js';
 import { startTestSession, waitFor, tmpDir } from './helpers/session.js';
-import { pngSize, SHOT_PADDING } from '../dist/capture/screenshot.js';
+import { pngSize, SHOT_PADDING, MIN_SHOT_W, MIN_SHOT_H } from '../dist/capture/screenshot.js';
 
 const PNG_1PX = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -64,19 +64,27 @@ test('nit verify — after-shots + verdicts', async t => {
     assert.equal(a1.screenshotAfter, 'shots/a1-after.png');
     const buf1 = fs.readFileSync(path.join(dir, a1.screenshotAfter));
     assert.ok(buf1.length > 200);
-    const rect = await page.evaluate(() => {
+    // After-shots use the same context-clip rules as capture shots (rect + padding,
+    // expanded to the context minimum, clamped to the page) so before/after compare.
+    const dims = await page.evaluate(() => {
       const r = document.querySelector('#hero-title').getBoundingClientRect();
-      return { w: Math.round(r.width), h: Math.round(r.height) };
+      return {
+        w: Math.round(r.width), h: Math.round(r.height),
+        pageW: document.documentElement.scrollWidth, pageH: document.documentElement.scrollHeight,
+      };
     });
     const size1 = pngSize(buf1);
-    assert.ok(Math.abs(size1.width - (rect.w + SHOT_PADDING * 2)) <= 2, `after-shot width ${size1.width} ≈ live rect ${rect.w}`);
-    assert.ok(Math.abs(size1.height - (rect.h + SHOT_PADDING * 2)) <= 2);
+    const expectW = Math.min(dims.pageW, Math.max(dims.w + SHOT_PADDING * 2, MIN_SHOT_W));
+    const expectH = Math.min(dims.pageH, Math.max(dims.h + SHOT_PADDING * 2, MIN_SHOT_H));
+    assert.ok(Math.abs(size1.width - expectW) <= 2, `after-shot width ${size1.width} ≈ ${expectW}`);
+    assert.ok(Math.abs(size1.height - expectH) <= 2, `after-shot height ${size1.height} ≈ ${expectH}`);
 
-    // unanchorable fixed annotation: original recorded region is captured instead
+    // unanchorable fixed annotation: original recorded region (small) is captured
+    // instead — expanded to the same context minimum
     const a2 = data.annotations.find(a => a.id === 'a2');
     const size2 = pngSize(fs.readFileSync(path.join(dir, a2.screenshotAfter)));
-    assert.equal(size2.width, 120 + SHOT_PADDING * 2);
-    assert.equal(size2.height, 40 + SHOT_PADDING * 2);
+    assert.equal(size2.width, MIN_SHOT_W);
+    assert.equal(size2.height, MIN_SHOT_H);
 
     // open annotation is untouched
     assert.equal(data.annotations.find(a => a.id === 'a3').screenshotAfter, undefined);
