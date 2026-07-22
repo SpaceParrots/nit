@@ -194,6 +194,74 @@ test('nit panel — expanded item: timestamps, issue ref, go to page', async t =
   });
 });
 
+// Regression coverage for the finding: `tick()` skipped every poll while ANY
+// <input> held focus (or while the menu was open). The filter menu's own scope
+// checkbox is an <input>, and closing the menu never blurred it — so opening the
+// menu and touching the checkbox froze the panel permanently: no new annotation,
+// count, mode or grouping change would ever appear again.
+test('nit panel — the filter menu never strands the poll loop', async t => {
+  const server = await startFixtureServer();
+  const dir = tmpDir('nit-menu-');
+  const reviewFile = path.join(dir, 'annotations.json');
+  fs.writeFileSync(reviewFile, JSON.stringify(makeFeedback(server.url), null, 2));
+
+  const S = await startTestSession({ mode: 'view', url: undefined, reviewFile });
+  t.after(async () => {
+    await S.session.close();
+    await server.close();
+  });
+
+  /** Append an annotation to the live store — the panel must repaint its count. */
+  function addAnnotation(id) {
+    S.session.store.upsert({
+      id, type: 'change-request', comment: `added ${id}`, status: 'open', author: 'Kevin',
+      viewportScope: 'general', viewport: { mode: 'desktop', w: 1440, h: 900 }, route: '/',
+      target: { component: 'fake-hero', ngComponent: null, selector: '#hero-title', xpath: '/html[1]', tag: 'h2', classes: [], text: '', rect: { x: 20, y: 80, w: 300, h: 30 } },
+      screenshot: null, createdAt: '2026-07-20T10:05:00Z',
+    });
+  }
+
+  await t.test('focusing the scope checkbox and closing with Escape leaves the panel live', async () => {
+    const panel = S.session.panelPage;
+    await waitFor(async () => (await panel.locator('#count').innerText()).startsWith('2 ') ? true : null,
+      { message: 'panel shows the two fixture annotations' });
+
+    await panel.locator('.nit-filter-btn').click();
+    await waitFor(async () => await panel.locator('.nit-filter').isVisible() ? true : null,
+      { message: 'filter menu open' });
+    await panel.locator('.nit-filter').focus();
+    assert.equal(await panel.evaluate(() => document.activeElement?.classList.contains('nit-filter')), true,
+      'the scope checkbox holds focus');
+
+    await panel.keyboard.press('Escape');
+    await waitFor(async () => await panel.locator('.nit-filter').isVisible() ? null : true,
+      { message: 'filter menu closed' });
+    assert.equal(await panel.evaluate(() => document.activeElement?.classList.contains('nit-filter')), false,
+      'closing the menu blurred the checkbox');
+
+    addAnnotation('a9');
+    await waitFor(async () => (await panel.locator('#count').innerText()).startsWith('3 ') ? true : null,
+      { message: 'panel picks up state changed after the menu interaction' });
+  });
+
+  await t.test('the menu closes when the panel window loses focus', async () => {
+    const panel = S.session.panelPage;
+    await panel.locator('.nit-filter-btn').click();
+    await waitFor(async () => await panel.locator('.nit-filter').isVisible() ? true : null,
+      { message: 'filter menu open again' });
+
+    // The outside-click closer only listens on the panel's own document; leaving
+    // the window is the seam that used to strand `menuOpen` at true.
+    await panel.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await waitFor(async () => await panel.locator('.nit-filter').isVisible() ? null : true,
+      { message: 'filter menu closed on window blur' });
+
+    addAnnotation('a10');
+    await waitFor(async () => (await panel.locator('#count').innerText()).startsWith('4 ') ? true : null,
+      { message: 'panel still polls after the window lost focus with the menu open' });
+  });
+});
+
 function makeGotoQueryFeedback(url) {
   return {
     review: { id: 'goto-query-fixture', url: `${url}/about?id=9`, createdAt: '2026-07-20T10:00:00Z', authors: ['Kevin'] },

@@ -52,12 +52,23 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && menuOpen) setMenuOpen(false);
 });
+// The outside-click closer only sees this document, so switching to the browser
+// window with the menu open would otherwise leave `menuOpen` true forever — and
+// `tick()` skips every poll while it is. Closing on blur keeps the panel live.
+window.addEventListener('blur', () => { if (menuOpen) setMenuOpen(false); });
 
 /** Open or close the filter dropdown, keeping `menuOpen` and the DOM in sync. */
 function setMenuOpen(open: boolean): void {
   menuOpen = open;
   filterMenu.hidden = !open;
   filterBtn.setAttribute('aria-expanded', String(open));
+  // Closing must not leave focus parked on a control inside the (now hidden)
+  // menu: `document.activeElement` survives the window losing focus, so a
+  // stranded checkbox would keep tripping `tick()`'s focus guard forever.
+  if (!open) {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && filterMenu.contains(active)) active.blur();
+  }
 }
 
 // Node calls this when the overlay reports a focus request from the page.
@@ -100,8 +111,11 @@ async function tick(): Promise<void> {
   if (typeof window.__nitPanelState !== 'function') return;
   // A wholesale repaint mid-typing would steal the caret from the issue input and
   // close the dropdown. Skip; the next tick after focus leaves picks the state up.
+  // Match the issue input by class, not by tag: the filter menu's scope checkbox
+  // is an <input> too, and guarding on it froze the panel until the user happened
+  // to click something non-focusable.
   const active = document.activeElement;
-  if (menuOpen || active?.tagName === 'INPUT') return;
+  if (menuOpen || (active instanceof HTMLElement && active.classList.contains('nit-issue'))) return;
   let s: PanelState | undefined;
   try { s = await window.__nitPanelState(); } catch { return; }
   if (!s) return;
