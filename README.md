@@ -80,8 +80,10 @@ Every command has detailed help: `nit <command> --help`. Common flags: `--mobile
   tag; **click** selects; **Esc** cancels.
 - The popover records the comment, a **type** — *change request* (actionable) or *comment*
   (context) — and a **viewport scope** (this viewport / general).
-- The **panel window** next to the browser lists everything, switches desktop ↔ mobile, filters by
-  scope, deletes items and finishes the review — nothing overlays the page under review.
+- The **panel window** next to the browser lists everything, switches desktop ↔ mobile, and — from
+  a dropdown behind the filter icon — sorts by page, time or state, groups by page or state, and
+  filters to the current viewport scope. It jumps to the page an annotation was found on, records an
+  issue reference, deletes items and finishes the review — nothing overlays the page under review.
 - Works on CSP-hardened production sites, plain static pages, and SPAs (annotations are pinned to
   client-side routes).
 
@@ -118,7 +120,10 @@ One annotation:
     "rect": { "x": 209, "y": 613, "w": 280, "h": 12 }
   },
   "screenshot": "shots/a1.png",
-  "createdAt": "2026-07-21T02:28:11.550Z"
+  "createdAt": "2026-07-21T02:28:11.550Z",
+  "issueRef": "FAI-1234",
+  "updatedAt": "2026-07-22T09:01:00.000Z",
+  "updatedBy": "agent"
 }
 ```
 
@@ -141,7 +146,7 @@ claude mcp add nit -- nit mcp ./nit-review   # alternative: user-scoped via the 
 ```
 
 Tools: `list_annotations` (filterable, reports the actionable count) · `get_annotation` (full
-record — screenshots are returned as images) · `mark_fixed` · `set_status`.
+record — screenshots are returned as images) · `mark_fixed` · `set_status` · `set_issue_ref`.
 
 ## Angular?
 
