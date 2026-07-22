@@ -55,7 +55,15 @@ document.addEventListener('keydown', e => {
 // The outside-click closer only sees this document, so switching to the browser
 // window with the menu open would otherwise leave `menuOpen` true forever — and
 // `tick()` skips every poll while it is. Closing on blur keeps the panel live.
-window.addEventListener('blur', () => { if (menuOpen) setMenuOpen(false); });
+// The issue-ref input strands the poll loop the same way: `document.activeElement`
+// survives the window blur, and Chromium restores focus to it on the way back, so
+// the guard would keep skipping. Blurring commits the value through its own
+// listener, so nothing typed is lost.
+window.addEventListener('blur', () => {
+  if (menuOpen) setMenuOpen(false);
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active.classList.contains('nit-issue')) active.blur();
+});
 
 /** Open or close the filter dropdown, keeping `menuOpen` and the DOM in sync. */
 function setMenuOpen(open: boolean): void {

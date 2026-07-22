@@ -15,8 +15,10 @@ export interface RouteLocation {
 /**
  * The route recorded on an annotation: path plus query and hash, so a
  * query-driven page (`?id=5`, `#tab`) can be navigated back to exactly.
- * The origin is deliberately excluded — it comes from `review.url`, which is
- * what lets a review captured on staging replay against localhost.
+ * The origin is deliberately excluded — navigation resolves it from the url the
+ * session actually opened (`NitSession.targetUrl`, which `--url` overrides), which
+ * is what lets a review captured on staging replay against localhost. It is not
+ * taken from the annotations file: that content is shared and agent-written.
  */
 export function currentRoute(loc: RouteLocation): string {
   return `${loc.pathname}${loc.search}${loc.hash}`;
