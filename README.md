@@ -19,6 +19,8 @@ it without any further context.
 
 The name comes from code-review culture, where reviewers prefix minor comments with `nit:`.
 
+<p align="center"><img src="assets/demo.png" alt="nit review panel next to the annotated site" width="900"></p>
+
 ## The loop
 
 ```
