@@ -66,6 +66,16 @@ export interface Target {
   rect: Rect;
 }
 
+/** Where the annotated element lived at capture time. Missing = plain page. */
+export interface CaptureContext {
+  /** 'page' for normal content; 'dialog' for modal/dialog/drawer overlay surfaces */
+  kind: 'page' | 'dialog';
+  /** selector for the dialog container itself — replay checks "is that dialog open?" */
+  selector?: string;
+  /** human-readable dialog name: aria-label → aria-labelledby → first heading */
+  label?: string;
+}
+
 /** One recorded page click leading up to an annotation (reproduction trail). */
 export interface ClickStep {
   /** short CSS selector, built at click time (the element may be gone later) */
@@ -93,6 +103,8 @@ export interface Annotation {
   /** pathname the annotation belongs to; replay shows it on this route */
   route: string;
   target: Target;
+  /** where the element lived at capture; absent = plain page (pre-context files) */
+  context?: CaptureContext;
   /** path of the cropped element screenshot, relative to the review dir */
   screenshot: string | null;
   /**
@@ -161,6 +173,8 @@ export interface SavePayload {
   viewportScope: ViewportScope;
   target: Target;
   route: string;
+  /** dialog context when the picked element was inside one; omitted on plain pages */
+  context?: CaptureContext;
   /** snapshot of the click trail on this pathname (see {@link ClickStep}) */
   history?: ClickStep[];
 }
@@ -193,6 +207,17 @@ export interface PlacedRef {
   rect: Rect;
 }
 
+/** Why an on-route annotation is not shown on the page right now. */
+export type HiddenReason = 'viewport' | 'dialog' | 'not-found';
+
+/** A hidden annotation and the reason, as reported by the overlay. */
+export interface HiddenRef {
+  id: string;
+  reason: HiddenReason;
+  /** dialog label for reason 'dialog' (e.g. `Checkout`) */
+  label?: string;
+}
+
 /** Debug telemetry: a page click (only emitted with `--debug`). */
 export interface OverlayClickEvent {
   type: 'click';
@@ -209,6 +234,10 @@ export interface OverlayUiEvent {
   showAll: boolean;
   placed: PlacedRef[];
   unplaced: string[];
+  /** ghost-pinned annotations shown at their recorded rect (ids are also in `unplaced`) */
+  approx?: PlacedRef[];
+  /** annotations on this route that cannot be shown, with reasons */
+  hidden?: HiddenRef[];
 }
 
 /** Request to focus an annotation in the panel window. */
@@ -235,6 +264,10 @@ export interface PanelState {
   route: string;
   placed: string[];
   unplaced: string[];
+  /** ids shown as ghost pins at their recorded position */
+  approx: string[];
+  /** hidden annotations on the current route, with reasons */
+  hidden: HiddenRef[];
   annotations: Annotation[];
 }
 

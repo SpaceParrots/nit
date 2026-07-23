@@ -12,7 +12,7 @@ import { createStore } from '../store/store.js';
 import type { Store } from '../store/store.js';
 import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
 import { errorMessage } from '../util/error.js';
-import type { OverlayEvent, PlacedRef, SessionMode, ViewportMode, ViewportResult } from '../types.js';
+import type { OverlayEvent, PlacedRef, HiddenRef, SessionMode, ViewportMode, ViewportResult } from '../types.js';
 
 /**
  * Overlay UI state as last reported through `__nitEvent` — sanitized by the
@@ -24,6 +24,8 @@ export interface SessionUiState {
   showAll?: boolean;
   placed?: PlacedRef[];
   unplaced?: string[];
+  approx?: PlacedRef[];
+  hidden?: HiddenRef[];
 }
 
 /** The live browser session returned by {@link startSession}. */

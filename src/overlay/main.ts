@@ -56,6 +56,8 @@ async function init(): Promise<void> {
     showAll: mode !== 'view',
     placed: [],
     unplaced: [],
+    approx: [],
+    hidden: [],
   };
 
   const host = document.createElement('div');

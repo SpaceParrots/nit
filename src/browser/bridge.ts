@@ -335,6 +335,8 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
     route: session.uiState.route ?? '/',
     placed: (session.uiState.placed ?? []).map(p => p.id),
     unplaced: session.uiState.unplaced ?? [],
+    approx: (session.uiState.approx ?? []).map(p => p.id),
+    hidden: session.uiState.hidden ?? [],
     annotations: store.annotations,
   })));
 
