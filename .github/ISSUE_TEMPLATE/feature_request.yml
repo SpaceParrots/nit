@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest an improvement to nit
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that nit makes hard or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: The change you have in mind. Rough ideas are fine.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Workarounds you are using now, or other approaches you rejected.
+
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: Scope
+      options:
+        - label: This would change the `annotations.json` schema (a public contract - additive changes only)
+        - label: I would be willing to open a PR for this

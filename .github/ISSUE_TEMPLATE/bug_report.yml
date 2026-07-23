@@ -1,0 +1,70 @@
+name: Bug report
+description: Something in nit does not work as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please run `nit doctor` first - it catches most environment problems.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+      placeholder: |
+        1. nit review https://...
+        2. Alt-clicked a button, typed a nit, hit save
+        3. Expected the annotation in nit-review/annotations.json, but ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does it happen
+      options:
+        - review (overlay / annotating)
+        - review (panel window)
+        - verify (before/after screenshots)
+        - mcp server
+        - merge / view
+        - CLI, install or doctor
+        - other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: nit version
+      description: Output of `nit --version`.
+      placeholder: "1.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: OS and Node version
+      description: Output of `node -v` plus your OS.
+      placeholder: "Node 22.11.0, Windows 11 / macOS 15 / Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: input
+    id: site
+    attributes:
+      label: Site being annotated
+      description: >
+        The URL if it is public, otherwise what the page is built with (framework,
+        shadow DOM, iframes, canvas). Element capture depends on this.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      description: >
+        Relevant terminal output. If an annotation is involved, the matching entry
+        from annotations.json helps a lot. Redact anything private first.
+      render: shell

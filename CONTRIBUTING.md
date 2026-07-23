@@ -5,7 +5,7 @@ Thanks for helping make nit better!
 ## Setup
 
 ```bash
-git clone https://github.com/spaceparrots/nit.git
+git clone https://github.com/SpaceParrots/nit.git
 cd nit
 npm install
 npm run build                   # compile TypeScript (src/ -> dist/)
@@ -54,9 +54,18 @@ Guidelines:
 
 ## Commits and PRs
 
-- Conventional Commits, one line: `feat(nit): ...`, `fix(nit): ...`, `docs(nit): ...`.
-- PRs should pass `npm run lint` and `npm test` (CI enforces both) and include tests for
-  behavior changes.
+- Conventional Commits, one line: `feat(nit): ...`, `fix(nit): ...`, `docs(nit): ...`. Releases are
+  cut by [release-please](https://github.com/googleapis/release-please) from these messages, so the
+  type and scope decide the version bump and the changelog entry. Do not bump the version or edit
+  `CHANGELOG.md` by hand.
+- PRs should pass `npm run lint`, `npm run typecheck` and `npm test` (CI enforces all three) and
+  include tests for behavior changes.
+- `main` is protected: land changes through a pull request.
+
+## Code of Conduct
+
+This project follows the [Contributor Covenant](./CODE_OF_CONDUCT.md). Security issues go to
+[SECURITY.md](./SECURITY.md), never into a public issue.
 
 ## Licensing of contributions
 
