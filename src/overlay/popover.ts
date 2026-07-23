@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The annotation popover: comment text, type selector (default change-request),
-// viewport-scope toggle (default: current viewport, toggleable to general).
+// viewport-scope toggle (default: general, toggleable to the current viewport).
 import { div, button, segmented, labelRow, describeElement } from './dom.js';
 import { resolveTarget } from '../capture/target.js';
 import { currentRoute } from '../util/route.js';
@@ -9,7 +9,8 @@ import type { OverlayActions, OverlayState, Popover } from './state.js';
 
 /**
  * Create the annotation popover: comment text, type selector (default
- * change-request) and viewport-scope toggle (default: the current viewport).
+ * change-request) and viewport-scope toggle (default: general — most fixes
+ * apply everywhere, and general items get verified on both viewports).
  * Save resolves the target, hides the overlay for a clean screenshot, and hands
  * the payload to Node via `__nitSave`.
  * @param root the overlay shadow root to mount into
@@ -45,7 +46,7 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
     el.innerHTML = '';
     if (!currentEl) return;
     let type: AnnotationType = 'change-request';
-    let scope: ViewportScope = state.viewportMode; // default: scoped to the current viewport
+    let scope: ViewportScope = 'general'; // default: applies to every viewport
 
     const head = div('nit-pop-head', describeElement(currentEl));
     const ta = document.createElement('textarea');
@@ -64,8 +65,8 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
     );
     const scopeRow = segmented<ViewportScope>(
       [
-        { value: state.viewportMode, label: `This viewport (${state.viewportMode})` },
         { value: 'general', label: 'General' },
+        { value: state.viewportMode, label: `This viewport (${state.viewportMode})` },
       ],
       scope,
       v => { scope = v; },

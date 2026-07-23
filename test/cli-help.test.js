@@ -5,11 +5,18 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { tmpDir } from './helpers/tmp.js';
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli', 'index.js');
 
 function run(...args) {
   const res = spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', timeout: 30000 });
+  return { code: res.status, out: res.stdout + res.stderr };
+}
+
+/** Like {@link run}, but from a given working directory (for default lookups). */
+function runIn(cwd, ...args) {
+  const res = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf8', timeout: 30000 });
   return { code: res.status, out: res.stdout + res.stderr };
 }
 
@@ -34,15 +41,16 @@ test('cli: per-command help is detailed', () => {
 
   const verify = run('verify', '--help');
   assert.equal(verify.code, 0);
-  assert.ok(verify.out.includes('Verified or Reopen'));
+  assert.ok(verify.out.includes('guided queue'));
+  assert.ok(verify.out.includes('Verified, Reopen (with an optional note), or Skip'));
 });
 
 test('cli: aliases resolve to their commands', () => {
   for (const [alias, marker] of [
     ['r', '<url>'],
     ['annotate', '<url>'],
-    ['v', '<file>'],
-    ['replay', '<file>'],
+    ['v', '[source]'],
+    ['replay', '[source]'],
     ['check', 'after'],
     ['combine', '<files...>'],
     ['serve', 'annotations.json'],
@@ -70,4 +78,24 @@ test('cli: missing required argument fails with guidance', () => {
   assert.notEqual(code, 0);
   assert.ok(out.includes('missing required argument'));
   assert.ok(out.includes('--help'));
+});
+
+test('cli: view/verify help shows worked examples and the nit-review default', () => {
+  for (const cmd of ['view', 'verify']) {
+    const { code, out } = run(cmd, '--help');
+    assert.equal(code, 0);
+    assert.ok(out.includes('Examples:'), `${cmd} help has examples`);
+    assert.ok(out.includes(`$ nit ${cmd}\n`) || out.includes(`$ nit ${cmd} `), `${cmd} shows the bare form`);
+    assert.ok(out.includes('nit-review'), `${cmd} names the default directory`);
+  }
+});
+
+test('cli: verify with no review nearby suggests the next step instead of a stack of errors', () => {
+  const dir = tmpDir('nit-cli-empty-');
+  const { code, out } = runIn(dir, 'verify');
+  assert.notEqual(code, 0);
+  assert.ok(out.includes('no review found'), 'says what was looked for');
+  assert.ok(out.includes('nit review'), 'suggests starting a review');
+  assert.ok(out.includes('nit status'), 'suggests checking what exists');
+  assert.ok(!out.includes('at Object'), 'no stack trace leaks');
 });

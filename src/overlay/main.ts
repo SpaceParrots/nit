@@ -16,6 +16,8 @@ import type { OverlayActions, OverlayState, OverlayUi, PlacedAnnotation } from '
 import type { Annotation, LoadResult, Rect } from '../types.js';
 
 const SYNC_INTERVAL_MS = 2000;
+const ANCHOR_RETRY_MS = 1000;
+const ANCHOR_RETRY_MAX = 10;
 
 (function boot() {
   if (typeof window === 'undefined' || window !== window.top) return; // top frame only
@@ -113,9 +115,14 @@ async function init(): Promise<void> {
     setUiHidden: actions.setUiHidden,
   };
 
-  installRouteWatcher(state, ui);
-  installSync(state, ui);
+  // Replay modes re-anchor against a DOM the site renders on its own schedule
+  // — retry until it settles. Capture mode anchors what the user just picked,
+  // so it needs no retries.
+  const retryAnchors = mode === 'view' || mode === 'verify' ? installAnchorRetries(state, ui) : null;
+  installRouteWatcher(state, ui, retryAnchors ?? undefined);
+  installSync(state, ui, retryAnchors ?? undefined);
   refresh(state, ui);
+  retryAnchors?.();
   if (state.debug) console.log(`[nit] overlay ready (${state.mode}, ${state.viewportMode})`);
 }
 
@@ -172,15 +179,45 @@ function isRendered(el: Element): boolean {
   return r.width > 0 || r.height > 0;
 }
 
+/** SPAs render after DOMContentLoaded, so the first refresh in view/verify mode
+ *  often anchors nothing. Returns a restart function that begins a retry cycle:
+ *  re-run `refresh` every second (up to {@link ANCHOR_RETRY_MAX} attempts) while
+ *  annotations for the current route remain unplaced. Each refresh emits a fresh
+ *  `ui` event, which drives both the panel and the verify after-shot capture —
+ *  including its per-viewport fallback grace-period clock, which is why viewport
+ *  switches restart the cycle too (see installSync / the resize handler): the
+ *  clock at the new viewport starves without fresh events. Restarting clears
+ *  any pending cycle first, so no trigger can ever stack timers. */
+function installAnchorRetries(state: OverlayState, ui: OverlayUi): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let attempts = 0;
+  const tick = (): void => {
+    timer = undefined;
+    refresh(state, ui);
+    attempts += 1;
+    if (attempts >= ANCHOR_RETRY_MAX || state.unplaced.length === 0) return;
+    timer = setTimeout(tick, ANCHOR_RETRY_MS);
+  };
+  return (): void => {
+    clearTimeout(timer);
+    attempts = 0;
+    timer = setTimeout(tick, ANCHOR_RETRY_MS);
+  };
+}
+
 /** SPA route changes don't reload the page: watch history API + popstate + a slow
- *  interval fallback, and re-anchor pins after the new DOM settles. */
-function installRouteWatcher(state: OverlayState, ui: OverlayUi): void {
+ *  interval fallback, and re-anchor pins after the new DOM settles. A route
+ *  change — and, since a viewport switch lands in the page as a resize, a
+ *  debounced resize — also restarts the anchor retry cycle (view/verify, see
+ *  above); review mode passes no restart fn and keeps the plain refresh. */
+function installRouteWatcher(state: OverlayState, ui: OverlayUi, restartAnchors?: () => void): void {
   let last = currentRoute(location);
   const onMaybeChange = (): void => {
     if (currentRoute(location) === last) return;
     last = currentRoute(location);
     setTimeout(() => refresh(state, ui), 300);
     setTimeout(() => refresh(state, ui), 1500);
+    restartAnchors?.();
   };
   for (const m of ['pushState', 'replaceState'] as const) {
     const orig = history[m].bind(history);
@@ -195,13 +232,21 @@ function installRouteWatcher(state: OverlayState, ui: OverlayUi): void {
   let t: ReturnType<typeof setTimeout> | undefined;
   window.addEventListener('resize', () => {
     clearTimeout(t);
-    t = setTimeout(() => refresh(state, ui), 200);
+    t = setTimeout(() => {
+      refresh(state, ui);
+      // A resize re-lays-out the page just like a route change: the retry cycle
+      // must restart or the per-viewport after-shot capture starves for events.
+      restartAnchors?.();
+    }, 200);
   });
 }
 
 /** Periodic resync with Node: picks up panel-driven changes (deletes, viewport
- *  switches) without the panel needing a direct line into this page. */
-function installSync(state: OverlayState, ui: OverlayUi): void {
+ *  switches) without the panel needing a direct line into this page. A viewport
+ *  switch re-lays-out the page, so beyond the immediate refresh it restarts the
+ *  anchor retry cycle (view/verify) — the viewport-keyed after-shot capture
+ *  needs a stream of `ui` events at the new viewport, not a single one. */
+function installSync(state: OverlayState, ui: OverlayUi, restartAnchors?: () => void): void {
   setInterval(() => {
     void (async () => {
       let loaded: LoadResult | undefined;
@@ -211,6 +256,7 @@ function installSync(state: OverlayState, ui: OverlayUi): void {
         state.viewportMode = loaded.viewportMode;
         ui.popover.close(); // its scope options are stale for the new mode
         refresh(state, ui);
+        restartAnchors?.();
         return;
       }
       const incoming = JSON.stringify(loaded.annotations);

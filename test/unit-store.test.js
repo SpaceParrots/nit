@@ -60,6 +60,28 @@ test('store: remove deletes the annotation and its screenshot file', () => {
   assert.equal(store.remove('a1'), false);
 });
 
+test('store: afterShotPath suffixes the mode and sanitizes merged ids', () => {
+  const dir = tmpDir('nit-store-');
+  const store = createStore(dir, { url: 'https://x.test' });
+  assert.ok(store.afterShotPath('a1').endsWith('a1-after.png'), 'no mode → legacy name');
+  assert.ok(store.afterShotPath('a1', 'mobile').endsWith('a1-after-mobile.png'));
+  assert.ok(store.afterShotPath('kevin:a1', 'mobile').endsWith('kevin_a1-after-mobile.png'),
+    'merged ids go through fileSafeId like every other shot path');
+});
+
+test('store: remove deletes viewport-keyed after-shot files too', () => {
+  const dir = tmpDir('nit-store-');
+  const store = createStore(dir, { url: 'https://x.test' });
+  const files = [store.shotPath('a1'), store.afterShotPath('a1'), store.afterShotPath('a1', 'mobile')];
+  for (const f of files) fs.writeFileSync(f, Buffer.from('89504e47', 'hex'));
+  store.upsert({
+    id: 'a1', screenshot: 'shots/a1.png', screenshotAfter: 'shots/a1-after.png',
+    screenshotsAfter: { desktop: 'shots/a1-after.png', mobile: 'shots/a1-after-mobile.png' },
+  });
+  assert.ok(store.remove('a1'));
+  for (const f of files) assert.ok(!fs.existsSync(f), `${path.basename(f)} unlinked`);
+});
+
 test('store: corrupt annotations.json is backed up, store starts fresh', () => {
   const dir = tmpDir('nit-store-');
   fs.writeFileSync(path.join(dir, 'annotations.json'), '{not json');

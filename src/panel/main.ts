@@ -9,6 +9,10 @@ import type { PanelView } from './list.js';
 import { ICONS } from './icons.js';
 import { groupAnnotations, defaultExpanded, distinctAuthors, filterByAuthor } from './filter.js';
 import type { FilterOptions, GroupKey, SortKey } from './filter.js';
+import { computeVerifyQueue } from './verify-queue.js';
+import { renderVerifyCard } from './verify.js';
+import { routeKey } from '../util/route.js';
+import { afterShotFor, wantedAfterModes } from '../util/after-shots.js';
 import type { PanelCmd, PanelState, ViewportMode } from '../types.js';
 
 const TICK_MS = 600;
@@ -32,6 +36,16 @@ let menuOpen = false;
 let lastState: PanelState | null = null;
 /** selected author to filter the list to, or `null` for everyone */
 let authorFilter: string | null = null;
+/** ids the panel has ever seen with status 'fixed' this session (verify mode) */
+const seenFixed = new Set<string>();
+/** session-local verify skips — skipped ids stay in the queue but sort last */
+const skipped = new Set<string>();
+/** the id the auto-tour already navigated for — never re-request for the same
+ * id, so a user who deliberately navigates elsewhere is not fought */
+let navRequestedFor: string | null = null;
+/** `${id}:${mode}` pairs the auto-tour already switched the viewport for — the
+ * same never-fight-the-user rule as navRequestedFor, per missing after-shot */
+const vpRequestedFor = new Set<string>();
 
 initList({ view, shots: shotCache, call, tick: () => void tick(), multiAuthor });
 
@@ -78,9 +92,11 @@ window.addEventListener('blur', () => {
   if (active instanceof HTMLElement && isEditor(active)) active.blur();
 });
 
-/** The two text editors whose focus pauses the poll loop (issue ref, comment). */
+/** The text editors whose focus pauses the poll loop (issue ref, comment, reopen note). */
 function isEditor(el: Element): boolean {
-  return el.classList.contains('nit-issue') || el.classList.contains('nit-comment-edit');
+  return el.classList.contains('nit-issue')
+    || el.classList.contains('nit-comment-edit')
+    || el.classList.contains('nit-vq-note');
 }
 
 /** Open or close the filter dropdown, keeping `menuOpen` and the DOM in sync. */
@@ -156,7 +172,9 @@ function render(s: PanelState): void {
   lastState = s;
   $('#mode').textContent = s.mode === 'view' ? 'replay' : s.mode === 'verify' ? 'verify' : 'review';
   $('#pick').hidden = s.mode !== 'review';
-  $('#finish').hidden = s.mode !== 'review';
+  // Finishing is meaningful in verify mode too — the done-state summary points
+  // the reviewer at this button. Picking stays review-only.
+  $('#finish').hidden = s.mode !== 'review' && s.mode !== 'verify';
   $('#pick').classList.toggle('active', Boolean(s.picking));
   $('#pick-label').textContent = s.picking ? 'Picking… (Esc to stop)' : 'Pick element';
   document.querySelectorAll<HTMLElement>('[data-vp]').forEach(b =>
@@ -209,6 +227,45 @@ function render(s: PanelState): void {
   const placedIndex = new Map<string, number>();
   (s.placed || []).forEach((id, i) => placedIndex.set(id, i + 1));
   const unplacedSet = new Set(s.unplaced || []);
+
+  const verifyHost = $('#verify');
+  verifyHost.hidden = s.mode !== 'verify';
+  if (s.mode === 'verify') {
+    // The progress denominator must not shrink as items get ruled: remember
+    // every id ever seen 'fixed' this session before computing the queue.
+    for (const a of s.annotations) {
+      if (a.status === 'fixed') seenFixed.add(a.id);
+    }
+    const q = computeVerifyQueue({ annotations: s.annotations, seenFixed, skipped, route: s.route || '/' });
+    renderVerifyCard(verifyHost, s, q, skipped, placedIndex, {
+      onSkip: id => { skipped.add(id); view.lastKey = ''; void tick(); },
+      repaint: () => { view.lastKey = ''; void tick(); },
+    });
+    // Auto-tour: when the current item sits on another page (same page-identity
+    // rule as the goto button), navigate there once. The guard keeps this to a
+    // single request per item — a user navigating away on purpose is not fought.
+    const cur = q.currentId ? s.annotations.find(a => a.id === q.currentId) : undefined;
+    if (cur && routeKey(s.route) !== routeKey(cur.route) && navRequestedFor !== cur.id) {
+      navRequestedFor = cur.id;
+      try { void window.__nitGoTo?.(cur.id); } catch { /* bridge gone */ }
+    }
+    // Auto viewport switch, the second tour dimension: when the current item
+    // still misses an after-shot in another viewport, switch to it once. A
+    // missing shot for the *current* viewport means its capture is in flight —
+    // switching away would abort it, so wait for it to land first. Guarded per
+    // id:mode pair (not per id): a general item legitimately needs desktop and
+    // mobile in sequence, but a reviewer who switched away is never fought.
+    if (cur) {
+      const missing = wantedAfterModes(cur).filter(m => afterShotFor(cur, m) === undefined);
+      if (missing.length > 0 && !missing.includes(s.viewportMode)) {
+        const pair = `${cur.id}:${missing[0]}`;
+        if (!vpRequestedFor.has(pair)) {
+          vpRequestedFor.add(pair);
+          try { void window.__nitSetViewport?.(missing[0]); } catch { /* bridge gone */ }
+        }
+      }
+    }
+  }
 
   const list = $('#list');
   list.innerHTML = '';

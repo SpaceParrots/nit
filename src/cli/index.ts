@@ -8,7 +8,8 @@ import { runMcpInstall } from './mcp-install.js';
 import { runSetup, confirmReviewDir } from './setup.js';
 import { runExport } from './export.js';
 import { runImport } from './import.js';
-import { runStatus } from './status.js';
+import { runStatus, displayPath } from './status.js';
+import { resolveFeedbackSource } from './source.js';
 import { isActionable } from '../store/stats.js';
 import { startSession } from '../browser/session.js';
 import type { NitSession } from '../browser/session.js';
@@ -47,7 +48,7 @@ The loop:
   0. nit setup                                   one-time project setup (dir, .gitignore, MCP)
   1. nit review https://staging.example.com      annotate the site -> nit-review/
   2. hand nit-review/ to a coding agent          (or serve it: nit mcp nit-review)
-  3. nit verify nit-review/annotations.json      rule each fix Verified / Reopen
+  3. nit verify                                  rule each fix (finds nit-review/ by itself)
 
 Examples:
   $ nit review http://localhost:4200 --mobile --author Ann
@@ -100,13 +101,23 @@ withBrowserOptions(
     .summary('replay a feedback file on the live site')
     .description('Reload a feedback file and re-view its annotations as numbered pins, re-anchored\n'
       + 'on the pages/routes where they were made and filtered by the active viewport.\n'
-      + 'Annotations that cannot be re-anchored land in the panel’s "couldn’t place" list.')
-    .argument('<file>', 'a nit feedback file (annotations.json)')
-    .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file'))
-  .action(async (file: string, opts: BrowserCmdOptions) => {
-    const session = await startBrowser('view', { file, opts });
-    console.log(`nit view — replaying ${file}`);
-    console.log('Navigate the site; pins appear on the routes they were made on. Close the browser when done.');
+      + 'Annotations that cannot be re-anchored land in the panel’s "couldn’t place" list.\n\n'
+      + 'With no argument, nit looks for ./nit-review. A directory works as well as a\n'
+      + 'file — its annotations.json is used.')
+    .argument('[source]', 'review directory, or a feedback file (annotations.json)', 'nit-review')
+    .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file')
+    .addHelpText('after', `
+Examples:
+  $ nit view                             replay ./nit-review
+  $ nit view review-merged               a review folder
+  $ nit view feedback-ann.json           a specific feedback file
+  $ nit view -u http://localhost:4200    the stored url moved — open this one`))
+  .action(async (source: string, opts: BrowserCmdOptions, cmd: Command) => {
+    const src = resolveFeedbackSource('view', source, cmd.args.length > 0);
+    const session = await startBrowser('view', { file: src.file, opts });
+    const total = session.store.annotations.length;
+    console.log(`nit view — ${displayPath(src.file)}`);
+    console.log(`${total} annotation${total === 1 ? '' : 's'}; pins appear on the routes they were made on. Close the browser when done.`);
     await session.done;
   });
 
@@ -115,18 +126,30 @@ withBrowserOptions(
     .aliases(['check'])
     .summary('capture after-shots for fixed items and rule Verified / Reopen')
     .description('Close the loop after an agent marked change requests "fixed": nit re-opens the\n'
-      + 'site, re-anchors each fixed annotation on its route, and captures an "after"\n'
-      + 'screenshot next to the original (if the element is gone, the originally recorded\n'
-      + 'region is captured instead). Rule each item Verified or Reopen in the panel —\n'
-      + 'reopened items become actionable again for the next fix round.')
-    .argument('<file>', 'a nit feedback file (annotations.json)')
-    .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file'))
-  .action(async (file: string, opts: BrowserCmdOptions) => {
-    const session = await startBrowser('verify', { file, opts });
-    console.log(`nit verify — ${file}`);
-    console.log('Visit the routes of fixed annotations; after-shots are captured automatically.');
-    console.log('Rule each fixed item Verified or Reopen in the panel, then close the browser.');
+      + 'site and the panel walks you through each fixed annotation in a guided queue.\n'
+      + 'Routes are visited automatically, and an "after" screenshot is captured next to\n'
+      + 'the original (if the element is gone, the originally recorded region is captured\n'
+      + 'instead). Rule each item Verified, Reopen (with an optional note), or Skip —\n'
+      + 'reopened items become actionable again for the next fix round.\n\n'
+      + 'With no argument, nit looks for ./nit-review. A directory works as well as a\n'
+      + 'file — its annotations.json is used.')
+    .argument('[source]', 'review directory, or a feedback file (annotations.json)', 'nit-review')
+    .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file')
+    .addHelpText('after', `
+Examples:
+  $ nit verify                           rule the fixes in ./nit-review
+  $ nit verify review-merged             a review folder
+  $ nit verify feedback-ann.json         a specific feedback file
+  $ nit verify -u http://localhost:4200  the stored url moved — open this one`))
+  .action(async (source: string, opts: BrowserCmdOptions, cmd: Command) => {
+    const src = resolveFeedbackSource('verify', source, cmd.args.length > 0);
+    const session = await startBrowser('verify', { file: src.file, opts });
+    const fixed = session.store.annotations.filter(a => a.status === 'fixed').length;
+    console.log(`nit verify — ${displayPath(src.file)}`);
+    console.log(`${fixed} fixed item${fixed === 1 ? '' : 's'} queued — the panel walks you through each: Verified, Reopen (with an optional note), or Skip.`);
+    console.log('Routes are visited automatically; after-shots appear next to the original.');
     await session.done;
+    summarizeVerify(session);
   });
 
 program.command('setup')
@@ -265,6 +288,13 @@ function summarize(session: NitSession): void {
   const open = anns.filter(isActionable).length;
   console.log(`\n${anns.length} annotation${anns.length === 1 ? '' : 's'} (${open} actionable change-request${open === 1 ? '' : 's'}) -> ${session.store.dir}`);
   if (open) console.log('Hand the folder to your coding agent (see fix-annotations.md) or serve it: nit mcp ' + session.store.dir);
+}
+
+/** One-line outcome of a verify session: what was ruled, and what still waits. */
+function summarizeVerify(session: NitSession): void {
+  const anns = session.store.annotations;
+  const count = (status: string): number => anns.filter(a => a.status === status).length;
+  console.log(`\nverify done: ${count('verified')} verified · ${count('reopened')} reopened · ${count('fixed')} still fixed -> ${session.store.dir}`);
 }
 
 function normalizeUrl(url: string): string {

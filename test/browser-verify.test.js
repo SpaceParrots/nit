@@ -16,7 +16,9 @@ const PNG_1PX = Buffer.from(
 
 function makeFeedback(url) {
   const base = {
-    type: 'change-request', author: 'Kevin', viewportScope: 'general',
+    // Pinned to 'desktop': a 'general' scope wants a mobile after-shot too, and the
+    // tour's auto viewport switch would perturb the dimension/timing assertions here.
+    type: 'change-request', author: 'Kevin', viewportScope: 'desktop',
     viewport: { mode: 'desktop', w: 1440, h: 900 }, createdAt: '2026-07-20T10:00:00Z',
   };
   return {

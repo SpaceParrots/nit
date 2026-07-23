@@ -26,6 +26,7 @@ export const PANEL_HTML = `<!doctype html>
   </div>
   <div class="menu" id="filter-menu" hidden></div>
 </div>
+<div id="verify" class="verify" hidden></div>
 <div id="list" class="list"></div>
 <div id="unplaced" class="unplaced" hidden>
   <div class="unplaced-head" id="unplaced-head"></div>

@@ -75,8 +75,24 @@ export interface NitSession {
   close(): Promise<void>;
   /** @internal true while the session is shutting down */
   _closing: boolean;
-  /** @internal verify mode: ids whose after-shot was already captured */
-  _afterCaptured?: Set<string>;
+  /**
+   * @internal verify mode: how each after-shot was captured, keyed
+   * `${annotationId}:${viewportMode}` — a general-scoped annotation collects
+   * one shot per viewport. An `'anchored'` shot (of the re-found element) is
+   * final for its viewport; a `'fallback'` shot (of the originally recorded
+   * region) is upgraded in place if the element anchors later — SPAs often
+   * render it well after the first overlay event.
+   */
+  _afterCaptured?: Map<string, 'anchored' | 'fallback'>;
+  /**
+   * @internal verify mode: timestamps of when a fixed annotation was first/last
+   * reported unplaced, keyed `${annotationId}:${viewportMode}` like
+   * `_afterCaptured` — the grace clock only runs at viewports the annotation
+   * wants a shot in. Drives the fallback grace period in `captureAfterShots` —
+   * a gap between reports means the user left the route, so the clock restarts
+   * on return instead of capturing a still-blank page.
+   */
+  _afterUnplacedSeen?: Map<string, { first: number; last: number }>;
 }
 
 /** Options for {@link startSession}. */

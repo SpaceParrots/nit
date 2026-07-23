@@ -2,7 +2,7 @@
 // Read/write annotations.json (SPEC §3): stable ids, idempotent append, atomic writes.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Annotation, AnnotationStatus, ReviewData } from '../types.js';
+import type { Annotation, AnnotationStatus, ReviewData, ViewportMode } from '../types.js';
 
 /** Options for {@link createStore}. */
 export interface StoreOptions {
@@ -47,8 +47,14 @@ export interface Store {
   remove(id: string): boolean;
   /** absolute path for an annotation's screenshot */
   shotPath(id: string): string;
-  /** absolute path for an annotation's verify after-shot */
-  afterShotPath(id: string): string;
+  /**
+   * Absolute path for an annotation's verify after-shot. Without a mode this is
+   * the legacy `<id>-after.png` name; with a mode the file is suffixed
+   * `-after-<mode>.png`. The store stays dumb about which viewport is primary —
+   * the capture site (verify.ts) keeps the primary viewport's shot on the
+   * legacy name so existing reviews, tests, and MCP consumers keep resolving it.
+   */
+  afterShotPath(id: string, mode?: ViewportMode): string;
   /** atomically write annotations.json (tmp file + rename) */
   flush(): void;
 }
@@ -111,7 +117,9 @@ export function createStore(dir: string, { url, author, file }: StoreOptions = {
       const i = data.annotations.findIndex(a => a.id === id);
       if (i === -1) return false;
       const [ann] = data.annotations.splice(i, 1);
-      for (const rel of [ann.screenshot, ann.screenshotAfter]) {
+      // screenshotsAfter values are untrusted file data like the other two —
+      // safeShotPath makes sure only paths inside the review dir get unlinked.
+      for (const rel of [ann.screenshot, ann.screenshotAfter, ...Object.values(ann.screenshotsAfter ?? {})]) {
         const abs = safeShotPath(dir, rel);
         if (abs) {
           try { fs.unlinkSync(abs); } catch { /* already gone */ }
@@ -124,8 +132,8 @@ export function createStore(dir: string, { url, author, file }: StoreOptions = {
       return path.join(shotsDir, `${fileSafeId(id)}.png`);
     },
 
-    afterShotPath(id: string): string {
-      return path.join(shotsDir, `${fileSafeId(id)}-after.png`);
+    afterShotPath(id: string, mode?: ViewportMode): string {
+      return path.join(shotsDir, `${fileSafeId(id)}-after${mode ? `-${mode}` : ''}.png`);
     },
 
     flush(): void {

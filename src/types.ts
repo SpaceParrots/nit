@@ -95,8 +95,20 @@ export interface Annotation {
   target: Target;
   /** path of the cropped element screenshot, relative to the review dir */
   screenshot: string | null;
-  /** "after" screenshot captured by `nit verify`, relative to the review dir */
+  /**
+   * The primary "after" screenshot captured by `nit verify`, relative to the
+   * review dir — always the shot taken at the same viewport the before-shot
+   * was captured at (or at the scope viewport for scoped annotations), so the
+   * before/after pair compares like with like.
+   */
   screenshotAfter?: string;
+  /**
+   * All `nit verify` after-shots, keyed by the viewport they were captured in.
+   * General-scoped annotations get one per viewport (a fix must hold on both);
+   * scoped annotations only ever get their own. `screenshotAfter` mirrors the
+   * primary entry, so existing consumers keep working.
+   */
+  screenshotsAfter?: Partial<Record<ViewportMode, string>>;
   /** ISO timestamp */
   createdAt: string;
   /** ISO timestamp of the verified/reopened verdict */
@@ -241,8 +253,8 @@ declare global {
     __nitSave?: (payload: SavePayload) => Promise<SaveResult>;
     __nitLoad?: () => Promise<LoadResult>;
     __nitSetViewport?: (mode: ViewportMode) => Promise<ViewportResult>;
-    __nitShot?: (id: string, which?: 'after') => Promise<string | null>;
-    __nitVerdict?: (id: string, verdict: 'verified' | 'reopened') => Promise<VerdictResult>;
+    __nitShot?: (id: string, which?: 'after' | 'after-desktop' | 'after-mobile') => Promise<string | null>;
+    __nitVerdict?: (id: string, verdict: 'verified' | 'reopened', note?: string) => Promise<VerdictResult>;
     __nitSetIssueRef?: (id: string, ref: string) => Promise<AnnotationResult>;
     __nitSetComment?: (id: string, comment: string) => Promise<AnnotationResult>;
     __nitGoTo?: (id: string) => Promise<GoToResult>;

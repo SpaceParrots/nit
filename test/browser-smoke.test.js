@@ -51,7 +51,7 @@ test('nit review — capture flow', async t => {
     assert.equal(a.type, 'change-request'); // overlay default
     assert.equal(a.status, 'open');
     assert.equal(a.author, 'Tester');
-    assert.equal(a.viewportScope, 'desktop'); // default = current viewport mode
+    assert.equal(a.viewportScope, 'general'); // default = general (most fixes apply everywhere)
     assert.deepEqual(a.viewport, { mode: 'desktop', w: 1440, h: 900 });
     assert.equal(a.route, '/');
     assert.equal(a.comment, 'Badge should be yellow, not gray');
@@ -70,7 +70,8 @@ test('nit review — capture flow', async t => {
     await page.mouse.click(box.x + 10, box.y + 10);
     await page.locator('.nit-pop-comment').fill('Consider warmer welcome copy');
     await page.locator('.nit-seg-btn[data-value="comment"]').click();
-    await page.locator('.nit-seg-btn[data-value="general"]').click();
+    // General is the default now — toggling means narrowing to the viewport.
+    await page.locator('.nit-seg-btn[data-value="desktop"]').click();
     await page.locator('.nit-save').click();
 
     const data = await waitFor(() => {
@@ -79,7 +80,7 @@ test('nit review — capture flow', async t => {
     }, { message: 'second annotation' });
     const a = data.annotations.find(x => x.id === 'a2');
     assert.equal(a.type, 'comment');
-    assert.equal(a.viewportScope, 'general');
+    assert.equal(a.viewportScope, 'desktop');
     assert.equal(a.target.selector, '#hero-title');
   });
 
@@ -141,7 +142,8 @@ test('nit review — capture flow', async t => {
       return vp && vp.width === 390 && vp.height === 844 ? true : null;
     }, { message: 'page viewport switched to mobile' });
 
-    // Save via the bridge directly: default scope must follow the active mode.
+    // Save via the bridge directly: a payload without a scope defaults to
+    // 'general' (the popover always sends one; this is the programmatic path).
     const res = await page.evaluate(() => {
       const el = document.querySelector('#hero-title');
       const r = el.getBoundingClientRect();
@@ -158,7 +160,7 @@ test('nit review — capture flow', async t => {
     });
     assert.ok(res.ok);
     assert.deepEqual(res.annotation.viewport, { mode: 'mobile', w: 390, h: 844 });
-    assert.equal(res.annotation.viewportScope, 'mobile');
+    assert.equal(res.annotation.viewportScope, 'general');
 
     await panel.locator('.nit-vp-desktop').click();
     await waitFor(() => {
