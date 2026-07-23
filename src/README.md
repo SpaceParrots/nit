@@ -1,8 +1,6 @@
 # src/: nit's source layout
 
-Everything in here is **TypeScript in strict mode**, compiled by `tsc` to `dist/`
-(`npm run build`). The published package and the tests run the compiled output;
-nothing in `src/` executes directly.
+Everything in here is **TypeScript in strict mode**, compiled by `tsc` to `dist/` (`npm run build`). The published package and the tests run the compiled output; nothing in `src/` executes directly.
 
 ## The two runtimes
 
@@ -13,12 +11,7 @@ nit's code runs in two very different places, and the directory layout follows t
 | **Node** (CLI process) | `cli/`, `browser/`, `store/`, `mcp/`, `util/`, `capture/screenshot.ts` | Node 20.12 or newer, may use `node:*` modules and Playwright |
 | **Browser** (injected into the inspected page, or the panel popup window) | `overlay/`, `panel/`, `anchor/`, `capture/target.ts` | Bundled by esbuild into a single IIFE. No Node APIs, no framework, and nothing that can throw into or break the host page |
 
-The overlay bundle is built at runtime: `browser/inject.ts` points esbuild at the *compiled*
-`dist/overlay/main.js` (plus `overlay.css`, which the build copies into `dist/`) and injects the
-result into every page of the session via `addInitScript`. The panel window gets the same
-treatment from `browser/panel-bundle.ts`, which bundles `dist/panel/main.js` (plus `panel.css`)
-into the popup document opened by `browser/panel.ts`. Both sides talk exclusively through the
-`window.__nit*` bindings wired in `browser/bridge.ts`.
+The overlay bundle is built at runtime: `browser/inject.ts` points esbuild at the *compiled* `dist/overlay/main.js` (plus `overlay.css`, which the build copies into `dist/`) and injects the result into every page of the session via `addInitScript`. The panel window gets the same treatment from `browser/panel-bundle.ts`, which bundles `dist/panel/main.js` (plus `panel.css`) into the popup document opened by `browser/panel.ts`. Both sides talk exclusively through the `window.__nit*` bindings wired in `browser/bridge.ts`.
 
 ## Directory map
 
@@ -104,18 +97,8 @@ src/
 
 ## Conventions
 
-- **`types.ts` is the public contract.** The annotations.json schema is consumed by coding
-  agents, the MCP server and other people's feedback files, so make additive changes only. The
-  bridge types in the same file keep both runtimes honest about what crosses `exposeBinding`.
-- **Trust boundaries are typed as `unknown`.** Anything that arrives from a page (bridge
-  payloads), from disk (annotation files) or over stdio (MCP messages) is `unknown` first and
-  narrowed or validated before use. Annotation files are shared and agent-edited, and the
-  inspected site's own JS can call the bindings.
-- **Pure modules stay pure.** `anchor/`, `capture/target.ts`, `store/render.ts`,
-  `store/merge.ts`, `store/url.ts`, `util/route.ts`, `util/history.ts`, `panel/filter.ts` and
-  `panel/highlight.ts` have no side effects and are covered by table-driven tests.
-- **Imports use `.js` extensions** (`import ... from '../types.js'`). TypeScript NodeNext
-  resolution means specifiers name the *emitted* files, so the compiled output runs on plain
-  Node without rewriting.
-- **The overlay ships self-contained.** No runtime dependencies, all UI inside its shadow root,
-  capture-phase listeners, and nothing that can take the host page down.
+- **`types.ts` is the public contract.** The annotations.json schema is consumed by coding agents, the MCP server and other people's feedback files, so make additive changes only. The bridge types in the same file keep both runtimes honest about what crosses `exposeBinding`.
+- **Trust boundaries are typed as `unknown`.** Anything that arrives from a page (bridge payloads), from disk (annotation files) or over stdio (MCP messages) is `unknown` first and narrowed or validated before use. Annotation files are shared and agent-edited, and the inspected site's own JS can call the bindings.
+- **Pure modules stay pure.** `anchor/`, `capture/target.ts`, `store/render.ts`, `store/merge.ts`, `store/url.ts`, `util/route.ts`, `util/history.ts`, `panel/filter.ts` and `panel/highlight.ts` have no side effects and are covered by table-driven tests.
+- **Imports use `.js` extensions** (`import ... from '../types.js'`). TypeScript NodeNext resolution means specifiers name the *emitted* files, so the compiled output runs on plain Node without rewriting.
+- **The overlay ships self-contained.** No runtime dependencies, all UI inside its shadow root, capture-phase listeners, and nothing that can take the host page down.
