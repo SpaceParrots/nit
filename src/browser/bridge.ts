@@ -14,6 +14,7 @@ import { currentRoute, routeKey } from '../util/route.js';
 import type { NitSession } from './session.js';
 import type {
   Annotation,
+  CaptureContext,
   HiddenRef,
   HiddenReason,
   OverlayClickEvent,
@@ -51,6 +52,7 @@ interface RawSavePayload {
   viewportScope?: unknown;
   route?: unknown;
   target?: unknown;
+  context?: unknown;
   history?: unknown;
 }
 
@@ -119,6 +121,8 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
       viewport: { mode: session.viewportMode, w: viewport.width, h: viewport.height },
       route: typeof p.route === 'string' && p.route ? p.route : '/',
       target,
+      // untrusted like the rest of the payload — dialog contexts only, bounded strings
+      context: sanitizeContext(p.context),
       screenshot: null,
       createdAt: new Date().toISOString(),
       // untrusted like the rest of the payload — re-validated, capped, or dropped
@@ -381,4 +385,18 @@ function validateSave(p: unknown): string | null {
   if (typeof o.comment !== 'string' || !o.comment.trim()) return 'comment is required';
   if (!o.target || typeof o.target !== 'object') return 'target is required';
   return null;
+}
+
+/**
+ * Page-supplied capture context. Only dialog contexts are stored — 'page' is
+ * the implicit default and writing it would churn every plain annotation.
+ * Free-text fields are bounded: they end up in the panel UI and MCP output.
+ */
+function sanitizeContext(v: unknown): CaptureContext | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const c = v as Partial<CaptureContext>;
+  if (c.kind !== 'dialog') return undefined;
+  const selector = typeof c.selector === 'string' && c.selector ? c.selector.slice(0, 300) : undefined;
+  const label = typeof c.label === 'string' && c.label ? c.label.slice(0, 60) : undefined;
+  return { kind: 'dialog', ...(selector ? { selector } : {}), ...(label ? { label } : {}) };
 }

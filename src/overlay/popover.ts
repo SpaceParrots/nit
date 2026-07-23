@@ -2,7 +2,8 @@
 // The annotation popover: comment text, type selector (default change-request),
 // viewport-scope toggle (default: general, toggleable to the current viewport).
 import { div, button, segmented, labelRow, describeElement } from './dom.js';
-import { resolveTarget } from '../capture/target.js';
+import { detectDialog } from '../capture/context.js';
+import { buildSelector, resolveTarget } from '../capture/target.js';
 import { currentRoute } from '../util/route.js';
 import type { AnnotationType, SavePayload, ViewportScope } from '../types.js';
 import type { OverlayActions, OverlayState, Popover } from './state.js';
@@ -83,6 +84,7 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
       if (saving || !currentEl) return;
       saving = true;
       const elementToSave = currentEl;
+      const dialog = detectDialog(elementToSave);
       close(); // close first — nothing below may keep the popover on screen
       try {
         const history = actions.historySnapshot();
@@ -92,6 +94,10 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
           viewportScope: scope,
           target: resolveTarget(elementToSave, window),
           route: currentRoute(location),
+          // absent on plain pages — keeps the file identical to before for them
+          context: dialog
+            ? { kind: 'dialog', selector: buildSelector(dialog.container), label: dialog.label ?? undefined }
+            : undefined,
           // absent (not []) when nothing was clicked — keeps the file identical to before
           history: history.length ? history : undefined,
         };
