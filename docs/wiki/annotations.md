@@ -1,7 +1,6 @@
 # Annotation file reference
 
-A review folder is plain files. This page explains what is in them and what each field means.
-The authoritative type definitions live in [`src/types.ts`](../../src/types.ts).
+A review folder is plain files. This page explains what is in them and what each field means. The authoritative type definitions live in [`src/types.ts`](../../src/types.ts).
 
 ## The folder
 
@@ -13,8 +12,7 @@ nit-review/
 └─ shots/               # one screenshot per annotation, plus -after shots from nit verify
 ```
 
-`annotations.json` is the source of truth. `review.md` and `fix-annotations.md` are re-rendered
-from it on every write.
+`annotations.json` is the source of truth. `review.md` and `fix-annotations.md` are re-rendered from it on every write.
 
 ## One annotation
 
@@ -31,6 +29,7 @@ from it on every write.
   "target": { "…": "see below" },
   "screenshot": "shots/a1.png",
   "screenshotAfter": "shots/a1-after.png",
+  "screenshotsAfter": { "desktop": "shots/a1-after.png" },
   "createdAt": "2026-07-21T02:28:11.550Z",
   "updatedAt": "2026-07-22T09:01:00.000Z",
   "updatedBy": "agent",
@@ -49,12 +48,13 @@ from it on every write.
 | `comment` | The reviewer's text. Editable later from the panel. |
 | `status` | `open`, `fixed`, `verified`, `reopened` or `wontfix`. See the lifecycle below. |
 | `author` | Who recorded the annotation. |
-| `viewportScope` | `desktop`, `mobile` or `general`: where the issue applies. |
+| `viewportScope` | `desktop`, `mobile` or `general`: where the issue applies. New annotations default to `general`. |
 | `viewport` | The exact viewport the annotation was made in. |
 | `route` | The page it was made on, as pathname plus query and hash. |
 | `target` | The layered element reference, see below. |
 | `screenshot` | Path of the context screenshot, relative to the review folder. |
-| `screenshotAfter` | The "after" screenshot captured by `nit verify`, when one exists. |
+| `screenshotAfter` | The primary "after" screenshot captured by `nit verify`, when one exists — taken at the same viewport as the before-shot (or at the scope viewport for scoped annotations). Always mirrors the primary `screenshotsAfter` entry. |
+| `screenshotsAfter` | All `nit verify` after-shots, keyed by viewport (`desktop` / `mobile`). General-scoped annotations get one per viewport (the fix must hold on both); scoped ones only ever their own. Additive to the schema — older consumers can keep reading `screenshotAfter`. |
 | `createdAt` | ISO timestamp of capture. |
 | `updatedAt` / `updatedBy` | Set on every status, comment or issue-ref change. `updatedBy` is `"agent"` when the change came through MCP. |
 | `issueRef` | Optional tracker reference, a key like `FAI-1234` or a url. Settable from the panel and by agents through MCP. |
@@ -74,9 +74,7 @@ The target is a layered reference to the element, ordered roughly from most to l
 | `tag`, `classes`, `text` | The element's tag, cleaned class list, and trimmed text content. The text is the last-resort anchor for replay. |
 | `rect` | The element's page coordinates at capture time. |
 
-Replay (`nit view`, `nit verify`) re-anchors in that order: selector, then xpath, then text. If
-nothing matches anymore, the annotation lands in a "couldn't place" list instead of breaking the
-session.
+Replay (`nit view`, `nit verify`) re-anchors in that order: selector, then xpath, then text. If nothing matches anymore, the annotation lands in a "couldn't place" list instead of breaking the session.
 
 ## The status lifecycle
 
@@ -87,15 +85,8 @@ open ──► fixed ──► verified   (done)
   └── wontfix is a terminal decision a human makes
 ```
 
-An annotation is **actionable** when it is a `change-request` with status `open` or `reopened`.
-The fixing agent's contract (`fix-annotations.md`) is: fix every actionable annotation at the
-referenced element, then set its status to `fixed`. Humans rule `verified` or `reopened` during
-`nit verify`.
+An annotation is **actionable** when it is a `change-request` with status `open` or `reopened`. The fixing agent's contract (`fix-annotations.md`) is: fix every actionable annotation at the referenced element, then set its status to `fixed`. Humans rule `verified` or `reopened` during `nit verify`.
 
 ## Trust
 
-Annotation files travel between people and are edited by agents, so nit treats them as
-untrusted input everywhere: fields are validated and sanitized before they reach the browser,
-review.md, or navigation. If you review a file from outside your team, prefer
-`nit view --url <your-staging-url>` so the session opens an origin you chose, not one from the
-file.
+Annotation files travel between people and are edited by agents, so nit treats them as untrusted input everywhere: fields are validated and sanitized before they reach the browser, review.md, or navigation. If you review a file from outside your team, prefer `nit view --url <your-staging-url>` so the session opens an origin you chose, not one from the file.

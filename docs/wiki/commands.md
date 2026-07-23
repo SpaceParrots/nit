@@ -14,10 +14,7 @@ Every command also has built-in help: `nit <command> --help`.
 
 ## nit setup (alias: init)
 
-One-time project setup. An interactive wizard chooses the review directory, offers a
-`.gitignore` entry, can register the MCP server in the project's `.mcp.json`, and asks for your
-author name. The author is saved in a per-user config (`~/.config/nit/config.json`), not in the
-project, so every teammate keeps their own.
+One-time project setup. An interactive wizard chooses the review directory, offers a `.gitignore` entry, can register the MCP server in the project's `.mcp.json`, and asks for your author name. The author is saved in a per-user config (`~/.config/nit/config.json`), not in the project, so every teammate keeps their own.
 
 | Flag | What it does |
 | --- | --- |
@@ -25,30 +22,30 @@ project, so every teammate keeps their own.
 
 ## nit review \<url\> (aliases: r, annotate)
 
-Opens the site in a real Chromium with the annotation overlay and the panel window. Alt-click
-elements, describe changes, finish the review from the panel.
+Opens the site in a real Chromium with the annotation overlay and the panel window. Alt-click elements, describe changes, finish the review from the panel.
 
 | Flag | What it does |
 | --- | --- |
 | `-o, --out <dir>` | Output directory (default `nit-review`) |
 | `-a, --author <name>` | Author recorded on each annotation (default: the name from `nit setup`, else your OS user name) |
 
-## nit view \<file\> (aliases: v, replay)
+## nit view [source] (aliases: v, replay)
 
-Replays a feedback file. Pins are re-anchored on their routes so you can walk through a
-teammate's review.
+Replays a feedback file. Pins are re-anchored on their routes so you can walk through a teammate's review.
+
+`source` is a review directory or a feedback file — with no argument, nit looks for `./nit-review`. A missing, empty, or unreadable review fails fast with the next step (start a review, point at a folder, or check `nit status`) instead of opening a browser on nothing.
 
 | Flag | What it does |
 | --- | --- |
 | `-u, --url <url>` | Open this url instead of the one stored in the feedback file |
 
-Use `--url` whenever you do not fully trust the file, for example one you received from outside
-your team. It pins the session to an origin you chose yourself.
+Use `--url` whenever you do not fully trust the file, for example one you received from outside your team. It pins the session to an origin you chose yourself.
 
-## nit verify \<file\> (alias: check)
+## nit verify [source] (alias: check)
 
-Captures "after" screenshots for every annotation marked `fixed` and lets you rule each one
-Verified or Reopen in the panel.
+Walks you through every annotation marked `fixed` in a guided queue: the panel shows one item at a time with its before and after screenshots, the site page visits each item's route automatically, and you rule each one Verified, Reopen (with an optional note, stored as `statusReason`) or Skip. After-shots are captured for you — of the re-found element, or of the originally recorded region when the element is gone. General-scoped items get one after-shot per viewport (desktop and mobile), and the session switches the viewport automatically to capture the missing one; scoped items are only ever shot in their own viewport. When the session ends, a one-line summary prints what was verified, reopened and still fixed.
+
+`source` works like in `nit view`: a directory or a file, defaulting to `./nit-review`. When there is nothing to rule yet, nit says so and suggests the step that is actually missing — hand the actionable items to your agent (`nit mcp`), or capture a review first.
 
 | Flag | What it does |
 | --- | --- |
@@ -56,10 +53,7 @@ Verified or Reopen in the panel.
 
 ## nit status [dir] (alias: stats)
 
-A quick read on a review folder, without opening a browser: where the annotations file is, when
-it last changed and by whom, how many annotations there are by status and type, which routes they
-sit on, how much the screenshots weigh — and what to do next (hand the actionable ones to an
-agent, rule the fixed ones, or capture some).
+A quick read on a review folder, without opening a browser: where the annotations file is, when it last changed and by whom, how many annotations there are by status and type, which routes they sit on, how much the screenshots weigh — and what to do next (hand the actionable ones to an agent, rule the fixed ones, or capture some).
 
 ```
 nit status — nit-review/annotations.json
@@ -79,9 +73,7 @@ nit status — nit-review/annotations.json
 5 fixed, waiting on you to rule:  nit verify nit-review/annotations.json
 ```
 
-The argument takes a review directory or an annotations.json path, so a feedback file with its own
-name works too: `nit status feedback-ann.json`. Nothing is written — it is safe to run against a
-review someone else is editing.
+The argument takes a review directory or an annotations.json path, so a feedback file with its own name works too: `nit status feedback-ann.json`. Nothing is written — it is safe to run against a review someone else is editing.
 
 | Flag | What it does |
 | --- | --- |
@@ -89,8 +81,7 @@ review someone else is editing.
 
 ## nit export [dir] (alias: pack)
 
-Packs a review folder into a shareable zip. The file name is derived from the review id and the
-author.
+Packs a review folder into a shareable zip. The file name is derived from the review id and the author.
 
 | Flag | What it does |
 | --- | --- |
@@ -106,8 +97,7 @@ Unpacks a teammate's review zip next to your own review.
 
 ## nit merge \<file...\> (alias: combine)
 
-Combines several feedback files into one consolidated review with per-author attribution.
-Screenshots are copied along.
+Combines several feedback files into one consolidated review with per-author attribution. Screenshots are copied along.
 
 | Flag | What it does |
 | --- | --- |
@@ -115,15 +105,11 @@ Screenshots are copied along.
 
 ## nit mcp [dir] (alias: serve)
 
-Serves a review folder as an MCP server over stdio. This is what coding agents connect to.
-Tools: `nit_list_annotations`, `nit_get_annotation`, `nit_mark_fixed`, `nit_set_status`, `nit_set_issue_ref`.
-The review is also readable as resources: `nit://review/annotations.json`, `nit://review/review.md`,
-`nit://review/fix-annotations.md` and `nit://annotation/<id>` (plus its screenshots).
+Serves a review folder as an MCP server over stdio. This is what coding agents connect to. Tools: `nit_list_annotations`, `nit_get_annotation`, `nit_mark_fixed`, `nit_set_status`, `nit_set_issue_ref`. The review is also readable as resources: `nit://review/annotations.json`, `nit://review/review.md`, `nit://review/fix-annotations.md` and `nit://annotation/<id>` (plus its screenshots).
 
 ## nit mcp-install [dir] (alias: mcp-config)
 
-Writes the MCP server entry into the project's `.mcp.json`, creating or merging the file. On
-Windows the command is wrapped in `cmd /c`, because MCP clients spawn servers without a shell.
+Writes the MCP server entry into the project's `.mcp.json`, creating or merging the file. On Windows the command is wrapped in `cmd /c`, because MCP clients spawn servers without a shell.
 
 | Flag | What it does |
 | --- | --- |
@@ -131,8 +117,7 @@ Windows the command is wrapped in `cmd /c`, because MCP clients spawn servers wi
 
 ## nit doctor
 
-Checks the environment (Node version, dependencies, Chromium) and offers to install Chromium if
-it is missing.
+Checks the environment (Node version, dependencies, Chromium) and offers to install Chromium if it is missing.
 
 | Flag | What it does |
 | --- | --- |
