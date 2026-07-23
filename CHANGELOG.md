@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/SpaceParrots/nit/compare/v1.1.0...v1.2.0) (2026-07-23)
+
+
+### Features
+
+* guided verify queue and overlay placement reliability ([88bf8a4](https://github.com/SpaceParrots/nit/commit/88bf8a463e6aa9da0886d7a41300aab12a2441d0))
+
 ## 1.1.0 (2026-07-22)
 
 - **Leaner MCP tool payloads.** A field test of the MCP surface showed roughly two thirds of the
