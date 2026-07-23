@@ -18,6 +18,8 @@ import type { Annotation, CaptureContext, LoadResult, Rect } from '../types.js';
 const SYNC_INTERVAL_MS = 2000;
 const ANCHOR_RETRY_MS = 1000;
 const ANCHOR_RETRY_MAX = 10;
+const MUTATION_DEBOUNCE_MS = 250;
+const MUTATION_REFRESH_FLOOR_MS = 500;
 
 (function boot() {
   if (typeof window === 'undefined' || window !== window.top) return; // top frame only
@@ -117,14 +119,16 @@ async function init(): Promise<void> {
     setUiHidden: actions.setUiHidden,
   };
 
-  // Replay modes re-anchor against a DOM the site renders on its own schedule
-  // — retry until it settles. Capture mode anchors what the user just picked,
-  // so it needs no retries.
-  const retryAnchors = mode === 'view' || mode === 'verify' ? installAnchorRetries(state, ui) : null;
-  installRouteWatcher(state, ui, retryAnchors ?? undefined);
-  installSync(state, ui, retryAnchors ?? undefined);
+  // Sites render on their own schedule in every mode — a review-mode route
+  // change needs the retry cycle just as much as replay (pins used to vanish
+  // on slow SPA routes during capture). Capture-time picks still anchor
+  // instantly; retries only run while something is unplaced.
+  const retryAnchors = installAnchorRetries(state, ui);
+  installRouteWatcher(state, ui, retryAnchors);
+  installSync(state, ui, retryAnchors);
+  installMutationWatcher(state, ui);
   refresh(state, ui);
-  retryAnchors?.();
+  retryAnchors();
   if (state.debug) console.log(`[nit] overlay ready (${state.mode}, ${state.viewportMode})`);
 }
 
@@ -240,16 +244,16 @@ function installAnchorRetries(state: OverlayState, ui: OverlayUi): () => void {
 /** SPA route changes don't reload the page: watch history API + popstate + a slow
  *  interval fallback, and re-anchor pins after the new DOM settles. A route
  *  change — and, since a viewport switch lands in the page as a resize, a
- *  debounced resize — also restarts the anchor retry cycle (view/verify, see
- *  above); review mode passes no restart fn and keeps the plain refresh. */
-function installRouteWatcher(state: OverlayState, ui: OverlayUi, restartAnchors?: () => void): void {
+ *  debounced resize — also restarts the anchor retry cycle, which now runs in
+ *  every mode. */
+function installRouteWatcher(state: OverlayState, ui: OverlayUi, restartAnchors: () => void): void {
   let last = currentRoute(location);
   const onMaybeChange = (): void => {
     if (currentRoute(location) === last) return;
     last = currentRoute(location);
     setTimeout(() => refresh(state, ui), 300);
     setTimeout(() => refresh(state, ui), 1500);
-    restartAnchors?.();
+    restartAnchors();
   };
   for (const m of ['pushState', 'replaceState'] as const) {
     const orig = history[m].bind(history);
@@ -268,7 +272,7 @@ function installRouteWatcher(state: OverlayState, ui: OverlayUi, restartAnchors?
       refresh(state, ui);
       // A resize re-lays-out the page just like a route change: the retry cycle
       // must restart or the per-viewport after-shot capture starves for events.
-      restartAnchors?.();
+      restartAnchors();
     }, 200);
   });
 }
@@ -276,9 +280,10 @@ function installRouteWatcher(state: OverlayState, ui: OverlayUi, restartAnchors?
 /** Periodic resync with Node: picks up panel-driven changes (deletes, viewport
  *  switches) without the panel needing a direct line into this page. A viewport
  *  switch re-lays-out the page, so beyond the immediate refresh it restarts the
- *  anchor retry cycle (view/verify) — the viewport-keyed after-shot capture
- *  needs a stream of `ui` events at the new viewport, not a single one. */
-function installSync(state: OverlayState, ui: OverlayUi, restartAnchors?: () => void): void {
+ *  anchor retry cycle, which now runs in every mode — the viewport-keyed
+ *  after-shot capture needs a stream of `ui` events at the new viewport, not a
+ *  single one. */
+function installSync(state: OverlayState, ui: OverlayUi, restartAnchors: () => void): void {
   setInterval(() => {
     void (async () => {
       let loaded: LoadResult | undefined;
@@ -288,7 +293,7 @@ function installSync(state: OverlayState, ui: OverlayUi, restartAnchors?: () => 
         state.viewportMode = loaded.viewportMode;
         ui.popover.close(); // its scope options are stale for the new mode
         refresh(state, ui);
-        restartAnchors?.();
+        restartAnchors();
         return;
       }
       const incoming = JSON.stringify(loaded.annotations);
@@ -298,6 +303,44 @@ function installSync(state: OverlayState, ui: OverlayUi, restartAnchors?: () => 
       }
     })();
   }, SYNC_INTERVAL_MS);
+}
+
+/** SPA re-renders replace DOM nodes without any route change: pins would keep
+ *  tracking detached elements and unplaced annotations would wait a full retry
+ *  tick to appear. Watch the page body (the overlay host lives on
+ *  documentElement and its UI in a shadow root, so our own mutations are never
+ *  seen) and refresh — debounced, with a floor between refreshes so animated
+ *  pages can't thrash — whenever something is unplaced or a tracked element got
+ *  detached. */
+function installMutationWatcher(state: OverlayState, ui: OverlayUi): void {
+  let debounce: ReturnType<typeof setTimeout> | undefined;
+  let lastRefresh = 0;
+  const needsRefresh = (): boolean =>
+    state.unplaced.length > 0 || state.placed.some(p => !p.el.isConnected);
+  const tick = (): void => {
+    debounce = undefined;
+    if (!needsRefresh()) return;
+    const since = Date.now() - lastRefresh;
+    if (since < MUTATION_REFRESH_FLOOR_MS) {
+      debounce = setTimeout(tick, MUTATION_REFRESH_FLOOR_MS - since);
+      return;
+    }
+    lastRefresh = Date.now();
+    refresh(state, ui);
+  };
+  const observe = (): void => {
+    if (!document.body) return;
+    new MutationObserver(() => {
+      clearTimeout(debounce);
+      debounce = setTimeout(tick, MUTATION_DEBOUNCE_MS);
+    }).observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden', 'open'],
+    });
+  };
+  observe();
 }
 
 async function waitForBridge(): Promise<LoadResult | null> {

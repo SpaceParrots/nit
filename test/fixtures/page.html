@@ -61,7 +61,15 @@
       `,
     };
     function render() {
-      document.getElementById('app').innerHTML = routes[location.pathname] || '<p class="notfound">404</p>';
+      const app = document.getElementById('app');
+      const paint = () => { app.innerHTML = routes[location.pathname] || '<p class="notfound">404</p>'; };
+      // ?slow simulates an SPA that renders well after DOMContentLoaded/route change
+      if (new URLSearchParams(location.search).has('slow')) {
+        app.innerHTML = '';
+        setTimeout(paint, 2500);
+      } else {
+        paint();
+      }
     }
     document.addEventListener('click', e => {
       const a = e.target.closest('a[data-route]');
