@@ -215,7 +215,7 @@ function scopeVisible(state: OverlayState, ann: Annotation): boolean {
   return scope === 'general' || scope === state.viewportMode;
 }
 
-/** SPAs render after DOMContentLoaded, so the first refresh in view/verify mode
+/** SPAs render after DOMContentLoaded, so the first refresh after a route change
  *  often anchors nothing. Returns a restart function that begins a retry cycle:
  *  re-run `refresh` every second (up to {@link ANCHOR_RETRY_MAX} attempts) while
  *  annotations for the current route remain unplaced. Each refresh emits a fresh

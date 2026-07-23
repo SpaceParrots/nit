@@ -65,12 +65,23 @@ test('overlay re-anchoring', async t => {
     await waitFor(() => S.session.uiState.placed?.some(p => p.id === 'a1') ? true : null,
       { message: 'a1 placed', timeout: 15000 });
 
-    // Replace every node under #app with fresh clones (what SPA re-renders do).
+    // The retry cycle stops after its first tick once everything is placed,
+    // but that stopping tick is still pending (restartAnchors() above queued
+    // one ~1s out). Wait it out so the cycle is fully drained before the
+    // mutation below — otherwise that pending tick, not the observer, could
+    // be what re-anchors the pin, making this test pass for the wrong reason.
+    await new Promise(r => setTimeout(r, 1600));
+
+    // Replace every node under #app with fresh clones (what SPA re-renders do),
+    // and prepend a spacer so the new paragraph renders 40px lower than the
+    // detached original. A stale pin (never re-anchored) keeps the OLD
+    // position forever — nothing but a fresh render() moves it — so this
+    // makes the assertion below fail definitively without re-anchoring,
+    // instead of coincidentally matching because the layout didn't move.
     // No route change, no annotation change: only the MutationObserver can see it.
     await page.evaluate(() => {
       const app = document.getElementById('app');
-      // eslint-disable-next-line no-self-assign
-      app.innerHTML = app.innerHTML;
+      app.innerHTML = '<div style="height:40px"></div>' + app.innerHTML;
     });
     // The overlay must (a) report a fresh placed rect for the NEW node and
     // (b) not leave the pin tracking the detached one.
