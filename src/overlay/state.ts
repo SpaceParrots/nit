@@ -93,12 +93,18 @@ export interface Chip {
   update(): void;
 }
 
+/** The "x hidden" pill next to the chip. */
+export interface HiddenPill {
+  update(): void;
+}
+
 /** All mounted overlay parts. */
 export interface OverlayUi {
   host: HTMLElement;
   root: ShadowRoot;
   pins: Pins;
   chip: Chip;
+  hiddenPill: HiddenPill;
   popover: Popover;
   picker: Picker;
 }

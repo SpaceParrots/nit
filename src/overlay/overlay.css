@@ -139,11 +139,19 @@ button, input, textarea, select { font: inherit; }
 .nit-btn:hover { border-color: var(--nit-muted); }
 .nit-btn--primary, .nit-btn--active { background: var(--nit-accent); color: var(--nit-accent-fg); border-color: var(--nit-accent); font-weight: 600; }
 
-/* ---- chip (the only persistent in-page UI; lists/controls live in the panel window) ---- */
-.nit-chip {
+/* ---- bottom-left dock: chip + hidden pill (the only persistent in-page UI) ---- */
+.nit-dock {
   position: fixed;
   left: 12px;
   bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 40;
+}
+
+/* ---- chip ---- */
+.nit-chip {
   background: var(--nit-bg);
   color: var(--nit-fg);
   border: 1px solid var(--nit-border);
@@ -153,6 +161,43 @@ button, input, textarea, select { font: inherit; }
   padding: 6px 12px;
   cursor: pointer;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  z-index: 40;
 }
 .nit-chip--picking { background: var(--nit-accent); color: var(--nit-accent-fg); border-color: var(--nit-accent); }
+
+.nit-hidden-pill {
+  background: var(--nit-bg);
+  color: var(--nit-muted);
+  border: 1px dashed var(--nit-border);
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.nit-hidden-pill:hover { color: var(--nit-fg); border-color: var(--nit-muted); }
+.nit-hidden-pop {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  min-width: 260px;
+  max-width: 380px;
+  background: var(--nit-bg);
+  border: 1px solid var(--nit-border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nit-hidden-row {
+  background: none;
+  border: none;
+  color: var(--nit-fg);
+  font-size: 12px;
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nit-hidden-row:hover { background: #2a2a2e; }

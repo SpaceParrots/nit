@@ -6,15 +6,15 @@ import type { Chip, OverlayActions, OverlayState } from './state.js';
 /**
  * Create the chip: shows mode + annotation count, doubles as a picking toggle
  * in review mode, and switches to a "picking…" hint while active.
- * @param root the overlay shadow root to mount into
+ * @param dock the bottom-left dock element to mount into
  * @param state shared overlay state (mode, picking, annotations)
  * @param actions overlay actions (setPicking)
  */
-export function createChip(root: ShadowRoot, state: OverlayState, actions: OverlayActions): Chip {
+export function createChip(dock: HTMLElement, state: OverlayState, actions: OverlayActions): Chip {
   const el = document.createElement('button');
   el.type = 'button';
   el.className = 'nit-chip';
-  root.append(el);
+  dock.append(el);
   el.addEventListener('click', () => {
     if (state.mode === 'review') actions.setPicking(!state.picking);
   });

@@ -11,6 +11,7 @@ import { installTrail } from './trail.js';
 import { createPopover } from './popover.js';
 import { createPins } from './pins.js';
 import { createChip } from './chip.js';
+import { createHiddenPill } from './hidden-pill.js';
 import { currentRoute, routePath } from '../util/route.js';
 import type { ApproxAnnotation, HiddenAnnotation, OverlayActions, OverlayState, OverlayUi, PlacedAnnotation } from './state.js';
 import type { Annotation, CaptureContext, LoadResult, Rect } from '../types.js';
@@ -71,6 +72,11 @@ async function init(): Promise<void> {
   root.append(style);
   document.documentElement.append(host);
 
+  // Bottom-left dock: chip + hidden pill side by side without coordinate math.
+  const dock = document.createElement('div');
+  dock.className = 'nit-dock';
+  root.append(dock);
+
   // Click trail: capture mode only — replay/verify sessions record nothing.
   const trail = mode === 'review' ? installTrail(state, host) : null;
 
@@ -103,10 +109,11 @@ async function init(): Promise<void> {
   };
 
   const pins = createPins(root, state, actions);
-  const chip = createChip(root, state, actions);
+  const chip = createChip(dock, state, actions);
+  const hiddenPill = createHiddenPill(dock, state, actions);
   const popover = createPopover(root, state, actions);
   const picker = installPicker(state, { host, root, popover }, actions);
-  ui = { host, root, pins, chip, popover, picker };
+  ui = { host, root, pins, chip, hiddenPill, popover, picker };
 
   // Commands from the panel window (and verify screenshots), routed through Node.
   window.__nitOverlay = {
@@ -170,6 +177,7 @@ function refresh(state: OverlayState, ui: OverlayUi): void {
   state.unplaced = [...approx.map(a => a.ann), ...hidden.filter(h => h.reason !== 'viewport').map(h => h.ann)];
   ui.pins.render();
   ui.chip.update();
+  ui.hiddenPill.update();
   emitUi(state);
 }
 

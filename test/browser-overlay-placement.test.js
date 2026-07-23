@@ -139,4 +139,47 @@ test('overlay placement', async t => {
     await S.session.close();
     S = null;
   });
+
+  await t.test('hidden pill counts hidden (not approx) annotations and lists reasons', async () => {
+    const dir = tmpDir('nit-pill-');
+    const reviewFile = writeReview(dir, server.url, [
+      { ...BASE, id: 'd1', comment: 'Dialog button label',
+        context: { kind: 'dialog', selector: '#dlg', label: 'Checkout' },
+        target: target({ component: 'dialog', selector: '#dlg-save', tag: 'button', text: 'Save order', rect: { x: 100, y: 200, w: 90, h: 30 } }) },
+      { ...BASE, id: 'm1', comment: 'Mobile spacing', viewportScope: 'mobile', viewport: { mode: 'mobile', w: 390, h: 844 },
+        target: target({ selector: '#present', tag: 'p', text: 'Always here' }) },
+      { ...BASE, id: 'g1', comment: 'Removed banner',
+        target: target({ selector: '#never', text: 'NO SUCH TEXT ANYWHERE', component: 'no-such-component', rect: { x: 40, y: 300, w: 200, h: 50 } }) },
+    ]);
+    S = await startTestSession({ mode: 'view', url: undefined, reviewFile });
+    const page = S.session.page;
+
+    await waitFor(() => (S.session.uiState.hidden ?? []).length === 2 ? true : null,
+      { message: '2 hidden reported', timeout: 15000 });
+    const pill = await page.evaluate(() => {
+      const root = document.getElementById('nit-root').shadowRoot;
+      const el = root.querySelector('.nit-hidden-pill');
+      return { hidden: el.hidden, text: el.textContent };
+    });
+    assert.equal(pill.hidden, false);
+    assert.equal(pill.text, '2 hidden');
+
+    const rows = await page.evaluate(() => {
+      const root = document.getElementById('nit-root').shadowRoot;
+      root.querySelector('.nit-hidden-pill').click();
+      return [...root.querySelectorAll('.nit-hidden-row')].map(r => r.textContent);
+    });
+    assert.equal(rows.length, 2);
+    assert.ok(rows[0].includes('in dialog “Checkout”'), rows[0]);
+    assert.ok(rows[1].includes('mobile-only'), rows[1]);
+
+    // a row click asks the panel to focus that annotation
+    await page.evaluate(() => {
+      document.getElementById('nit-root').shadowRoot.querySelector('.nit-hidden-row').click();
+    });
+    await waitFor(() => S.events.some(e => e.type === 'focus' && e.id === 'd1') ? true : null,
+      { message: 'focus event for d1', timeout: 5000 });
+    await S.session.close();
+    S = null;
+  });
 });
