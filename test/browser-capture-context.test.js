@@ -75,6 +75,12 @@ test('capture context', async t => {
     // the selector re-finds the dialog container itself
     const hits = await page.evaluate(sel => document.querySelectorAll(sel).length, ann.context.selector);
     assert.equal(hits, 1);
+    // The dialog is closed (display:none) by the time save() resolves the
+    // target, which would otherwise persist a zero-size rect — the popover
+    // must fall back to the rect it snapshotted at pick time, while the
+    // element was still visible inside the open dialog.
+    assert.ok(ann.target.rect.w > 0 && ann.target.rect.h > 0,
+      'target.rect keeps the pick-time (open-dialog) size, not the collapsed one');
   });
 
   await t.test('plain-page pick stores no context field at all', async () => {

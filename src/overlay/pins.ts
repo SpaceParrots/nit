@@ -109,7 +109,11 @@ export function createPins(root: ShadowRoot, state: OverlayState, actions: Overl
     }
     const ghost = state.approx.find(a => a.ann.id === id);
     if (!ghost) return;
-    window.scrollTo({ top: Math.max(0, ghost.rect.y - window.innerHeight / 2), behavior: 'smooth' });
+    window.scrollTo({
+      top: Math.max(0, ghost.rect.y - window.innerHeight / 2),
+      left: Math.max(0, ghost.rect.x - window.innerWidth / 2),
+      behavior: 'smooth',
+    });
   }
 
   function flash(el: Element): void {
