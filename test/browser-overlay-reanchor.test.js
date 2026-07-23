@@ -2,7 +2,6 @@
 // Re-anchor reliability: review-mode retry cycle after slow SPA route changes,
 // and MutationObserver-driven recovery when an SPA re-render replaces DOM nodes.
 import test from 'node:test';
-import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { startFixtureServer } from './helpers/server.js';
