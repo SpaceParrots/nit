@@ -23,7 +23,7 @@ export interface DialogContainer {
  * @returns the container and its human-readable label, or null on a plain page
  */
 export function detectDialog(el: Element): DialogContainer | null {
-  for (let n: Element | null = el; n && n.nodeType === 1; n = n.parentElement) {
+  for (let n: Element | null = el; n?.nodeType === 1; n = n.parentElement) {
     if (isDialogContainer(n)) return { container: n, label: dialogLabel(n) };
   }
   return null;
