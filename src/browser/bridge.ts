@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { BrowserContext, Frame, Page } from 'playwright';
 import { captureElementBuffer, captureElementShot } from '../capture/screenshot.js';
 import { captureAfterShots } from './verify.js';
-import { safeShotPath } from '../store/store.js';
+import { safeShotPath, sanitizeContext } from '../store/store.js';
 import { afterShotFor, primaryAfterMode } from '../util/after-shots.js';
 import { sanitizeHistory } from '../util/history.js';
 import { errorMessage } from '../util/error.js';
@@ -14,7 +14,6 @@ import { currentRoute, routeKey } from '../util/route.js';
 import type { NitSession } from './session.js';
 import type {
   Annotation,
-  CaptureContext,
   HiddenRef,
   HiddenReason,
   OverlayClickEvent,
@@ -385,18 +384,4 @@ function validateSave(p: unknown): string | null {
   if (typeof o.comment !== 'string' || !o.comment.trim()) return 'comment is required';
   if (!o.target || typeof o.target !== 'object') return 'target is required';
   return null;
-}
-
-/**
- * Page-supplied capture context. Only dialog contexts are stored — 'page' is
- * the implicit default and writing it would churn every plain annotation.
- * Free-text fields are bounded: they end up in the panel UI and MCP output.
- */
-function sanitizeContext(v: unknown): CaptureContext | undefined {
-  if (!v || typeof v !== 'object') return undefined;
-  const c = v as Partial<CaptureContext>;
-  if (c.kind !== 'dialog') return undefined;
-  const selector = typeof c.selector === 'string' && c.selector ? c.selector.slice(0, 300) : undefined;
-  const label = typeof c.label === 'string' && c.label ? c.label.slice(0, 60) : undefined;
-  return { kind: 'dialog', ...(selector ? { selector } : {}), ...(label ? { label } : {}) };
 }

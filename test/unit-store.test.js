@@ -224,6 +224,58 @@ test('store: patch with an undefined value clears the field on disk', () => {
   assert.equal('issueRef' in written.annotations[0], false);
 });
 
+test('store: loading sanitizes an oversized dialog context (selector/label capped)', () => {
+  const dir = tmpDir('nit-store-');
+  const file = path.join(dir, 'annotations.json');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({
+    review: { id: 'r', url: 'https://x.test', createdAt: new Date().toISOString(), authors: [] },
+    annotations: [
+      { id: 'a1', comment: 'hi', status: 'open', context: { kind: 'dialog', selector: 'x'.repeat(500), label: 'y'.repeat(100) } },
+    ],
+  }));
+  const store = createStore(dir, { url: 'https://x.test' });
+  const ann = store.annotations[0];
+  assert.equal(ann.context.kind, 'dialog');
+  assert.equal(ann.context.selector.length, 300);
+  assert.equal(ann.context.label.length, 60);
+});
+
+test('store: loading drops an invalid context entirely (no context key survives)', () => {
+  const dir = tmpDir('nit-store-');
+  const file = path.join(dir, 'annotations.json');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({
+    review: { id: 'r', url: 'https://x.test', createdAt: new Date().toISOString(), authors: [] },
+    annotations: [
+      { id: 'a1', comment: 'one', status: 'open', context: { kind: 'page' } },
+      { id: 'a2', comment: 'two', status: 'open', context: 'garbage' },
+      { id: 'a3', comment: 'three', status: 'open', context: { kind: 'dialog', selector: 42 } },
+    ],
+  }));
+  const store = createStore(dir, { url: 'https://x.test' });
+  const [a1, a2, a3] = store.annotations;
+  assert.ok(!('context' in a1), 'kind: page is not a valid stored context');
+  assert.ok(!('context' in a2), 'non-object context dropped');
+  // a non-string selector is dropped, but kind: 'dialog' alone is still valid —
+  // it survives as a bare dialog context with no members.
+  assert.deepEqual(a3.context, { kind: 'dialog' });
+});
+
+test('store: loading leaves a valid dialog context untouched', () => {
+  const dir = tmpDir('nit-store-');
+  const file = path.join(dir, 'annotations.json');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({
+    review: { id: 'r', url: 'https://x.test', createdAt: new Date().toISOString(), authors: [] },
+    annotations: [
+      { id: 'a1', comment: 'hi', status: 'open', context: { kind: 'dialog', selector: '#dlg', label: 'Checkout' } },
+    ],
+  }));
+  const store = createStore(dir, { url: 'https://x.test' });
+  assert.deepEqual(store.annotations[0].context, { kind: 'dialog', selector: '#dlg', label: 'Checkout' });
+});
+
 test('store: flush adopts an external updatedAt/updatedBy with the status it belongs to', () => {
   const dir = tmpDir('nit-store-');
   const store = createStore(dir, { url: 'https://x.test' });
