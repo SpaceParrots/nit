@@ -2,7 +2,7 @@
 // Read/write annotations.json (SPEC §3): stable ids, idempotent append, atomic writes.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Annotation, AnnotationStatus, ReviewData } from '../types.js';
+import type { Annotation, AnnotationStatus, CaptureContext, ReviewData, ViewportMode } from '../types.js';
 
 /** Options for {@link createStore}. */
 export interface StoreOptions {
@@ -47,8 +47,14 @@ export interface Store {
   remove(id: string): boolean;
   /** absolute path for an annotation's screenshot */
   shotPath(id: string): string;
-  /** absolute path for an annotation's verify after-shot */
-  afterShotPath(id: string): string;
+  /**
+   * Absolute path for an annotation's verify after-shot. Without a mode this is
+   * the legacy `<id>-after.png` name; with a mode the file is suffixed
+   * `-after-<mode>.png`. The store stays dumb about which viewport is primary —
+   * the capture site (verify.ts) keeps the primary viewport's shot on the
+   * legacy name so existing reviews, tests, and MCP consumers keep resolving it.
+   */
+  afterShotPath(id: string, mode?: ViewportMode): string;
   /** atomically write annotations.json (tmp file + rename) */
   flush(): void;
 }
@@ -111,7 +117,9 @@ export function createStore(dir: string, { url, author, file }: StoreOptions = {
       const i = data.annotations.findIndex(a => a.id === id);
       if (i === -1) return false;
       const [ann] = data.annotations.splice(i, 1);
-      for (const rel of [ann.screenshot, ann.screenshotAfter]) {
+      // screenshotsAfter values are untrusted file data like the other two —
+      // safeShotPath makes sure only paths inside the review dir get unlinked.
+      for (const rel of [ann.screenshot, ann.screenshotAfter, ...Object.values(ann.screenshotsAfter ?? {})]) {
         const abs = safeShotPath(dir, rel);
         if (abs) {
           try { fs.unlinkSync(abs); } catch { /* already gone */ }
@@ -124,8 +132,8 @@ export function createStore(dir: string, { url, author, file }: StoreOptions = {
       return path.join(shotsDir, `${fileSafeId(id)}.png`);
     },
 
-    afterShotPath(id: string): string {
-      return path.join(shotsDir, `${fileSafeId(id)}-after.png`);
+    afterShotPath(id: string, mode?: ViewportMode): string {
+      return path.join(shotsDir, `${fileSafeId(id)}-after${mode ? `-${mode}` : ''}.png`);
     },
 
     flush(): void {
@@ -160,6 +168,16 @@ function loadOrInitData(filePath: string, url: string | undefined): ReviewData {
       // instead of crashing on it.
       if (!parsed.review || typeof parsed.review !== 'object') parsed.review = freshReview(url);
       if (!Array.isArray(parsed.review.authors)) parsed.review.authors = [];
+      // annotations.json is shared/agent-written too: re-validate each entry's
+      // context the same way a fresh save does, so a hand-edited or
+      // agent-crafted file can't smuggle an unbounded selector/label into the
+      // overlay (querySelector'd every refresh) or MCP output.
+      for (const ann of parsed.annotations) {
+        if (!ann || typeof ann !== 'object') continue;
+        const sanitized = sanitizeContext(ann.context);
+        if (sanitized === undefined) delete ann.context;
+        else ann.context = sanitized;
+      }
       return parsed;
     }
     try { fs.copyFileSync(filePath, filePath + '.bak'); } catch { /* best effort */ }
@@ -180,6 +198,23 @@ function freshReview(url: string | undefined): ReviewData['review'] {
     createdAt: now.toISOString(),
     authors: [],
   };
+}
+
+/**
+ * Page-supplied (or hand-edited/agent-written) capture context. Only dialog
+ * contexts are stored — 'page' is the implicit default and writing it would
+ * churn every plain annotation. Free-text fields are bounded: they end up in
+ * the panel UI and MCP output. Applied both to a fresh save (bridge.ts) and to
+ * every annotation loaded from annotations.json, since that file is shared and
+ * hand-editable.
+ */
+export function sanitizeContext(v: unknown): CaptureContext | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const c = v as Partial<CaptureContext>;
+  if (c.kind !== 'dialog') return undefined;
+  const selector = typeof c.selector === 'string' && c.selector ? c.selector.slice(0, 300) : undefined;
+  const label = typeof c.label === 'string' && c.label ? c.label.slice(0, 60) : undefined;
+  return { kind: 'dialog', ...(selector ? { selector } : {}), ...(label ? { label } : {}) };
 }
 
 function mtimeMsOf(file: string): number | null {

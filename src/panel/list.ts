@@ -50,6 +50,7 @@ function use(): ListDeps {
  * @param num its pin number on the current page, or `undefined` when it has none
  * @param s the polled panel state (mode drives which controls appear)
  * @param unplaced whether it is rendered in the "couldn't place" list
+ * @param note extra muted line explaining placement (unplaced section)
  * @returns the row element
  */
 export function renderItem(
@@ -57,6 +58,7 @@ export function renderItem(
   num: number | undefined,
   s: PanelState,
   unplaced: boolean,
+  note?: string,
 ): HTMLElement {
   const d = use();
   const it = document.createElement('div');
@@ -103,7 +105,9 @@ export function renderItem(
     // issue-ref input below; the poll loop's focus guard covers both.
     const edit = document.createElement('textarea');
     edit.className = 'nit-comment-edit';
-    edit.rows = 2;
+    // Five visible lines by default: long comments should be readable at a
+    // glance when the detail pane opens, not require a manual resize first.
+    edit.rows = 5;
     edit.value = ann.comment;
     const commitComment = (): void => {
       const value = edit.value.trim();
@@ -195,8 +199,21 @@ export function renderItem(
     }
     it.append(meta);
   }
+  if (note) {
+    const n = document.createElement('div');
+    n.className = 'nit-note';
+    n.textContent = note;
+    it.append(n);
+  }
   return it;
 }
+
+/**
+ * The shots `appendShot` can fetch: the before-shot, the primary after-shot,
+ * or a viewport-keyed after-shot. Everything except `'before'` is passed to
+ * `__nitShot` verbatim, so this union must stay a subset of the bridge's.
+ */
+export type ShotKind = 'before' | 'after' | 'after-desktop' | 'after-mobile';
 
 /**
  * Append a screenshot (and its caption) to an expanded item's meta block. The
@@ -204,14 +221,14 @@ export function renderItem(
  * an image that cannot be fetched removes itself rather than showing broken.
  * @param meta the meta block to append to
  * @param id the annotation id
- * @param which which shot to fetch
+ * @param which which shot to fetch (also the cache-key suffix, `<id>:<which>`)
  * @param rel the stored relative path — nothing is appended when it is absent
  * @param caption a caption line to append first, or `null` for none
  */
 export function appendShot(
   meta: HTMLElement,
   id: string,
-  which: 'before' | 'after',
+  which: ShotKind,
   rel: string | null | undefined,
   caption: string | null,
 ): void {
@@ -228,7 +245,7 @@ export function appendShot(
   } else {
     void (async () => {
       let src: string | null = null;
-      try { src = (await window.__nitShot?.(id, which === 'after' ? 'after' : undefined)) ?? null; } catch { /* bridge gone */ }
+      try { src = (await window.__nitShot?.(id, which === 'before' ? undefined : which)) ?? null; } catch { /* bridge gone */ }
       if (src) {
         d.shots.set(key, src);
         img.src = src;

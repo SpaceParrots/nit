@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Milestone 7 (integration): nit view replays a feedback file — right pins on the
-// right route/viewport, unanchorable items degrade to "couldn't place", no crash.
+// right route/viewport, unanchorable items degrade to "couldn't place" or ghost-pin at their recorded spot, no crash.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -60,9 +60,13 @@ test('nit view — replay flow', async t => {
   });
   const page = S.session.page;
 
-  await t.test('desktop "/" shows the anchorable general pin only', async () => {
-    await waitFor(async () => (await page.locator('.nit-pin').count()) === 1 ? true : null, { message: 'one pin on /' });
-    assert.equal(await page.locator('.nit-pin').first().getAttribute('title'), 'Welcome heading tweak');
+  await t.test('desktop "/" shows the anchorable pin plus a ghost pin for the unanchorable one', async () => {
+    await waitFor(async () => (await page.locator('.nit-pin').count()) === 2 ? true : null, { message: 'two pins on /' });
+    assert.equal(await page.locator('.nit-pin:not(.nit-pin--approx)').count(), 1, 'one placed pin');
+    assert.equal(await page.locator('.nit-pin:not(.nit-pin--approx)').first().getAttribute('title'), 'Welcome heading tweak');
+    const ghostTitle = await page.locator('.nit-pin--approx').first().getAttribute('title');
+    assert.ok(ghostTitle.startsWith('Ghost element'), ghostTitle);
+    assert.ok(ghostTitle.includes('approximate position'), ghostTitle);
   });
 
   await t.test('unanchorable annotation degrades to the couldn\'t-place list (panel)', async () => {
@@ -101,7 +105,7 @@ test('nit view — replay flow', async t => {
   await t.test('viewport filter: mobile mode reveals the mobile-scoped pin', async () => {
     await page.locator('a[data-route="/"]').click();
     await waitFor(() => page.evaluate(() => location.pathname === '/'), { message: 'back home' });
-    await waitFor(async () => (await page.locator('.nit-pin').count()) === 1 ? true : null, { message: 'general pin back' });
+    await waitFor(async () => (await page.locator('.nit-pin').count()) === 2 ? true : null, { message: 'general + ghost pins back' });
 
     const panel = S.session.panelPage;
     await panel.locator('.nit-vp-mobile').click();

@@ -52,6 +52,7 @@ nit-review/
 | `viewport` | The exact viewport the annotation was made in. |
 | `route` | The page it was made on, as pathname plus query and hash. |
 | `target` | The layered element reference, see below. |
+| `context` | Optional, additive. Where the element lived at capture time; absent on plain pages. For dialogs: `{ "kind": "dialog", "selector": "#checkout-dialog", "label": "Checkout" }` — `selector` re-finds the dialog container, `label` comes from `aria-label` → `aria-labelledby` → the dialog's first heading (trimmed to 60 characters). Replay uses it to tell "the dialog is closed" apart from "the element is gone" and shows such annotations under the "x hidden" pill instead of dropping them silently. |
 | `screenshot` | Path of the context screenshot, relative to the review folder. |
 | `screenshotAfter` | The primary "after" screenshot captured by `nit verify`, when one exists — taken at the same viewport as the before-shot (or at the scope viewport for scoped annotations). Always mirrors the primary `screenshotsAfter` entry. |
 | `screenshotsAfter` | All `nit verify` after-shots, keyed by viewport (`desktop` / `mobile`). General-scoped annotations get one per viewport (the fix must hold on both); scoped ones only ever their own. Additive to the schema — older consumers can keep reading `screenshotAfter`. |
@@ -74,7 +75,7 @@ The target is a layered reference to the element, ordered roughly from most to l
 | `tag`, `classes`, `text` | The element's tag, cleaned class list, and trimmed text content. The text is the last-resort anchor for replay. |
 | `rect` | The element's page coordinates at capture time. |
 
-Replay (`nit view`, `nit verify`) re-anchors in that order: selector, then xpath, then text. If nothing matches anymore, the annotation lands in a "couldn't place" list instead of breaking the session.
+Replay (`nit view`, `nit verify`) re-anchors in that order: selector, then xpath, then text — preferring a visible match over a hidden one, so a responsive layout's hidden twin never steals a pin from what's actually rendered. If nothing matches, the annotation surfaces in a "couldn't place" list instead of breaking the session. See [how-it-works.md](how-it-works.md#replay-and-anchoring) for the full placed/approximate/hidden classification, including how a `context` dialog is detected as closed rather than gone.
 
 ## The status lifecycle
 

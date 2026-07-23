@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The annotation popover: comment text, type selector (default change-request),
-// viewport-scope toggle (default: current viewport, toggleable to general).
+// viewport-scope toggle (default: general, toggleable to the current viewport).
 import { div, button, segmented, labelRow, describeElement } from './dom.js';
-import { resolveTarget } from '../capture/target.js';
+import { detectDialog } from '../capture/context.js';
+import { buildSelector, resolveTarget } from '../capture/target.js';
 import { currentRoute } from '../util/route.js';
-import type { AnnotationType, SavePayload, ViewportScope } from '../types.js';
+import type { AnnotationType, Rect, SavePayload, ViewportScope } from '../types.js';
 import type { OverlayActions, OverlayState, Popover } from './state.js';
 
 /**
  * Create the annotation popover: comment text, type selector (default
- * change-request) and viewport-scope toggle (default: the current viewport).
+ * change-request) and viewport-scope toggle (default: general — most fixes
+ * apply everywhere, and general items get verified on both viewports).
  * Save resolves the target, hides the overlay for a clean screenshot, and hands
  * the payload to Node via `__nitSave`.
  * @param root the overlay shadow root to mount into
@@ -23,12 +25,16 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
   root.append(el);
   let currentEl: Element | null = null;
   let saving = false;
+  // The element's rect at pick time — the truthful record when the element
+  // (e.g. inside a native <dialog>) collapses to zero size before save().
+  let openRect: Rect | null = null;
   // Keep keystrokes (except Escape) away from page-level hotkey handlers.
   el.addEventListener('keydown', e => { if (e.key !== 'Escape') e.stopPropagation(); });
 
   function open(target: Element): void {
     currentEl = target;
     saving = false;
+    openRect = pageRectOf(target);
     render();
     el.hidden = false;
     position(target);
@@ -45,7 +51,7 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
     el.innerHTML = '';
     if (!currentEl) return;
     let type: AnnotationType = 'change-request';
-    let scope: ViewportScope = state.viewportMode; // default: scoped to the current viewport
+    let scope: ViewportScope = 'general'; // default: applies to every viewport
 
     const head = div('nit-pop-head', describeElement(currentEl));
     const ta = document.createElement('textarea');
@@ -64,8 +70,8 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
     );
     const scopeRow = segmented<ViewportScope>(
       [
-        { value: state.viewportMode, label: `This viewport (${state.viewportMode})` },
         { value: 'general', label: 'General' },
+        { value: state.viewportMode, label: `This viewport (${state.viewportMode})` },
       ],
       scope,
       v => { scope = v; },
@@ -82,15 +88,30 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
       if (saving || !currentEl) return;
       saving = true;
       const elementToSave = currentEl;
+      const dialog = detectDialog(elementToSave);
+      const pickRect = openRect;
       close(); // close first — nothing below may keep the popover on screen
       try {
         const history = actions.historySnapshot();
+        const targetRef = resolveTarget(elementToSave, window);
+        // The dialog/menu the element lived in may have closed (display:none)
+        // between pick and save, collapsing resolveTarget's live rect to zero
+        // size — that would persist a meaningless origin point and make
+        // verify's fallback crop meaningless too. The element was visible at
+        // pick time, so the pick-time rect is the truthful record.
+        if ((targetRef.rect.w <= 0 || targetRef.rect.h <= 0) && pickRect && pickRect.w > 0 && pickRect.h > 0) {
+          targetRef.rect = pickRect;
+        }
         const payload: SavePayload = {
           comment,
           type,
           viewportScope: scope,
-          target: resolveTarget(elementToSave, window),
+          target: targetRef,
           route: currentRoute(location),
+          // absent on plain pages — keeps the file identical to before for them
+          context: dialog
+            ? { kind: 'dialog', selector: buildSelector(dialog.container), label: dialog.label ?? undefined }
+            : undefined,
           // absent (not []) when nothing was clicked — keeps the file identical to before
           history: history.length ? history : undefined,
         };
@@ -112,6 +133,17 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
     buttons.append(cancelBtn, saveBtn);
 
     el.append(head, ta, labelRow('Type', typeRow), labelRow('Applies to', scopeRow), buttons);
+  }
+
+  /** Element bounds in absolute page coordinates (what the capture clip expects). */
+  function pageRectOf(el: Element): Rect {
+    const r = el.getBoundingClientRect();
+    return {
+      x: Math.round(r.x + window.scrollX),
+      y: Math.round(r.y + window.scrollY),
+      w: Math.round(r.width),
+      h: Math.round(r.height),
+    };
   }
 
   function position(target: Element): void {

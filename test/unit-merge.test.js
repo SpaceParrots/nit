@@ -48,6 +48,38 @@ test('merge: after-screenshots are copied and renamed too', () => {
   assert.deepEqual(copies.map(c => c.to), ['shots/kevin_a1.png', 'shots/kevin_a1-after.png']);
 });
 
+test('merge: viewport-keyed after-shots are copied with mode suffixes, mirror stays on the primary copy', () => {
+  const kevin = review('Kevin', [
+    { id: 'a1', author: 'Kevin', comment: 'k1', screenshot: null,
+      // screenshotAfter mirrors the primary (desktop) keyed entry — same source file
+      screenshotAfter: 'shots/a1-after.png',
+      screenshotsAfter: { desktop: 'shots/a1-after.png', mobile: 'shots/a1-after-mobile.png' } },
+  ]);
+  const { data, copies } = mergeReviews([kevin]);
+  const merged = data.annotations[0];
+  assert.deepEqual(merged.screenshotsAfter, {
+    desktop: 'shots/kevin_a1-after-desktop.png',
+    mobile: 'shots/kevin_a1-after-mobile.png',
+  });
+  // The mirror invariant survives the merge: screenshotAfter points at the copied
+  // primary entry instead of scheduling a duplicate copy of the same source file.
+  assert.equal(merged.screenshotAfter, 'shots/kevin_a1-after-desktop.png');
+  assert.deepEqual(copies, [
+    { fromDir: '/fake/kevin', from: 'shots/a1-after.png', to: 'shots/kevin_a1-after-desktop.png' },
+    { fromDir: '/fake/kevin', from: 'shots/a1-after-mobile.png', to: 'shots/kevin_a1-after-mobile.png' },
+  ]);
+});
+
+test('merge: junk screenshotsAfter entries are dropped, not carried into the merged file', () => {
+  const kevin = review('Kevin', [
+    { id: 'a1', author: 'Kevin', comment: 'k1', screenshot: null,
+      screenshotsAfter: { desktop: 42, mobile: '' } },
+  ]);
+  const { data, copies } = mergeReviews([kevin]);
+  assert.equal(data.annotations[0].screenshotsAfter, undefined, 'no valid entries → field removed');
+  assert.deepEqual(copies, []);
+});
+
 test('merge: same file twice still yields unique ids', () => {
   const kevin = review('Kevin', [{ id: 'a1', author: 'Kevin', comment: 'k1' }]);
   const { data } = mergeReviews([kevin, kevin]);

@@ -1,12 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Shared types for the injected overlay: the mutable overlay state, the actions
 // the UI parts call, and the contracts of each mounted part.
-import type { Annotation, ClickStep, SessionMode, ViewportMode } from '../types.js';
+import type { Annotation, ClickStep, SessionMode, ViewportMode, HiddenReason, Rect } from '../types.js';
 
 /** An annotation re-anchored to a live element on the current route. */
 export interface PlacedAnnotation {
   ann: Annotation;
   el: Element;
+}
+
+/** An annotation shown at its recorded rect because the element couldn't be re-found. */
+export interface ApproxAnnotation {
+  ann: Annotation;
+  rect: Rect;
+}
+
+/** An annotation on this route that cannot be shown, with the reason. */
+export interface HiddenAnnotation {
+  ann: Annotation;
+  reason: HiddenReason;
+  /** dialog label for reason 'dialog' */
+  label?: string;
 }
 
 /** Mutable state shared by all overlay parts (single instance per page). */
@@ -19,10 +33,12 @@ export interface OverlayState {
   picking: boolean;
   hovered: Element | null;
   selected: Element | null;
-  /** review: show everything; replay: filter to general + current viewport */
+  /** override: show annotations of every viewport scope (default: filter to general + current viewport) */
   showAll: boolean;
   placed: PlacedAnnotation[];
   unplaced: Annotation[];
+  approx: ApproxAnnotation[];
+  hidden: HiddenAnnotation[];
 }
 
 /**
@@ -77,12 +93,18 @@ export interface Chip {
   update(): void;
 }
 
+/** The "x hidden" pill next to the chip. */
+export interface HiddenPill {
+  update(): void;
+}
+
 /** All mounted overlay parts. */
 export interface OverlayUi {
   host: HTMLElement;
   root: ShadowRoot;
   pins: Pins;
   chip: Chip;
+  hiddenPill: HiddenPill;
   popover: Popover;
   picker: Picker;
 }

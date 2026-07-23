@@ -4,22 +4,40 @@
 // Returns the element or null — never throws.
 import type { Target } from '../types.js';
 
+/** A re-anchored element plus whether it is actually rendered (non-zero box). */
+export interface AnchoredElement {
+  el: Element;
+  rendered: boolean;
+}
+
 /**
  * Resolve an annotation target back to a live element for replay.
  * Layers: CSS `selector` → `xpath` → text/class heuristic scoped to the
- * component tag. Degrades gracefully: any invalid or stale layer falls through
- * to the next one.
+ * component tag. Visibility-aware: a layer's match that is not rendered (a
+ * hidden responsive twin) is kept only as a fallback while later layers search
+ * for a rendered match. Degrades gracefully: any invalid or stale layer falls
+ * through to the next one.
  * @param target the captured target reference (from an annotations.json file)
  * @param doc the document to search in
- * @returns the re-anchored element, or null when no layer matches (never throws)
+ * @returns the match and its rendered state, or null when no layer matches (never throws)
  */
-export function anchorTarget(target: Target | null | undefined, doc: Document = globalThis.document): Element | null {
+export function anchorTargetDetailed(
+  target: Target | null | undefined,
+  doc: Document = globalThis.document,
+): AnchoredElement | null {
   if (!target || typeof target !== 'object') return null;
+  let hiddenFallback: Element | null = null;
+  const consider = (el: Element | null): AnchoredElement | null => {
+    if (!el) return null;
+    if (isElementRendered(el)) return { el, rendered: true };
+    hiddenFallback ??= el;
+    return null;
+  };
 
   if (target.selector) {
     try {
-      const el = doc.querySelector(target.selector);
-      if (el) return el;
+      const found = consider(doc.querySelector(target.selector));
+      if (found) return found;
     } catch { /* invalid selector → fall through */ }
   }
 
@@ -27,14 +45,34 @@ export function anchorTarget(target: Target | null | undefined, doc: Document = 
     try {
       const res = doc.evaluate(target.xpath, doc, null, 9 /* FIRST_ORDERED_NODE_TYPE */, null);
       const node = res.singleNodeValue;
-      if (node?.nodeType === 1) return node as Element;
+      if (node?.nodeType === 1) {
+        const found = consider(node as Element);
+        if (found) return found;
+      }
     } catch { /* fall through */ }
   }
 
-  return textHeuristic(target, doc);
+  const byText = consider(textHeuristic(target, doc, true) ?? textHeuristic(target, doc, false));
+  if (byText) return byText;
+
+  return hiddenFallback ? { el: hiddenFallback, rendered: false } : null;
 }
 
-function textHeuristic(target: Target, doc: Document): Element | null {
+/**
+ * Back-compat wrapper: the rendered match when any layer has one, else the
+ * hidden fallback, else null.
+ */
+export function anchorTarget(target: Target | null | undefined, doc: Document = globalThis.document): Element | null {
+  return anchorTargetDetailed(target, doc)?.el ?? null;
+}
+
+/** Whether an element takes up space (display:none / detached boxes collapse to 0). */
+export function isElementRendered(el: Element): boolean {
+  const r = el.getBoundingClientRect();
+  return r.width > 0 || r.height > 0;
+}
+
+function textHeuristic(target: Target, doc: Document, onlyRendered: boolean): Element | null {
   const text = norm(target.text);
   const tag = isValidTag(target.tag) ? target.tag : '*';
 
@@ -48,6 +86,7 @@ function textHeuristic(target: Target, doc: Document): Element | null {
     let candidates: Element[];
     try { candidates = [...scope.querySelectorAll(tag)]; } catch { candidates = []; }
     if (scope.nodeType === 1 && tagMatches(scope as Element, tag)) candidates.unshift(scope as Element);
+    if (onlyRendered) candidates = candidates.filter(isElementRendered);
     if (!candidates.length) continue;
 
     if (text) {

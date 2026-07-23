@@ -5,7 +5,8 @@ import path from 'node:path';
 import type { BrowserContext, Frame, Page } from 'playwright';
 import { captureElementBuffer, captureElementShot } from '../capture/screenshot.js';
 import { captureAfterShots } from './verify.js';
-import { safeShotPath } from '../store/store.js';
+import { safeShotPath, sanitizeContext } from '../store/store.js';
+import { afterShotFor, primaryAfterMode } from '../util/after-shots.js';
 import { sanitizeHistory } from '../util/history.js';
 import { errorMessage } from '../util/error.js';
 import { resolveAnnotationUrl } from '../store/url.js';
@@ -13,6 +14,8 @@ import { currentRoute, routeKey } from '../util/route.js';
 import type { NitSession } from './session.js';
 import type {
   Annotation,
+  HiddenRef,
+  HiddenReason,
   OverlayClickEvent,
   OverlayEvent,
   OverlayFocusEvent,
@@ -48,6 +51,7 @@ interface RawSavePayload {
   viewportScope?: unknown;
   route?: unknown;
   target?: unknown;
+  context?: unknown;
   history?: unknown;
 }
 
@@ -58,8 +62,10 @@ interface RawSavePayload {
  *  - `__nitSave(payload)`         validate, screenshot, persist an annotation
  *  - `__nitLoad()`                session config + current annotations (overlay boot/resync)
  *  - `__nitSetViewport(mode)`     switch desktop/mobile (panel window excluded)
- *  - `__nitShot(id, which?)`      screenshot as data-uri ('after' for the verify shot)
- *  - `__nitVerdict(id, verdict)`  verify ruling: 'verified' | 'reopened'
+ *  - `__nitShot(id, which?)`      screenshot as data-uri (omitted → before shot; 'after' →
+ *                                 the primary verify shot; 'after-desktop'/'after-mobile' →
+ *                                 that viewport's verify shot)
+ *  - `__nitVerdict(id, verdict, note?)`  verify ruling: 'verified' | 'reopened' (+ optional statusReason)
  *  - `__nitSetIssueRef(id, ref)`  attach/clear a tracker issue reference
  *  - `__nitSetComment(id, text)`  edit an annotation's comment (non-empty)
  *  - `__nitGoTo(id)`              navigate the site page to an annotation's route
@@ -108,10 +114,14 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
       comment: p.comment.trim(),
       status: 'open',
       author: session.author,
-      viewportScope: isViewportScope(p.viewportScope) ? p.viewportScope : session.viewportMode,
+      // Missing/invalid scope falls back to 'general', matching the popover's
+      // default — most fixes apply everywhere.
+      viewportScope: isViewportScope(p.viewportScope) ? p.viewportScope : 'general',
       viewport: { mode: session.viewportMode, w: viewport.width, h: viewport.height },
       route: typeof p.route === 'string' && p.route ? p.route : '/',
       target,
+      // untrusted like the rest of the payload — dialog contexts only, bounded strings
+      context: sanitizeContext(p.context),
       screenshot: null,
       createdAt: new Date().toISOString(),
       // untrusted like the rest of the payload — re-validated, capped, or dropped
@@ -156,7 +166,14 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
 
   await context.exposeBinding('__nitShot', guard((source, id: unknown, which: unknown) => {
     const ann = store.annotations.find(a => a.id === id);
-    const rel = which === 'after' ? ann?.screenshotAfter : ann?.screenshot;
+    if (!ann) return null;
+    // 'after' resolves the primary viewport's shot (afterShotFor falls back to
+    // the legacy screenshotAfter for it); the suffixed forms address one
+    // viewport of the keyed map. Anything else keeps the old meaning: before shot.
+    const rel = which === 'after' ? afterShotFor(ann, primaryAfterMode(ann))
+      : which === 'after-desktop' ? afterShotFor(ann, 'desktop')
+        : which === 'after-mobile' ? afterShotFor(ann, 'mobile')
+          : ann.screenshot;
     const abs = safeShotPath(store.dir, rel);
     if (!abs) return null;
     try {
@@ -166,12 +183,22 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
     }
   }));
 
-  await context.exposeBinding('__nitVerdict', guard((source, id: unknown, verdict: unknown) => {
+  await context.exposeBinding('__nitVerdict', guard((source, id: unknown, verdict: unknown, note: unknown) => {
     if (verdict !== 'verified' && verdict !== 'reopened') {
       return { ok: false, error: 'verdict must be "verified" or "reopened"' };
     }
     if (typeof id !== 'string') return { ok: false, error: 'id must be a string' };
-    const ann = store.patch(id, { status: verdict, verifiedAt: new Date().toISOString() }, session.author);
+    // The note is page-supplied free text that ends up in review.md and MCP
+    // output — bound its length. An omitted/empty note patches an explicit
+    // `undefined`: store.patch spreads changes over the old annotation, so that
+    // overwrites a stale reason from an earlier ruling, and JSON serialization
+    // then drops the field from annotations.json.
+    const reason = typeof note === 'string' ? note.trim().slice(0, 500) : '';
+    const ann = store.patch(
+      id,
+      { status: verdict, verifiedAt: new Date().toISOString(), statusReason: reason || undefined },
+      session.author,
+    );
     if (!ann) return { ok: false, error: `no annotation ${id}` };
     session.flush();
     session.log(`${verdict === 'verified' ? '+ verified' : '~ reopened'} ${ann.id}`);
@@ -277,6 +304,8 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
         showAll: Boolean(ui.showAll),
         placed: Array.isArray(ui.placed) ? ui.placed.filter(isPlacedRef) : [],
         unplaced: Array.isArray(ui.unplaced) ? ui.unplaced.filter((u): u is string => typeof u === 'string') : [],
+        approx: Array.isArray(ui.approx) ? ui.approx.filter(isPlacedRef) : [],
+        hidden: Array.isArray(ui.hidden) ? ui.hidden.filter(isHiddenRef).map(sanitizeHiddenRef) : [],
       };
       const pending = session.pendingFocus;
       if (pending) {
@@ -309,10 +338,12 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
     author: session.author,
     viewportMode: session.viewportMode,
     picking: session.uiState.picking ?? false,
-    showAll: session.uiState.showAll ?? (session.mode !== 'view'),
+    showAll: session.uiState.showAll ?? false,
     route: session.uiState.route ?? '/',
     placed: (session.uiState.placed ?? []).map(p => p.id),
     unplaced: session.uiState.unplaced ?? [],
+    approx: (session.uiState.approx ?? []).map(p => p.id),
+    hidden: session.uiState.hidden ?? [],
     annotations: store.annotations,
   })));
 
@@ -332,6 +363,19 @@ function isPlacedRef(v: unknown): v is PlacedRef {
   return Boolean(v) && typeof v === 'object'
     && typeof (v as PlacedRef).id === 'string'
     && typeof (v as PlacedRef).rect === 'object' && (v as PlacedRef).rect !== null;
+}
+
+const HIDDEN_REASONS: readonly HiddenReason[] = ['viewport', 'dialog', 'not-found'];
+
+function isHiddenRef(v: unknown): v is HiddenRef {
+  return Boolean(v) && typeof v === 'object'
+    && typeof (v as HiddenRef).id === 'string'
+    && (HIDDEN_REASONS as readonly string[]).includes((v as HiddenRef).reason);
+}
+
+/** The label is page-supplied free text shown in the panel — keep strings only, bounded. */
+function sanitizeHiddenRef(h: HiddenRef): HiddenRef {
+  return { id: h.id, reason: h.reason, ...(typeof h.label === 'string' ? { label: h.label.slice(0, 60) } : {}) };
 }
 
 function validateSave(p: unknown): string | null {

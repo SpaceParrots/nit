@@ -115,7 +115,7 @@ function row(label: string, value: string | (string | null)[]): string {
 }
 
 /** Paths relative to the cwd when they live under it — shorter, still pasteable. */
-function displayPath(target: string): string {
+export function displayPath(target: string): string {
   const rel = path.relative(process.cwd(), target);
   return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : target;
 }

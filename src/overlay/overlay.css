@@ -11,10 +11,21 @@
   --nit-cr: #ffcc00;
   --nit-comment: #6ec1ff;
   --nit-border: #3a3a3e;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* The devtools look: Segoe UI Variable on Windows 11 (what system-ui does not
+     yet resolve to), then each platform's native UI font. !important on purpose:
+     the host element carries `all: initial` as an INLINE style (page isolation),
+     and a normal :host rule loses to that — the overlay would silently render in
+     the browser's initial serif font, as it did before this rule. */
+  font-family: "Segoe UI Variable Text", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif !important;
+  -webkit-font-smoothing: antialiased;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Form controls do not inherit fonts — without this, the popover's buttons and
+   segmented controls render in the UA default (Arial on Windows) instead of the
+   UI font the host sets. The host page cannot leak in: this is shadow-scoped. */
+button, input, textarea, select { font: inherit; }
 
 /* the hidden attribute must always win, even over explicit display rules below */
 [hidden] { display: none !important; }
@@ -61,6 +72,7 @@
 }
 .nit-pin--comment { background: var(--nit-comment); }
 .nit-pin--closed { opacity: 0.45; }
+.nit-pin--approx { border-style: dashed; opacity: 0.75; }
 .nit-flash {
   position: absolute;
   border: 2px solid var(--nit-accent);
@@ -127,11 +139,19 @@
 .nit-btn:hover { border-color: var(--nit-muted); }
 .nit-btn--primary, .nit-btn--active { background: var(--nit-accent); color: var(--nit-accent-fg); border-color: var(--nit-accent); font-weight: 600; }
 
-/* ---- chip (the only persistent in-page UI; lists/controls live in the panel window) ---- */
-.nit-chip {
+/* ---- bottom-left dock: chip + hidden pill (the only persistent in-page UI) ---- */
+.nit-dock {
   position: fixed;
   left: 12px;
   bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 40;
+}
+
+/* ---- chip ---- */
+.nit-chip {
   background: var(--nit-bg);
   color: var(--nit-fg);
   border: 1px solid var(--nit-border);
@@ -141,6 +161,43 @@
   padding: 6px 12px;
   cursor: pointer;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  z-index: 40;
 }
 .nit-chip--picking { background: var(--nit-accent); color: var(--nit-accent-fg); border-color: var(--nit-accent); }
+
+.nit-hidden-pill {
+  background: var(--nit-bg);
+  color: var(--nit-muted);
+  border: 1px dashed var(--nit-border);
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.nit-hidden-pill:hover { color: var(--nit-fg); border-color: var(--nit-muted); }
+.nit-hidden-pop {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  min-width: 260px;
+  max-width: 380px;
+  background: var(--nit-bg);
+  border: 1px solid var(--nit-border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nit-hidden-row {
+  background: none;
+  border: none;
+  color: var(--nit-fg);
+  font-size: 12px;
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nit-hidden-row:hover { background: #2a2a2e; }

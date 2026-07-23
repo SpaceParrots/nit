@@ -3,7 +3,7 @@
 // Ids are namespaced by author (kevin:a1); screenshots are renamed into a shared shots/.
 import { fileSafeId } from './store.js';
 import { slugify } from '../util/slug.js';
-import type { Annotation, ReviewData } from '../types.js';
+import type { Annotation, ReviewData, ViewportMode } from '../types.js';
 
 /** One parsed feedback file plus the directory it was loaded from. */
 export interface MergeInput {
@@ -59,10 +59,33 @@ export function mergeReviews(inputs: MergeInput[], { now = new Date() }: { now?:
         copies.push({ fromDir: input.dir, from: ann.screenshot, to });
         merged.screenshot = to;
       }
+      // Viewport-keyed after-shots get mode-suffixed target names. The keyed
+      // map is rebuilt from scratch: paths in the source file are untrusted and
+      // relative to the input dir, so entries that don't survive the copy must
+      // not leak into the merged file either.
+      const keyedAfter: Partial<Record<ViewportMode, string>> = {};
+      for (const m of ['desktop', 'mobile'] as const) {
+        const from = ann.screenshotsAfter?.[m];
+        if (typeof from !== 'string' || !from) continue;
+        const to = `shots/${fileSafeId(id)}-after-${m}.png`;
+        copies.push({ fromDir: input.dir, from, to });
+        keyedAfter[m] = to;
+      }
+      if (Object.keys(keyedAfter).length > 0) merged.screenshotsAfter = keyedAfter;
+      else delete merged.screenshotsAfter;
       if (ann.screenshotAfter) {
-        const to = `shots/${fileSafeId(id)}-after.png`;
-        copies.push({ fromDir: input.dir, from: ann.screenshotAfter, to });
-        merged.screenshotAfter = to;
+        // screenshotAfter mirrors the primary keyed entry (the schema promises
+        // it), so when it points at the same source file as a keyed entry it is
+        // remapped to that entry's target instead of getting a duplicate copy.
+        const mirrored = (['desktop', 'mobile'] as const)
+          .find(m => ann.screenshotsAfter?.[m] === ann.screenshotAfter);
+        if (mirrored) {
+          merged.screenshotAfter = keyedAfter[mirrored];
+        } else {
+          const to = `shots/${fileSafeId(id)}-after.png`;
+          copies.push({ fromDir: input.dir, from: ann.screenshotAfter, to });
+          merged.screenshotAfter = to;
+        }
       }
       annotations.push(merged);
     }
