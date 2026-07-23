@@ -18,7 +18,15 @@ Screenshots are CDP element clips, expanded to a minimum context window (480x360
 
 ## Replay and anchoring
 
-An annotation stores a layered element reference: a verified-unique CSS selector (preferring `#id` and `data-id` anchors), an absolute XPath, and the element text. Replay tries them in that order. When nothing matches anymore (the site changed too much), the annotation lands in a "couldn't place" list in the panel instead of breaking the session.
+An annotation stores a layered element reference: a verified-unique CSS selector (preferring `#id` and `data-id` anchors), an absolute XPath, and the element text. Replay tries them in that order, preferring a visible match over a hidden one, so a responsive layout's hidden desktop-only twin never steals a pin from the markup actually rendered on the current viewport.
+
+On every route the overlay classifies each annotation into one of three placement states. **Placed**: the element was re-found and is visible — it gets a numbered pin. **Approximate**: the element wasn't re-found, but the annotation wasn't captured inside a dialog and the current viewport mode matches the one it was captured at — a dashed ghost pin marks the originally recorded position. **Hidden**: the annotation is scoped to the other viewport, was captured inside a dialog that isn't currently open, or the element is simply gone. Annotations are filtered to the current viewport by default in every mode (a show-all toggle overrides this), and being out of viewport scope is itself one of the hidden reasons.
+
+Hidden annotations are never dropped silently. In the overlay, a small "x hidden" pill next to the nit chip counts them; clicking it lists each one with its reason. In the panel, the same annotations surface as "couldn't place" rows carrying the same reasons, and clicking a row focuses the annotation. Dialog-captured annotations carry a `context` field recording the dialog's own selector and label (see [annotations.md](annotations.md)), which is what lets replay tell "the dialog is closed" apart from "the element is gone" instead of reporting a generic miss.
+
+The overlay keeps pins current as the page changes: a MutationObserver re-anchors them after an SPA re-renders or replaces DOM nodes, and a retry cycle re-attempts anchoring across all viewport modes so a route change or late-loading content doesn't leave a pin stuck. Elements that become detached hide instead of drifting to a stale position.
+
+**Known limitation:** while a native `<dialog>` opened with `showModal()` is open, it sits in the browser's top layer above everything else, so nit's own popover can't be clicked from inside it. Pick the element while the dialog is open (the screenshot is staged at pick time), then close the dialog and save. Overlay-based dialogs (Angular CDK, Bootstrap, `.offcanvas`) aren't affected.
 
 ## Trust model
 
