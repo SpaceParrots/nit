@@ -50,6 +50,7 @@ function use(): ListDeps {
  * @param num its pin number on the current page, or `undefined` when it has none
  * @param s the polled panel state (mode drives which controls appear)
  * @param unplaced whether it is rendered in the "couldn't place" list
+ * @param note extra muted line explaining placement (unplaced section)
  * @returns the row element
  */
 export function renderItem(
@@ -57,6 +58,7 @@ export function renderItem(
   num: number | undefined,
   s: PanelState,
   unplaced: boolean,
+  note?: string,
 ): HTMLElement {
   const d = use();
   const it = document.createElement('div');
@@ -196,6 +198,12 @@ export function renderItem(
       meta.append(row);
     }
     it.append(meta);
+  }
+  if (note) {
+    const n = document.createElement('div');
+    n.className = 'nit-note';
+    n.textContent = note;
+    it.append(n);
   }
   return it;
 }

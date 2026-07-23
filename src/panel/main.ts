@@ -13,7 +13,7 @@ import { computeVerifyQueue } from './verify-queue.js';
 import { renderVerifyCard } from './verify.js';
 import { routeKey } from '../util/route.js';
 import { afterShotFor, wantedAfterModes } from '../util/after-shots.js';
-import type { PanelCmd, PanelState, ViewportMode } from '../types.js';
+import type { HiddenRef, PanelCmd, PanelState, ViewportMode } from '../types.js';
 
 const TICK_MS = 600;
 
@@ -227,6 +227,10 @@ function render(s: PanelState): void {
   const placedIndex = new Map<string, number>();
   (s.placed || []).forEach((id, i) => placedIndex.set(id, i + 1));
   const unplacedSet = new Set(s.unplaced || []);
+  const approxSet = new Set(s.approx || []);
+  const hiddenById = new Map((s.hidden || []).map(h => [h.id, h]));
+  // Ghost pins continue the on-page numbering after the placed pins.
+  (s.approx || []).forEach((id, i) => placedIndex.set(id, (s.placed || []).length + i + 1));
 
   const verifyHost = $('#verify');
   verifyHost.hidden = s.mode !== 'verify';
@@ -311,7 +315,15 @@ function render(s: PanelState): void {
   $('#unplaced-head').textContent = 'Couldn\'t place on this page (' + un.length + ')';
   const ul = $('#unplaced-list');
   ul.innerHTML = '';
-  for (const ann of un) ul.append(renderItem(ann, undefined, s, true));
+  for (const ann of un) ul.append(renderItem(ann, placedIndex.get(ann.id), s, true, placementNote(ann.id, approxSet, hiddenById)));
+}
+
+/** Why an unplaced-section row isn't (properly) on the page. */
+function placementNote(id: string, approxSet: Set<string>, hiddenById: Map<string, HiddenRef>): string {
+  if (approxSet.has(id)) return 'approximate pin shown at the recorded position';
+  const h = hiddenById.get(id);
+  if (h?.reason === 'dialog') return h.label ? `in dialog “${h.label}”` : 'in a closed dialog';
+  return 'couldn’t re-find the element';
 }
 
 /** A labelled row of mutually exclusive buttons. */

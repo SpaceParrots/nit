@@ -182,4 +182,28 @@ test('overlay placement', async t => {
     await S.session.close();
     S = null;
   });
+
+  await t.test('panel unplaced rows show the reason and ghost number', async () => {
+    const dir = tmpDir('nit-panelreason-');
+    const reviewFile = writeReview(dir, server.url, [
+      { ...BASE, id: 'd1', comment: 'Dialog button label',
+        context: { kind: 'dialog', selector: '#dlg', label: 'Checkout' },
+        target: target({ component: 'dialog', selector: '#dlg-save', tag: 'button', text: 'Save order', rect: { x: 100, y: 200, w: 90, h: 30 } }) },
+      { ...BASE, id: 'g1', comment: 'Removed banner',
+        target: target({ selector: '#never', text: 'NO SUCH TEXT ANYWHERE', component: 'no-such-component', rect: { x: 40, y: 300, w: 200, h: 50 } }) },
+    ]);
+    S = await startTestSession({ mode: 'view', url: undefined, reviewFile });
+    const panel = S.session.panelPage;
+    assert.ok(panel, 'panel window opened');
+
+    await waitFor(async () =>
+      (await panel.locator('#unplaced-list .nit-item').count()) === 2 ? true : null,
+    { message: 'both rows in the unplaced section', timeout: 15000 });
+    const d1 = await panel.locator('#unplaced-list .nit-item[data-id="d1"] .nit-note').textContent();
+    assert.ok(d1.includes('in dialog “Checkout”'), d1);
+    const g1 = await panel.locator('#unplaced-list .nit-item[data-id="g1"] .nit-note').textContent();
+    assert.ok(g1.includes('approximate pin shown'), g1);
+    await S.session.close();
+    S = null;
+  });
 });

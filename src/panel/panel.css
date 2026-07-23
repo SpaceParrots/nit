@@ -68,6 +68,7 @@ footer .btn { width: 100%; }
 }
 .nit-item--closed { opacity: 0.55; }
 .nit-item--unplaced { border-style: dashed; }
+.nit-note { font-size: 11px; color: var(--muted); margin-top: 4px; }
 .item-head { display: flex; align-items: flex-start; gap: 6px; }
 .num {
   flex: none; width: 18px; height: 18px; border-radius: 50%; background: #3a3a3e;
