@@ -1,0 +1,33 @@
+name: publish
+
+# Publishes to npm when a GitHub Release is published (release-please creates
+# those). --provenance attaches a signed build attestation, which requires
+# id-token: write and a workflow on a public repo.
+#
+# Requires an NPM_TOKEN secret (automation or granular token with publish rights
+# on @spaceparrots/nit). Once npm trusted publishing is configured for the
+# package, the token and the NODE_AUTH_TOKEN env below can be dropped.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run build
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
