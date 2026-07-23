@@ -1,6 +1,6 @@
 {
   "name": "@spaceparrots/nit",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Point-and-click website annotation that hands small UI fixes to a coding agent.",
   "type": "module",
   "bin": {
@@ -25,12 +25,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/spaceparrots/nit.git"
+    "url": "git+https://github.com/SpaceParrots/nit.git"
   },
   "bugs": {
-    "url": "https://github.com/spaceparrots/nit/issues"
+    "url": "https://github.com/SpaceParrots/nit/issues"
   },
-  "homepage": "https://github.com/spaceparrots/nit#readme",
+  "homepage": "https://github.com/SpaceParrots/nit#readme",
   "author": "Kevin Mattutat <kevin.mattutat@spaceparrots.de>",
   "scripts": {
     "build": "tsc -p tsconfig.json && node -e \"const f=require('node:fs');f.cpSync('src/overlay/overlay.css','dist/overlay/overlay.css');f.cpSync('src/panel/panel.css','dist/panel/panel.css')\"",

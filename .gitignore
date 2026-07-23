@@ -5,3 +5,5 @@ nit-review-merged/
 .playwright-mcp/
 *.log
 .DS_Store
+.idea/
+.vscode/
