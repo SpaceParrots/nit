@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // The "x hidden" pill: sits in the bottom-left dock next to the chip whenever
 // annotations on this route cannot be shown (closed dialog, other viewport,
 // element gone). Click toggles a mini-popover listing each with its reason;
@@ -18,7 +18,7 @@ export function createHiddenPill(dock: HTMLElement, state: OverlayState, actions
   pill.type = 'button';
   pill.className = 'nit-hidden-pill';
   pill.hidden = true;
-  pill.title = "Annotations on this page that can't be shown right now";
+  pill.title = 'Annotations on this page that can’t be shown right now';
   dock.append(pill);
 
   const pop = document.createElement('div');
