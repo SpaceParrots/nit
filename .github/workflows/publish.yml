@@ -1,15 +1,15 @@
 name: publish
 
-# Publishes to npm when a GitHub Release is published (release-please creates
-# those). --provenance attaches a signed build attestation, which requires
+# Manual-only npm publish. The maintainer currently publishes releases to npm
+# locally, so this workflow does not fire automatically on GitHub Releases;
+# trigger it from the Actions tab (workflow_dispatch) when a CI-side publish is
+# wanted. --provenance attaches a signed build attestation, which requires
 # id-token: write and a workflow on a public repo.
 #
 # Requires an NPM_TOKEN secret (automation or granular token with publish rights
 # on @spaceparrots/nit). Once npm trusted publishing is configured for the
 # package, the token and the NODE_AUTH_TOKEN env below can be dropped.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
 
 permissions:
