@@ -72,6 +72,7 @@ button, input, textarea, select { font: inherit; }
 }
 .nit-pin--comment { background: var(--nit-comment); }
 .nit-pin--closed { opacity: 0.45; }
+.nit-pin--approx { border-style: dashed; opacity: 0.75; }
 .nit-flash {
   position: absolute;
   border: 2px solid var(--nit-accent);

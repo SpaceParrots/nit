@@ -111,4 +111,32 @@ test('overlay placement', async t => {
     await S.session.close();
     S = null;
   });
+
+  await t.test('ghost pin renders dashed at the recorded rect; placed pins stay numbered first', async () => {
+    const dir = tmpDir('nit-ghost-');
+    const reviewFile = writeReview(dir, server.url, [
+      { ...BASE, id: 'p1', comment: 'Title casing',
+        target: target({ selector: '#page-title', xpath: '/html[1]/body[1]/h1[1]', tag: 'h1', text: 'Replay fixture', component: 'h1', rect: { x: 20, y: 20, w: 200, h: 30 } }) },
+      { ...BASE, id: 'g1', comment: 'Removed banner',
+        target: target({ selector: '#never', text: 'NO SUCH TEXT ANYWHERE', component: 'no-such-component', rect: { x: 40, y: 300, w: 200, h: 50 } }) },
+    ]);
+    S = await startTestSession({ mode: 'view', url: undefined, reviewFile });
+    const page = S.session.page;
+
+    await waitFor(() => (S.session.uiState.approx ?? []).some(a => a.id === 'g1') ? true : null,
+      { message: 'g1 approx', timeout: 15000 });
+    const pins = await page.evaluate(() => {
+      const root = document.getElementById('nit-root').shadowRoot;
+      return [...root.querySelectorAll('.nit-pin')].map(p => ({
+        n: p.textContent, approx: p.classList.contains('nit-pin--approx'),
+        left: p.style.left, top: p.style.top,
+      }));
+    });
+    assert.deepEqual(pins.map(p => [p.n, p.approx]), [['1', false], ['2', true]]);
+    // page not scrolled → viewport coords equal page coords, offset by the 10px pin nudge
+    assert.equal(pins[1].left, `${40 - 10}px`);
+    assert.equal(pins[1].top, `${300 - 10}px`);
+    await S.session.close();
+    S = null;
+  });
 });
