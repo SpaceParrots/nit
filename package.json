@@ -57,7 +57,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.10.0",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.1.1",
     "eslint": "^10.7.0",
     "globals": "^17.7.0",
     "typescript": "^5.9.0",
