@@ -14,6 +14,8 @@ import { currentRoute, routeKey } from '../util/route.js';
 import type { NitSession } from './session.js';
 import type {
   Annotation,
+  HiddenRef,
+  HiddenReason,
   OverlayClickEvent,
   OverlayEvent,
   OverlayFocusEvent,
@@ -299,6 +301,8 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
         showAll: Boolean(ui.showAll),
         placed: Array.isArray(ui.placed) ? ui.placed.filter(isPlacedRef) : [],
         unplaced: Array.isArray(ui.unplaced) ? ui.unplaced.filter((u): u is string => typeof u === 'string') : [],
+        approx: Array.isArray(ui.approx) ? ui.approx.filter(isPlacedRef) : [],
+        hidden: Array.isArray(ui.hidden) ? ui.hidden.filter(isHiddenRef).map(sanitizeHiddenRef) : [],
       };
       const pending = session.pendingFocus;
       if (pending) {
@@ -331,7 +335,7 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
     author: session.author,
     viewportMode: session.viewportMode,
     picking: session.uiState.picking ?? false,
-    showAll: session.uiState.showAll ?? (session.mode !== 'view'),
+    showAll: session.uiState.showAll ?? false,
     route: session.uiState.route ?? '/',
     placed: (session.uiState.placed ?? []).map(p => p.id),
     unplaced: session.uiState.unplaced ?? [],
@@ -356,6 +360,19 @@ function isPlacedRef(v: unknown): v is PlacedRef {
   return Boolean(v) && typeof v === 'object'
     && typeof (v as PlacedRef).id === 'string'
     && typeof (v as PlacedRef).rect === 'object' && (v as PlacedRef).rect !== null;
+}
+
+const HIDDEN_REASONS: readonly HiddenReason[] = ['viewport', 'dialog', 'not-found'];
+
+function isHiddenRef(v: unknown): v is HiddenRef {
+  return Boolean(v) && typeof v === 'object'
+    && typeof (v as HiddenRef).id === 'string'
+    && (HIDDEN_REASONS as readonly string[]).includes((v as HiddenRef).reason);
+}
+
+/** The label is page-supplied free text shown in the panel — keep strings only, bounded. */
+function sanitizeHiddenRef(h: HiddenRef): HiddenRef {
+  return { id: h.id, reason: h.reason, ...(typeof h.label === 'string' ? { label: h.label.slice(0, 60) } : {}) };
 }
 
 function validateSave(p: unknown): string | null {

@@ -5,15 +5,15 @@
 // stays minimal (highlight, popover, pins, chip) — lists and controls live in the
 // separate nit panel window, which talks to this overlay through the Node bridge.
 import css from './overlay.css';
-import { anchorTarget } from '../anchor/anchor.js';
+import { anchorTargetDetailed, isElementRendered } from '../anchor/anchor.js';
 import { installPicker } from './picker.js';
 import { installTrail } from './trail.js';
 import { createPopover } from './popover.js';
 import { createPins } from './pins.js';
 import { createChip } from './chip.js';
 import { currentRoute, routePath } from '../util/route.js';
-import type { OverlayActions, OverlayState, OverlayUi, PlacedAnnotation } from './state.js';
-import type { Annotation, LoadResult, Rect } from '../types.js';
+import type { ApproxAnnotation, HiddenAnnotation, OverlayActions, OverlayState, OverlayUi, PlacedAnnotation } from './state.js';
+import type { Annotation, CaptureContext, LoadResult, Rect } from '../types.js';
 
 const SYNC_INTERVAL_MS = 2000;
 const ANCHOR_RETRY_MS = 1000;
@@ -52,8 +52,8 @@ async function init(): Promise<void> {
     picking: false,
     hovered: null,
     selected: null,
-    // review: show everything by default; replay: filter to general + current viewport
-    showAll: mode !== 'view',
+    // filter to general + current viewport by default; the show-all toggle overrides
+    showAll: false,
     placed: [],
     unplaced: [],
     approx: [],
@@ -132,19 +132,52 @@ function refresh(state: OverlayState, ui: OverlayUi): void {
   const route = location.pathname;
   // matching ignores query/hash: an annotation captured at /p?id=5 still pins on /p
   const placed: PlacedAnnotation[] = [];
-  const unplaced: Annotation[] = [];
+  const approx: ApproxAnnotation[] = [];
+  const hidden: HiddenAnnotation[] = [];
   for (const ann of state.annotations) {
     if (routePath(ann.route) !== route) continue;
-    if (!scopeVisible(state, ann)) continue;
-    const el = anchorTarget(ann.target, document);
-    if (el && isRendered(el)) placed.push({ ann, el });
-    else unplaced.push(ann);
+    if (!scopeVisible(state, ann)) {
+      hidden.push({ ann, reason: 'viewport' });
+      continue;
+    }
+    const found = anchorTargetDetailed(ann.target, document);
+    if (found?.rendered) {
+      placed.push({ ann, el: found.el });
+      continue;
+    }
+    if (ann.context?.kind === 'dialog' && !dialogOpen(ann.context)) {
+      hidden.push({ ann, reason: 'dialog', label: ann.context.label });
+      continue;
+    }
+    const rect = ann.target?.rect;
+    // Last resort: the recorded position — only meaningful outside dialogs and
+    // at the viewport the annotation was captured at.
+    if (ann.context?.kind !== 'dialog' && ann.viewport?.mode === state.viewportMode && rect && (rect.w > 0 || rect.h > 0)) {
+      approx.push({ ann, rect });
+    } else {
+      hidden.push({ ann, reason: 'not-found' });
+    }
   }
   state.placed = placed;
-  state.unplaced = unplaced;
+  state.approx = approx;
+  state.hidden = hidden;
+  // `unplaced` keeps its bridge meaning "on this route but not anchored": approx
+  // ids are in (verify's fallback capture relies on it), viewport-filtered are out.
+  state.unplaced = [...approx.map(a => a.ann), ...hidden.filter(h => h.reason !== 'viewport').map(h => h.ann)];
   ui.pins.render();
   ui.chip.update();
   emitUi(state);
+}
+
+/** Whether the dialog an annotation was captured in is currently open. */
+function dialogOpen(ctx: CaptureContext): boolean {
+  if (!ctx.selector) return false;
+  try {
+    const el = document.querySelector(ctx.selector);
+    return Boolean(el && isElementRendered(el));
+  } catch {
+    return false;
+  }
 }
 
 function emitUi(state: OverlayState): void {
@@ -156,6 +189,8 @@ function emitUi(state: OverlayState): void {
       showAll: state.showAll,
       placed: state.placed.map(p => ({ id: p.ann.id, rect: pageRectOf(p.el) })),
       unplaced: state.unplaced.map(a => a.id),
+      approx: state.approx.map(a => ({ id: a.ann.id, rect: a.rect })),
+      hidden: state.hidden.map(h => ({ id: h.ann.id, reason: h.reason, ...(h.label ? { label: h.label } : {}) })),
     });
   } catch { /* bridge gone */ }
 }
@@ -174,11 +209,6 @@ function scopeVisible(state: OverlayState, ann: Annotation): boolean {
   if (state.showAll) return true;
   const scope = ann.viewportScope || 'general';
   return scope === 'general' || scope === state.viewportMode;
-}
-
-function isRendered(el: Element): boolean {
-  const r = el.getBoundingClientRect();
-  return r.width > 0 || r.height > 0;
 }
 
 /** SPAs render after DOMContentLoaded, so the first refresh in view/verify mode

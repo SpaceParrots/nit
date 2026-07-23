@@ -65,4 +65,50 @@ test('overlay placement', async t => {
     await S.session.close();
     S = null;
   });
+
+  await t.test('classification: dialog / viewport / not-found reasons and approx rects', async () => {
+    const dir = tmpDir('nit-class-');
+    const reviewFile = writeReview(dir, server.url, [
+      // in the (closed) <dialog> — context recorded at capture time
+      { ...BASE, id: 'd1', comment: 'Dialog button label',
+        context: { kind: 'dialog', selector: '#dlg', label: 'Checkout' },
+        target: target({ component: 'dialog', selector: '#dlg-save', xpath: '/html[1]/body[1]/dialog[1]/button[1]', tag: 'button', text: 'Save order', rect: { x: 100, y: 200, w: 90, h: 30 } }) },
+      // mobile-scoped — session runs desktop, so it must be viewport-hidden
+      { ...BASE, id: 'm1', comment: 'Mobile spacing', viewportScope: 'mobile',
+        viewport: { mode: 'mobile', w: 390, h: 844 },
+        target: target({ selector: '#present', xpath: '/html[1]/body[1]/p[1]', tag: 'p', text: 'Always here' }) },
+      // gone element, page context, same viewport → approx ghost rect
+      { ...BASE, id: 'g1', comment: 'Removed banner',
+        target: target({ selector: '#never', xpath: '/html[1]/body[1]/div[42]', tag: 'div', text: 'NO SUCH TEXT ANYWHERE', component: 'no-such-component', rect: { x: 40, y: 900, w: 200, h: 50 } }) },
+      // gone element captured at the OTHER viewport → rect meaningless → not-found
+      { ...BASE, id: 'g2', comment: 'Removed mobile banner', viewport: { mode: 'mobile', w: 390, h: 844 },
+        target: target({ selector: '#never2', xpath: '/html[1]/body[1]/div[43]', tag: 'div', text: 'ALSO NO SUCH TEXT', component: 'no-such-component', rect: { x: 10, y: 500, w: 100, h: 40 } }) },
+    ]);
+    S = await startTestSession({ mode: 'view', url: undefined, reviewFile });
+    const page = S.session.page;
+
+    await waitFor(() => {
+      const h = S.session.uiState.hidden ?? [];
+      return h.some(x => x.id === 'd1') && h.some(x => x.id === 'm1') && h.some(x => x.id === 'g2')
+        && (S.session.uiState.approx ?? []).some(x => x.id === 'g1') ? true : null;
+    }, { message: 'classification reported', timeout: 15000 });
+
+    const hidden = new Map(S.session.uiState.hidden.map(h => [h.id, h]));
+    assert.deepEqual(hidden.get('d1'), { id: 'd1', reason: 'dialog', label: 'Checkout' });
+    assert.equal(hidden.get('m1').reason, 'viewport');
+    assert.equal(hidden.get('g2').reason, 'not-found');
+    // approx carries the recorded rect; its id also counts as unplaced (verify contract)
+    assert.deepEqual(S.session.uiState.approx.find(a => a.id === 'g1').rect, { x: 40, y: 900, w: 200, h: 50 });
+    assert.ok(S.session.uiState.unplaced.includes('g1'));
+    assert.ok(S.session.uiState.unplaced.includes('d1'));
+    assert.ok(!S.session.uiState.unplaced.includes('m1'), 'viewport-filtered ids stay out of unplaced');
+
+    // opening the dialog re-anchors d1 into placed (the MutationObserver from
+    // Task 6 makes this instant; until then the 1s retry cycle covers it)
+    await page.evaluate(() => document.getElementById('dlg').showModal());
+    await waitFor(() => S.session.uiState.placed?.some(p => p.id === 'd1') ? true : null,
+      { message: 'd1 placed once dialog opens', timeout: 15000 });
+    await S.session.close();
+    S = null;
+  });
 });
