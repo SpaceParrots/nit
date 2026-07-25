@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { baseSlug, qualifyId, parseQualifiedId, isSafeSlug, openWorkspace, readIndex, resolveBase } from '../dist/store/workspace.js';
+import { baseSlug, qualifyId, parseQualifiedId, isSafeSlug, openWorkspace, readIndex, resolveBase, ensureBase } from '../dist/store/workspace.js';
 import { tmpDir } from './helpers/tmp.js';
 
 test('workspace: baseSlug derives host + non-default port', () => {
@@ -179,4 +179,158 @@ test('workspace: resolveBase reports ambiguity for two bases sharing an origin, 
     () => resolveBase(ws, 'https://shared.example.com/somewhere-else'),
     /ambiguous.*admin-area.*public-area|ambiguous.*public-area.*admin-area/s,
   );
+});
+
+test('workspace: ensureBase creates and registers a base in an empty folder', () => {
+  const dir = tmpDir('nit-ws-');
+  const base = ensureBase(dir, 'http://localhost:4200');
+  assert.equal(base.slug, 'localhost-4200');
+  assert.equal(base.dir, path.join(dir, 'localhost-4200'));
+  assert.ok(fs.existsSync(path.join(base.dir, 'shots')));
+  const index = JSON.parse(fs.readFileSync(path.join(dir, 'bases.json'), 'utf8'));
+  assert.deepEqual(index.bases.map(b => b.slug), ['localhost-4200']);
+  assert.equal(index.bases[0].url, 'http://localhost:4200');
+});
+
+test('workspace: an alias names the folder', () => {
+  const dir = tmpDir('nit-ws-');
+  const base = ensureBase(dir, 'https://staging.example.com', 'staging');
+  assert.equal(base.slug, 'staging');
+  assert.ok(fs.existsSync(path.join(dir, 'staging')));
+});
+
+test('workspace: ensureBase is idempotent and matches by origin', () => {
+  const dir = tmpDir('nit-ws-');
+  const first = ensureBase(dir, 'https://staging.example.com', 'staging');
+  const again = ensureBase(dir, 'https://staging.example.com/checkout?x=1');
+  assert.equal(again.slug, first.slug);
+  assert.deepEqual(fs.readdirSync(dir).filter(n => n !== 'bases.json'), ['staging']);
+});
+
+test('workspace: the same url in a flat folder does NOT migrate', () => {
+  const dir = tmpDir('nit-ws-');
+  writeReview(dir, 'https://fainin.dev/', ['a1']);
+  const base = ensureBase(dir, 'https://fainin.dev/');
+  assert.equal(base.dir, dir, 'stays flat');
+  assert.ok(fs.existsSync(path.join(dir, 'annotations.json')));
+  assert.ok(!fs.existsSync(path.join(dir, 'bases.json')));
+});
+
+test('workspace: a second url migrates the flat folder, preserving ids and shots', () => {
+  const dir = tmpDir('nit-ws-');
+  writeReview(dir, 'https://fainin.dev/', ['a1', 'a2']);
+  fs.writeFileSync(path.join(dir, 'review.md'), '# old review');
+  fs.writeFileSync(path.join(dir, 'shots', 'a1.png'), 'png-bytes');
+
+  const fresh = ensureBase(dir, 'http://localhost:4200');
+
+  assert.equal(fresh.slug, 'localhost-4200');
+  assert.ok(!fs.existsSync(path.join(dir, 'annotations.json')), 'flat file moved away');
+  const moved = JSON.parse(fs.readFileSync(path.join(dir, 'fainin-dev', 'annotations.json'), 'utf8'));
+  assert.deepEqual(moved.annotations.map(a => a.id), ['a1', 'a2']);
+  assert.equal(moved.review.url, 'https://fainin.dev/');
+  assert.equal(fs.readFileSync(path.join(dir, 'fainin-dev', 'review.md'), 'utf8'), '# old review');
+  assert.equal(fs.readFileSync(path.join(dir, 'fainin-dev', 'shots', 'a1.png'), 'utf8'), 'png-bytes');
+
+  const ws = openWorkspace(dir);
+  assert.equal(ws.layout, 'multi');
+  assert.deepEqual(ws.bases.map(b => b.slug), ['fainin-dev', 'localhost-4200']);
+});
+
+test('workspace: a slug collision from a different origin gets a suffix', () => {
+  const dir = tmpDir('nit-ws-');
+  ensureBase(dir, 'https://staging.example.com', 'staging');
+  const second = ensureBase(dir, 'https://staging.other.test', 'staging');
+  assert.equal(second.slug, 'staging-2');
+});
+
+test('workspace: an alias matching a Windows reserved device name is not used as the folder name', () => {
+  const dir = tmpDir('nit-ws-');
+  const base = ensureBase(dir, 'https://example.com', 'nul');
+  assert.notEqual(base.slug, 'nul');
+  assert.ok(fs.existsSync(base.dir));
+  const index = JSON.parse(fs.readFileSync(path.join(dir, 'bases.json'), 'utf8'));
+  assert.deepEqual(index.bases.map(b => b.slug), [base.slug]);
+});
+
+test('workspace: a bare hostname matching a Windows reserved device name is not used as the folder name', () => {
+  const dir = tmpDir('nit-ws-');
+  // sanity: baseSlug itself is OS-agnostic and would happily return 'con'
+  assert.equal(baseSlug('http://con'), 'con');
+  const base = ensureBase(dir, 'http://con');
+  assert.notEqual(base.slug, 'con');
+  assert.ok(fs.existsSync(base.dir));
+});
+
+test('workspace: a very long alias is bounded to a safe directory-name length', () => {
+  const dir = tmpDir('nit-ws-');
+  const longAlias = 'a'.repeat(200);
+  const base = ensureBase(dir, 'https://example.com', longAlias);
+  assert.ok(base.slug.length <= 60, `slug length ${base.slug.length} should be bounded, got ${base.slug.length}`);
+  assert.ok(fs.existsSync(base.dir));
+});
+
+test('workspace: a migration that fails partway rolls back completed renames, losing nothing', () => {
+  const dir = tmpDir('nit-ws-');
+  writeReview(dir, 'https://fainin.dev/', ['a1']);
+  fs.writeFileSync(path.join(dir, 'review.md'), '# old review');
+  fs.writeFileSync(path.join(dir, 'shots', 'a1.png'), 'png-bytes');
+
+  // Fail the *second* real rename (annotations.json succeeds, review.md
+  // doesn't) so migrateFlat has exactly one completed move to undo. Both
+  // the test and dist/store/workspace.js resolve 'node:fs' to the same
+  // cached module object, so patching the method here reaches the code
+  // under test without any mocking library.
+  const realRename = fs.renameSync;
+  let calls = 0;
+  fs.renameSync = (from, to) => {
+    calls++;
+    if (calls === 2) throw new Error('simulated rename failure');
+    return realRename(from, to);
+  };
+  try {
+    assert.throws(
+      () => ensureBase(dir, 'http://localhost:4200'),
+      /could not turn .* into a multi-base workspace/,
+    );
+  } finally {
+    fs.renameSync = realRename;
+  }
+
+  // Fully reverted: the flat folder looks exactly like it did before, and
+  // the half-created target directory is gone.
+  assert.ok(!fs.existsSync(path.join(dir, 'fainin-dev')), 'target dir cleaned up');
+  assert.ok(fs.existsSync(path.join(dir, 'annotations.json')));
+  assert.ok(fs.existsSync(path.join(dir, 'review.md')));
+  assert.ok(fs.existsSync(path.join(dir, 'shots', 'a1.png')));
+  const survived = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
+  assert.deepEqual(survived.annotations.map(a => a.id), ['a1']);
+});
+
+test('workspace: if rolling back itself fails, the half-moved data is kept, not deleted', () => {
+  const dir = tmpDir('nit-ws-');
+  writeReview(dir, 'https://fainin.dev/', ['a1']);
+  fs.writeFileSync(path.join(dir, 'review.md'), '# old review');
+
+  // Fail the second forward rename (as above) AND the reversal that follows
+  // it, so migrateFlat can't put annotations.json back where it found it.
+  const realRename = fs.renameSync;
+  let calls = 0;
+  fs.renameSync = (from, to) => {
+    calls++;
+    if (calls === 2 || calls === 3) throw new Error('simulated rename failure');
+    return realRename(from, to);
+  };
+  try {
+    assert.throws(() => ensureBase(dir, 'http://localhost:4200'));
+  } finally {
+    fs.renameSync = realRename;
+  }
+
+  // The failed rollback must NOT have deleted the moved file: it is still
+  // sitting in the half-migrated target directory, not lost.
+  assert.ok(!fs.existsSync(path.join(dir, 'annotations.json')), 'not reverted (rollback itself failed)');
+  const stranded = JSON.parse(fs.readFileSync(path.join(dir, 'fainin-dev', 'annotations.json'), 'utf8'));
+  assert.deepEqual(stranded.annotations.map(a => a.id), ['a1'], 'moved data survives intact, not wiped');
+  assert.ok(fs.existsSync(path.join(dir, 'review.md')), 'never-moved file untouched');
 });
