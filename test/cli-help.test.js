@@ -2,6 +2,7 @@
 // The commander-based CLI: helpful output, per-command help, aliases, suggestions.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -98,4 +99,22 @@ test('cli: verify with no review nearby suggests the next step instead of a stac
   assert.ok(out.includes('nit review'), 'suggests starting a review');
   assert.ok(out.includes('nit status'), 'suggests checking what exists');
   assert.ok(!out.includes('at Object'), 'no stack trace leaks');
+});
+
+test('cli: -v, -V and --version all print the package version', () => {
+  const expected = JSON.parse(
+    fs.readFileSync(path.join(path.dirname(CLI), '..', '..', 'package.json'), 'utf8'),
+  ).version;
+  for (const flag of ['-v', '-V', '--version']) {
+    const { code, out } = run(flag);
+    assert.equal(code, 0, `${flag} exits 0`);
+    assert.equal(out.trim(), expected, `${flag} prints ${expected}`);
+  }
+});
+
+test('cli: -h is help, same as --help', () => {
+  const short = run('-h');
+  const long = run('--help');
+  assert.equal(short.code, 0);
+  assert.equal(short.out, long.out);
 });

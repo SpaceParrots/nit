@@ -40,7 +40,10 @@ program
   .description('Point-and-click website annotation that hands small UI fixes to a coding agent.\n'
     + 'Annotate any site in a real browser; nit writes a structured review folder\n'
     + '(annotations.json + review.md + screenshots) that an agent fixes directly.')
-  .version(pkgVersion())
+  // commander binds one short flag per option, so -V (its default) is declared
+  // separately from the -v most CLIs use. Both print the same string.
+  .version(pkgVersion(), '-v, --version', 'print the nit version')
+  .addOption(new Option('-V').hideHelp())
   .showHelpAfterError('(run "nit <command> --help" for details)')
   .showSuggestionAfterError()
   .addHelpText('after', `
@@ -57,6 +60,13 @@ Examples:
   $ nit export                                   pack nit-review/ into a shareable zip
   $ nit import 2026-07-21-example.com-ann.nit.zip
   $ nit merge nit-review/annotations.json imported/annotations.json --out review-merged`);
+
+// -V is declared hidden above so it stays accepted for scripts written against
+// commander's default flag; commander only auto-handles the flag it owns.
+program.on('option:V', () => {
+  console.log(pkgVersion());
+  process.exit(0);
+});
 
 /** Attach the options shared by every command that launches a browser. */
 function withBrowserOptions(cmd: Command): Command {
