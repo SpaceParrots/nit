@@ -9,7 +9,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import type { BaseRef, ReviewData, Workspace, WorkspaceLayout } from '../types.js';
+import type { BaseRef, Workspace, WorkspaceLayout } from '../types.js';
 import { slugify } from '../util/slug.js';
 
 export type { BaseRef, Workspace, WorkspaceLayout };
@@ -77,7 +77,7 @@ export function parseQualifiedId(qualified: string): { slug: string | null; id: 
 export const BASES_FILE = 'bases.json';
 
 /** One validated entry from bases.json. */
-interface IndexEntry {
+export interface IndexEntry {
   slug: string;
   url: string;
   createdAt?: string;
@@ -148,11 +148,19 @@ function baseDirNames(wsDir: string): string[] {
 
 /**
  * Parse bases.json into slug → entry. Everything is validated: the file is
- * hand-editable and arrives inside shared zips, and a slug becomes a path
- * segment. Anything unreadable or shape-invalid yields an empty index rather
- * than an error — the subfolders alone are enough to rebuild it.
+ * hand-editable and arrives inside shared zips. The slug check here is a
+ * second layer, not the only one — `openWorkspace` never joins an index
+ * slug into a path today, it only reads directory names that `baseDirNames`
+ * has already filtered — but a later task writes this index back to disk,
+ * at which point an entry surviving into that write becomes a path on the
+ * next read. Anything unreadable or shape-invalid yields an empty index
+ * rather than an error — the subfolders alone are enough to rebuild it.
+ *
+ * Exported for direct testing of the slug guard (see
+ * `test/unit-workspace.test.js`), independent of how `openWorkspace` happens
+ * to use the result today.
  */
-function readIndex(wsDir: string): Map<string, IndexEntry> {
+export function readIndex(wsDir: string): Map<string, IndexEntry> {
   const out = new Map<string, IndexEntry>();
   let raw: unknown;
   try {
@@ -178,10 +186,19 @@ function readIndex(wsDir: string): Map<string, IndexEntry> {
 
 /** A review file's `review.url`, or `''` when it cannot be read. */
 function readReviewUrl(file: string): string {
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<ReviewData>;
-    return typeof parsed.review?.url === 'string' ? parsed.review.url : '';
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
     return '';
   }
+  return hasReviewUrl(parsed) ? parsed.review.url : '';
+}
+
+/** Narrows unknown JSON to the one field `readReviewUrl` needs, without casting. */
+function hasReviewUrl(v: unknown): v is { review: { url: string } } {
+  if (!v || typeof v !== 'object') return false;
+  const review = (v as Record<string, unknown>).review;
+  if (!review || typeof review !== 'object') return false;
+  return typeof (review as Record<string, unknown>).url === 'string';
 }

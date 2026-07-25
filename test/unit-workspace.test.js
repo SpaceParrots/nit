@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { baseSlug, qualifyId, parseQualifiedId, isSafeSlug, openWorkspace } from '../dist/store/workspace.js';
+import { baseSlug, qualifyId, parseQualifiedId, isSafeSlug, openWorkspace, readIndex } from '../dist/store/workspace.js';
 import { tmpDir } from './helpers/tmp.js';
 
 test('workspace: baseSlug derives host + non-default port', () => {
@@ -102,7 +102,22 @@ test('workspace: a malformed bases.json is ignored, not fatal', () => {
   assert.deepEqual(ws.bases.map(b => b.slug), ['staging']);
 });
 
-test('workspace: an unsafe slug in bases.json never becomes a path', () => {
+test('workspace: readIndex drops an unsafe slug and keeps a valid one', () => {
+  const dir = tmpDir('nit-ws-');
+  fs.writeFileSync(path.join(dir, 'bases.json'), JSON.stringify({
+    version: 1,
+    bases: [
+      { slug: '../../escape', url: 'https://evil.test' },
+      { slug: 'staging', url: 'https://staging.example.com' },
+    ],
+  }));
+  const index = readIndex(dir);
+  assert.equal(index.has('../../escape'), false, 'the unsafe slug never enters the index');
+  assert.equal(index.size, 1);
+  assert.equal(index.get('staging')?.url, 'https://staging.example.com');
+});
+
+test('workspace: bases.json content never reaches path.join — paths come only from enumerated directory names', () => {
   const dir = tmpDir('nit-ws-');
   writeReview(path.join(dir, 'staging'), 'https://staging.example.com', ['a1']);
   fs.writeFileSync(path.join(dir, 'bases.json'), JSON.stringify({
@@ -110,6 +125,9 @@ test('workspace: an unsafe slug in bases.json never becomes a path', () => {
     bases: [{ slug: '../../escape', url: 'https://evil.test' }],
   }));
   const ws = openWorkspace(dir);
+  // 'staging' is a real subfolder; '../../escape' has no matching directory on
+  // disk at all, so it can't appear here regardless of the readIndex guard —
+  // see the 'readIndex drops an unsafe slug' test above for that guard itself.
   assert.deepEqual(ws.bases.map(b => b.slug), ['staging']);
   for (const b of ws.bases) assert.ok(b.dir.startsWith(dir), 'every base stays inside the workspace');
 });
