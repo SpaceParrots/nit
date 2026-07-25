@@ -3,12 +3,11 @@
 // prefix so they stay unambiguous next to other MCP servers' tools in an agent's
 // combined tool list.
 import fs from 'node:fs';
-import path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createStore, safeShotPath } from '../store/store.js';
 import type { Store } from '../store/store.js';
-import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
+import { writeDerivedFiles } from '../store/derived.js';
 import { isActionable } from '../store/stats.js';
 import { errorMessage } from '../util/error.js';
 import { routePath } from '../util/route.js';
@@ -284,10 +283,7 @@ function writeAnnotation(store: Store, id: string, changes: Partial<Annotation>)
   const ann = store.patch(id, changes, 'agent');
   if (!ann) return toolError(`no annotation with id ${id}`);
   store.flush();
-  try {
-    fs.writeFileSync(path.join(store.dir, 'review.md'), renderReviewMd(store.data), 'utf8');
-    fs.writeFileSync(path.join(store.dir, 'fix-annotations.md'), FIX_ANNOTATIONS_MD, 'utf8');
-  } catch { /* best effort */ }
+  writeDerivedFiles(store);
   return structured({ annotation: ann });
 }
 
