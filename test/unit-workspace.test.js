@@ -307,6 +307,147 @@ test('workspace: a migration that fails partway rolls back completed renames, lo
   assert.deepEqual(survived.annotations.map(a => a.id), ['a1']);
 });
 
+test('workspace: ensureBase rejects a url it cannot classify, creating nothing', () => {
+  const dir = tmpDir('nit-ws-');
+  for (const bad of ['not a url', 'file:///etc/passwd', '']) {
+    assert.throws(() => ensureBase(dir, bad), /http\(s\)/, JSON.stringify(bad));
+    assert.deepEqual(fs.readdirSync(dir), [], `nothing created for ${JSON.stringify(bad)}`);
+  }
+});
+
+test('workspace: ensureBase rejects a url it cannot classify without touching an existing flat review', () => {
+  const dir = tmpDir('nit-ws-');
+  writeReview(dir, 'https://fainin.dev/', ['a1']);
+  for (const bad of ['not a url', 'file:///etc/passwd', '']) {
+    assert.throws(() => ensureBase(dir, bad), /http\(s\)/, JSON.stringify(bad));
+  }
+  assert.ok(fs.existsSync(path.join(dir, 'annotations.json')), 'flat file untouched');
+  assert.ok(!fs.existsSync(path.join(dir, 'bases.json')), 'still flat, no index written');
+  const survived = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
+  assert.deepEqual(survived.annotations.map(a => a.id), ['a1']);
+});
+
+test('workspace: migrating a flat review whose own url is a reserved device name gets a safe folder name', () => {
+  const dir = tmpDir('nit-ws-');
+  writeReview(dir, 'http://con', ['a1']);
+  // sanity: baseSlug itself is OS-agnostic and would happily return 'con'
+  assert.equal(baseSlug('http://con'), 'con');
+
+  const fresh = ensureBase(dir, 'https://fainin.dev/');
+  assert.equal(fresh.slug, 'fainin-dev');
+
+  const ws = openWorkspace(dir);
+  const migratedSlug = ws.bases.map(b => b.slug).find(s => s !== 'fainin-dev');
+  assert.notEqual(migratedSlug, 'con');
+  assert.ok(!fs.existsSync(path.join(dir, 'con')), 'no literal "con" folder was created');
+});
+
+test('workspace: migrating a flat review with a very long host gets a length-bounded folder name', () => {
+  const dir = tmpDir('nit-ws-');
+  const longHost = `${'a'.repeat(60)}.${'b'.repeat(60)}.example.com`;
+  writeReview(dir, `http://${longHost}`, ['a1']);
+
+  const fresh = ensureBase(dir, 'https://fainin.dev/');
+  assert.equal(fresh.slug, 'fainin-dev');
+
+  const ws = openWorkspace(dir);
+  const migratedSlug = ws.bases.map(b => b.slug).find(s => s !== 'fainin-dev');
+  assert.ok(migratedSlug.length <= 60, `slug length ${migratedSlug.length} should be bounded`);
+});
+
+test('workspace: migrateFlat refuses to migrate onto a directory that already exists (TOCTOU-safe even when uniqueSlug just checked it was free)', () => {
+  const dir = tmpDir('nit-ws-');
+  writeReview(dir, 'https://fainin.dev/', ['a1']);
+  const abs = path.resolve(dir);
+  const target = path.join(abs, 'fainin-dev');
+
+  // Simulate something else claiming the directory between uniqueSlug's
+  // "is it free?" check and migrateFlat's own "does it exist?" guard: the
+  // first existsSync(target) call (uniqueSlug's) reports free, every one
+  // after (migrateFlat's own guard, and any later check) reports taken.
+  const realExistsSync = fs.existsSync;
+  let firstCheckDone = false;
+  fs.existsSync = p => {
+    if (p === target) {
+      if (!firstCheckDone) { firstCheckDone = true; return false; }
+      return true;
+    }
+    return realExistsSync(p);
+  };
+  try {
+    assert.throws(() => ensureBase(dir, 'https://staging.example.com'), /already exists/);
+  } finally {
+    fs.existsSync = realExistsSync;
+  }
+
+  // migrateFlat's guard threw before any mkdir/rename — the flat review is untouched.
+  assert.ok(fs.existsSync(path.join(dir, 'annotations.json')));
+  const survived = JSON.parse(fs.readFileSync(path.join(dir, 'annotations.json'), 'utf8'));
+  assert.deepEqual(survived.annotations.map(a => a.id), ['a1']);
+});
+
+test('workspace: touchBase advances lastSeenAt on a re-reviewed base while createdAt survives', async () => {
+  const dir = tmpDir('nit-ws-');
+  ensureBase(dir, 'https://staging.example.com', 'staging');
+  const before = JSON.parse(fs.readFileSync(path.join(dir, 'bases.json'), 'utf8')).bases[0];
+
+  await new Promise(r => setTimeout(r, 5)); // ensure a distinguishable timestamp
+
+  const again = ensureBase(dir, 'https://staging.example.com/checkout?x=1');
+  assert.equal(again.slug, 'staging');
+
+  const after = JSON.parse(fs.readFileSync(path.join(dir, 'bases.json'), 'utf8')).bases[0];
+  assert.equal(after.createdAt, before.createdAt, 'createdAt is untouched');
+  assert.notEqual(after.lastSeenAt, before.lastSeenAt, 'lastSeenAt advances on disk');
+});
+
+test('workspace: a failed rollback produces a different, more specific error than a clean rollback, naming the stranded folder', () => {
+  const realRename = fs.renameSync;
+
+  const dir1 = tmpDir('nit-ws-');
+  writeReview(dir1, 'https://fainin.dev/', ['a1']);
+  fs.writeFileSync(path.join(dir1, 'review.md'), '# old review');
+  let calls = 0;
+  fs.renameSync = (from, to) => {
+    calls++;
+    if (calls === 2) throw new Error('simulated rename failure');
+    return realRename(from, to);
+  };
+  let cleanMessage;
+  try {
+    ensureBase(dir1, 'http://localhost:4200');
+    assert.fail('expected ensureBase to throw');
+  } catch (e) {
+    cleanMessage = e.message;
+  } finally {
+    fs.renameSync = realRename;
+  }
+
+  const dir2 = tmpDir('nit-ws-');
+  writeReview(dir2, 'https://fainin.dev/', ['a1']);
+  fs.writeFileSync(path.join(dir2, 'review.md'), '# old review');
+  calls = 0;
+  fs.renameSync = (from, to) => {
+    calls++;
+    if (calls === 2 || calls === 3) throw new Error('simulated rename failure');
+    return realRename(from, to);
+  };
+  let strandedMessage;
+  try {
+    ensureBase(dir2, 'http://localhost:4200');
+    assert.fail('expected ensureBase to throw');
+  } catch (e) {
+    strandedMessage = e.message;
+  } finally {
+    fs.renameSync = realRename;
+  }
+
+  assert.notEqual(cleanMessage, strandedMessage, 'a stranded rollback must not read like a clean one');
+  assert.ok(!cleanMessage.includes('could not fully undo'), cleanMessage);
+  assert.ok(strandedMessage.includes('could not fully undo'), strandedMessage);
+  assert.ok(strandedMessage.includes(path.join(path.resolve(dir2), 'fainin-dev')), strandedMessage);
+});
+
 test('workspace: if rolling back itself fails, the half-moved data is kept, not deleted', () => {
   const dir = tmpDir('nit-ws-');
   writeReview(dir, 'https://fainin.dev/', ['a1']);

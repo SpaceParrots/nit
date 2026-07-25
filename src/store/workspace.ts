@@ -6,15 +6,20 @@
  * and unchanged. This module owns the layer above: which bases exist, how one is
  * named, how a base-qualified id is read, and how a legacy flat folder becomes a
  * workspace.
+ *
+ * This is the *read* half — deriving slugs and ids, and opening/resolving an
+ * existing workspace. The *write* half — creating a base folder and migrating
+ * a flat review into one, see `workspace-write.ts` — builds on these
+ * functions; `ensureBase`/`writeIndex` are re-exported below so callers keep
+ * importing this one path regardless of which file a symbol lives in.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import type { BaseRef, Workspace, WorkspaceLayout } from '../types.js';
-import { errorMessage } from '../util/error.js';
 import { slugify } from '../util/slug.js';
-import { createStore } from './store.js';
 
 export type { BaseRef, Workspace, WorkspaceLayout };
+export { ensureBase, writeIndex } from './workspace-write.js';
 
 /**
  * A slug is used as a directory name, so it is validated before it ever reaches
@@ -277,188 +282,4 @@ export function safeOrigin(url: string): string | null {
   } catch {
     return null;
   }
-}
-
-/** Files a flat review folder owns; everything else in the folder is left alone. */
-const FLAT_ENTRIES = ['annotations.json', 'annotations.json.bak', 'review.md', 'fix-annotations.md', 'shots'];
-
-/**
- * Find or create the base folder for a url, so a session can write into it.
- *
- * Migration is deliberately lazy: a flat review folder stays flat while it is
- * reviewed at the url it already holds, and only becomes a workspace when a
- * *second* base url actually arrives. Single-environment users therefore never
- * see their folder change shape.
- * @param dir the workspace directory (`--out`, default `nit-review`)
- * @param url the site about to be reviewed
- * @param alias optional short name for the base's folder (`--base staging`)
- * @returns the base to write into; its directory exists when this returns
- * @throws when a flat folder cannot be migrated (the move is rolled back first)
- */
-export function ensureBase(dir: string, url: string, alias?: string): BaseRef {
-  const abs = path.resolve(dir);
-  const ws = openWorkspace(abs);
-  const origin = safeOrigin(url);
-
-  // Already known? Match on origin so /checkout and /?x=1 do not fork a base.
-  const existing = origin ? ws.bases.find(b => safeOrigin(b.url) === origin) : undefined;
-  if (existing) {
-    if (ws.layout === 'multi') touchBase(abs, ws.bases, existing.slug);
-    return existing;
-  }
-
-  // A flat folder holding a *different* url has to become a workspace first.
-  if (ws.layout === 'flat') migrateFlat(abs, ws.bases[0].slug);
-
-  const slug = uniqueSlug(abs, alias ? slugify(alias) : baseSlug(url));
-  const baseDir = path.join(abs, slug);
-  // openWorkspace's directory scan (baseDirNames) only recognizes a subfolder
-  // as a base once it holds an annotations.json — that's the signal the rest
-  // of this module treats as "this is really a base" (see its docblock). A
-  // brand-new base must satisfy that immediately, or it would vanish from the
-  // very next openWorkspace() call (breaking idempotency: a second ensureBase
-  // for the same origin wouldn't find it and would create a duplicate). So an
-  // empty review is flushed right away via the normal Store, the same file a
-  // real annotation save would produce, instead of waiting for the caller to
-  // save the first annotation.
-  const store = createStore(baseDir, { url });
-  store.flush();
-  const now = new Date().toISOString();
-  const base: BaseRef = {
-    slug,
-    url,
-    dir: baseDir,
-    file: store.file,
-    createdAt: now,
-    lastSeenAt: now,
-  };
-  writeIndex(abs, [...openWorkspace(abs).bases.filter(b => b.slug !== slug), base]);
-  return base;
-}
-
-/**
- * Move a flat review folder's files into `<slug>/`. Every move is undone if any
- * one of them fails, so a failed migration never leaves a half-workspace.
- * @param wsDir the workspace directory
- * @param slug the folder name to move the flat review into
- * @throws when a move fails (after rolling back)
- */
-function migrateFlat(wsDir: string, slug: string): void {
-  const target = path.join(wsDir, slug);
-  if (fs.existsSync(target)) {
-    throw new Error(`cannot migrate ${wsDir}: ${slug}/ already exists`);
-  }
-  fs.mkdirSync(target, { recursive: true });
-  const moved: [from: string, to: string][] = [];
-  try {
-    for (const name of FLAT_ENTRIES) {
-      const from = path.join(wsDir, name);
-      if (!fs.existsSync(from)) continue;
-      const to = path.join(target, name);
-      fs.renameSync(from, to);
-      moved.push([from, to]);
-    }
-  } catch (e) {
-    // If every reversal below succeeds, `target` is empty and safe to remove.
-    // If even one doesn't, `target` still holds real files this function
-    // moved out of `wsDir` — deleting it here would be a second, worse
-    // failure on top of the first, so it is left in place instead.
-    let rollbackFailed = false;
-    for (const [from, to] of moved.reverse()) {
-      try { fs.renameSync(to, from); } catch { rollbackFailed = true; /* best effort — report the original failure */ }
-    }
-    if (!rollbackFailed) {
-      try { fs.rmSync(target, { recursive: true, force: true }); } catch { /* best effort */ }
-    }
-    throw new Error(`could not turn ${wsDir} into a multi-base workspace: ${errorMessage(e)}`, { cause: e });
-  }
-}
-
-/**
- * Windows refuses to create a file or directory whose name (before any
- * extension) matches one of these legacy device names, case-insensitively —
- * a host like `con` or an alias of `nul` would otherwise slugify straight
- * into one of them. nit ships on Windows, so this has to be handled before a
- * slug reaches `fs.mkdirSync`. It deliberately lives in {@link fsSafeSlug}
- * (used only by {@link uniqueSlug}, the folder-creation path) rather than in
- * `SAFE_SLUG`/`isSafeSlug`: those guard *reading* a workspace, and a folder
- * named `nul` that already exists on disk (copied from another OS, or
- * created before this check existed) must still be readable as a base.
- */
-const WINDOWS_RESERVED_NAMES = new Set([
-  'con', 'prn', 'aux', 'nul',
-  'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
-  'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9',
-]);
-
-/**
- * Longest a generated slug may be. Bounds how deep a base's own files nest
- * (`<slug>/shots/<id>-after-mobile.png`) so a very long hostname or alias
- * can't push a real file past Windows' path-length limit. Same reasoning as
- * `WINDOWS_RESERVED_NAMES` above for why this lives here and not in
- * `SAFE_SLUG`: an existing, longer folder must remain readable.
- */
-const MAX_SLUG_LENGTH = 60;
-
-/**
- * Adjust an `isSafeSlug`-valid candidate so it is also safe to actually
- * create as a directory: bounded length, and never a bare Windows reserved
- * device name.
- * @param slug a slug that has already passed `isSafeSlug`
- */
-function fsSafeSlug(slug: string): string {
-  const bounded = slug.length > MAX_SLUG_LENGTH ? slug.slice(0, MAX_SLUG_LENGTH) : slug;
-  return WINDOWS_RESERVED_NAMES.has(bounded) ? `${bounded}-base` : bounded;
-}
-
-/** `staging`, or `staging-2` when that folder is already taken by another base. */
-function uniqueSlug(wsDir: string, desired: string): string {
-  const safe = fsSafeSlug(isSafeSlug(desired) ? desired : 'review');
-  if (!fs.existsSync(path.join(wsDir, safe))) return safe;
-  for (let n = 2; n < 1000; n++) {
-    const candidate = `${safe}-${n}`;
-    if (!fs.existsSync(path.join(wsDir, candidate))) return candidate;
-  }
-  throw new Error(`cannot find a free folder name for base "${desired}" in ${wsDir}`);
-}
-
-/** Stamp `lastSeenAt` on one base, leaving the rest of the index alone. */
-function touchBase(wsDir: string, bases: BaseRef[], slug: string): void {
-  const now = new Date().toISOString();
-  writeIndex(wsDir, bases.map(b => (b.slug === slug ? { ...b, lastSeenAt: now } : b)));
-}
-
-/**
- * Write bases.json. Only the fields the index owns are persisted — `dir` and
- * `file` are derived from the workspace path on every read, so a moved or
- * renamed workspace never carries stale absolute paths.
- *
- * Every caller today only ever passes slugs that are already safe — from
- * `uniqueSlug` (folder creation) or from an `openWorkspace` read (folder
- * names `baseDirNames` already filtered) — so this filter should never drop
- * anything in practice. It is kept anyway as the write-side half of the
- * defence-in-depth `isSafeSlug` guard inside `readIndex`: bases.json is
- * hand-editable and travels between machines, and an unsafe slug must never
- * round-trip through a write into something a later read could turn into a
- * path.
- * @param wsDir the workspace directory
- * @param bases every base the workspace should list
- */
-export function writeIndex(wsDir: string, bases: BaseRef[]): void {
-  const payload = {
-    version: 1,
-    bases: [...bases]
-      .filter(b => isSafeSlug(b.slug))
-      .sort((a, b) => a.slug.localeCompare(b.slug))
-      .map(b => ({
-        slug: b.slug,
-        url: b.url,
-        ...(b.createdAt ? { createdAt: b.createdAt } : {}),
-        ...(b.lastSeenAt ? { lastSeenAt: b.lastSeenAt } : {}),
-      })),
-  };
-  const file = path.join(wsDir, BASES_FILE);
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(payload, null, 2) + '\n', 'utf8');
-  fs.renameSync(tmp, file);
 }
