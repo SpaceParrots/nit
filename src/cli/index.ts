@@ -19,6 +19,7 @@ import { startMcpServer } from '../mcp/server.js';
 import { errorMessage } from '../util/error.js';
 import { readUserConfig } from '../util/user-config.js';
 import { pkgVersion } from '../util/version.js';
+import { ANNOTATION_STATUSES } from '../types.js';
 import type { AnnotationStatus, AnnotationType, SessionMode } from '../types.js';
 
 /** Options shared by every command that launches a browser. */
@@ -210,7 +211,7 @@ program.command('list')
   .option('-b, --base <name>', 'only this base — a slug, a url, or an unambiguous prefix')
   .option('--all', 'show annotated urls for every base')
   .addOption(new Option('--status <status>', 'only annotations with this status')
-    .choices(['open', 'fixed', 'wontfix', 'verified', 'reopened']))
+    .choices(ANNOTATION_STATUSES))
   .addOption(new Option('--type <type>', 'only this annotation type').choices(['change-request', 'comment']))
   .option('--route <path>', 'only annotations on this route (exact route or bare pathname)')
   .option('--author <name>', 'only annotations by this author')
@@ -256,7 +257,7 @@ program.command('clear')
   .option('--all', 'clear every base in the workspace')
   .option('--verified', 'only annotations ruled verified (same as --status verified)')
   .addOption(new Option('--status <status>', 'only annotations with this status')
-    .choices(['open', 'fixed', 'wontfix', 'verified', 'reopened']))
+    .choices(ANNOTATION_STATUSES))
   .option('-y, --yes', 'skip the confirmation prompt')
   .option('--dry-run', 'print what would be cleared and exit without writing')
   .addHelpText('after', `

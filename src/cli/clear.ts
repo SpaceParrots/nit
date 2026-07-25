@@ -33,16 +33,27 @@ export interface ClearOptions {
  * metadata always survive — this clears annotations, not environments.
  * @param dir the workspace directory (default `nit-review`)
  * @param opts see {@link ClearOptions}
- * @returns one result per base that was cleared
- * @throws when no scope (or both scopes) are given, when the base does not
- *   exist, or when a confirmation is needed but stdin is not a terminal
+ * @returns one result per target base. Three shapes share the return type:
+ *   the real, post-deletion counts on a normal run; the all-zero preview
+ *   when the scope matches nothing anywhere (nothing to confirm or write);
+ *   and the dry-run preview itself when `dryRun` is set. A prompt the human
+ *   declines (or a cancel via Ctrl-C) returns `[]` instead — nothing was
+ *   cleared and there is no per-base count to report.
+ * @throws when `--base` and `--all` are both given; when neither is given
+ *   (the message lists the workspace's actual bases); when `dir` holds no
+ *   review at all; when `base` names no base in the workspace (via
+ *   {@link resolveBase}); or when a confirmation is needed (no `--yes`, a
+ *   nonzero scope, not a dry run) but stdin is not a terminal to ask on
  */
 export async function runClear(
   dir = 'nit-review',
   { base, all, status, yes = false, dryRun = false, log = line => console.log(line) }: ClearOptions = {},
 ): Promise<ClearResult[]> {
-  const ws = openWorkspace(dir);
+  // Pure argument errors are checked before touching the filesystem: a typo'd
+  // `--base x --all` should fail instantly, not after a full workspace scan.
   if (base && all) throw new Error('pass either --base <name> or --all, not both');
+
+  const ws = openWorkspace(dir);
   if (!base && !all) {
     throw new Error('nit clear needs a scope — pass --base <name> or --all\n'
       + `  bases in ${displayPath(ws.dir)}: ${describeBases(ws)}\n`

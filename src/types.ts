@@ -12,10 +12,19 @@
 export type AnnotationType = 'change-request' | 'comment';
 
 /**
- * Lifecycle: `open` → (agent) `fixed` → (nit verify) `verified` | `reopened`.
- * `reopened` change-requests are actionable again.
+ * Every status an annotation can carry, lifecycle order: `open` → (agent)
+ * `fixed` → (nit verify) `verified` | `reopened`. `reopened` change-requests
+ * are actionable again.
+ *
+ * The single source of truth for the status enum — {@link AnnotationStatus}
+ * is derived from it, and the MCP schema (`src/mcp/schema.ts`) and the CLI's
+ * `--status` choices (`src/cli/index.ts`) import it too, so the five names
+ * live in exactly one place.
  */
-export type AnnotationStatus = 'open' | 'fixed' | 'wontfix' | 'verified' | 'reopened';
+export const ANNOTATION_STATUSES = ['open', 'fixed', 'wontfix', 'verified', 'reopened'] as const;
+
+/** One of {@link ANNOTATION_STATUSES}. */
+export type AnnotationStatus = typeof ANNOTATION_STATUSES[number];
 
 /** Which viewports an annotation applies to; replay filters by the active mode. */
 export type ViewportScope = 'general' | 'desktop' | 'mobile';

@@ -17,8 +17,10 @@
  * zod lives in the MCP layer only.
  */
 import { z } from 'zod';
+import { ANNOTATION_STATUSES } from '../types.js';
 
-export const STATUSES = ['open', 'fixed', 'wontfix', 'verified', 'reopened'] as const;
+/** The five annotation statuses, re-exported from `../types.js` — the single source of truth. */
+export const STATUSES = ANNOTATION_STATUSES;
 
 export const statusSchema = z.enum(STATUSES);
 export const annotationTypeSchema = z.enum(['change-request', 'comment']);
