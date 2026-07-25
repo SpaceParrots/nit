@@ -166,3 +166,17 @@ test('workspace: an exact slug beats a prefix of another slug', () => {
   const ws = openWorkspace(dir);
   assert.equal(resolveBase(ws, 'stage').slug, 'stage');
 });
+
+test('workspace: resolveBase reports ambiguity for two bases sharing an origin, but an exact slug still wins', () => {
+  const dir = tmpDir('nit-ws-');
+  writeReview(path.join(dir, 'admin-area'), 'https://shared.example.com/admin', ['a1']);
+  writeReview(path.join(dir, 'public-area'), 'https://shared.example.com/public', ['a1']);
+  const ws = openWorkspace(dir);
+  // exact slug still resolves despite the origin collision
+  assert.equal(resolveBase(ws, 'admin-area').slug, 'admin-area');
+  // a same-origin query that isn't an exact slug/url match is ambiguous, not silently the first one
+  assert.throws(
+    () => resolveBase(ws, 'https://shared.example.com/somewhere-else'),
+    /ambiguous.*admin-area.*public-area|ambiguous.*public-area.*admin-area/s,
+  );
+});

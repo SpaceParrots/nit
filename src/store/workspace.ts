@@ -213,8 +213,9 @@ function hasReviewUrl(v: unknown): v is { review: { url: string } } {
  * @param ws the workspace to search
  * @param nameOrUrl a slug, a full url, or an unambiguous slug prefix
  * @returns the matching base
- * @throws when nothing matches, or when a prefix matches several bases; the
- *   message always names the workspace's actual bases
+ * @throws when nothing matches, or when a same-origin match or a slug prefix
+ *   matches several bases; the message always names the workspace's actual
+ *   bases (or, for an ambiguous match, the candidates it matches)
  */
 export function resolveBase(ws: Workspace, nameOrUrl: string): BaseRef {
   const query = nameOrUrl.trim().toLowerCase();
@@ -229,8 +230,14 @@ export function resolveBase(ws: Workspace, nameOrUrl: string): BaseRef {
 
   const origin = safeOrigin(query);
   if (origin) {
-    const byOrigin = ws.bases.find(b => safeOrigin(b.url) === origin);
-    if (byOrigin) return byOrigin;
+    // .filter + length check, not .find: two bases can share an origin and
+    // differ only by path (e.g. /admin vs /public), and silently returning
+    // the first one would send the caller to the wrong base.
+    const byOrigin = ws.bases.filter(b => safeOrigin(b.url) === origin);
+    if (byOrigin.length === 1) return byOrigin[0];
+    if (byOrigin.length > 1) {
+      throw new Error(`base "${nameOrUrl}" is ambiguous — it matches ${byOrigin.map(b => b.slug).join(', ')}`);
+    }
   }
 
   const prefixed = ws.bases.filter(b => b.slug.toLowerCase().startsWith(query));
@@ -241,14 +248,24 @@ export function resolveBase(ws: Workspace, nameOrUrl: string): BaseRef {
   throw new Error(`no base "${nameOrUrl}" in ${ws.dir} — known bases: ${known}`);
 }
 
-/** The workspace's base slugs as a comma-separated list, for error messages. */
+/**
+ * The workspace's base slugs as a comma-separated list, for error messages.
+ * @param ws the workspace to describe
+ * @returns the slugs joined with `', '`, or `'(none yet)'` when there are none
+ */
 export function describeBases(ws: Workspace): string {
   return ws.bases.length ? ws.bases.map(b => b.slug).join(', ') : '(none yet)';
 }
 
 /**
  * A url's origin, or null when it is not an http(s) url. Used to treat
- * `https://x.test` and `https://x.test/checkout` as the same base.
+ * `https://x.test` and `https://x.test/checkout` as the same base. Rejecting
+ * every other scheme up front means a `javascript:` or `data:` value can
+ * never be coerced into matching a base by origin — the same http(s)-only
+ * rule `resolveAnnotationUrl` in `src/store/url.ts` applies when resolving an
+ * annotation's route.
+ * @param url the value to parse — a base's stored url, or a caller's query
+ * @returns the url's origin, or null when it is unparseable or not http(s)
  */
 export function safeOrigin(url: string): string | null {
   try {
