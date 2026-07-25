@@ -966,12 +966,26 @@ test('migrate: two bases keep independent id sequences', () => {
     assert.deepEqual(data.annotations.map(a => a.id), ['a1'], `${b.slug} starts at a1`);
   }
 });
+
+test('migrate: nit review exposes --base for naming a url\'s folder', () => {
+  const res = spawnSync(process.execPath, [CLI, 'review', '--help'], { encoding: 'utf8', timeout: 30000 });
+  assert.equal(res.status, 0);
+  const out = res.stdout + res.stderr;
+  assert.match(out, /-b, --base/, 'the flag is declared');
+  assert.match(out, /derived from the host/, 'and says what the default is');
+});
+```
+
+Add to the top of the file: `import { spawnSync } from 'node:child_process'; import { fileURLToPath } from 'node:url';` and
+
+```js
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli', 'index.js');
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npm run build && node --test test/cli-migrate.test.js`
-Expected: PASS already — these assert Task 5 behaviour through the store. That is intentional: they pin the contract `session.ts` is about to depend on. If they fail, Task 5 is wrong; fix that first.
+Expected: FAIL on the `--base` test — the flag does not exist yet. The two store-level tests pass already; they pin the Task 5 contract `session.ts` is about to depend on, so if either of *those* fails, Task 5 is wrong — fix that first.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -2273,65 +2287,70 @@ export async function startWorkspaceMcp(t) {
 }
 ```
 
-Append to `test/mcp.test.js`:
+Then create `test/unit-mcp-aggregate.test.js` — this task's own red-to-green cycle, covering the aggregation layer directly rather than through the tools Task 12 wires:
 
 ```js
-test('mcp: a workspace lists every base with qualified ids', async (t) => {
-  const { call } = await startWorkspaceMcp(t);
-  const res = payload(await call('nit_list_annotations', {}));
-  assert.equal(res.total, 3);
-  assert.equal(res.actionable, 1); // staging a1 only; a2 is a comment, localhost a1 verified
-  assert.deepEqual(res.bases.map(b => b.slug).sort(), ['localhost-4200', 'staging']);
-  const ids = res.annotations.map(a => a.id).sort();
-  assert.deepEqual(ids, ['localhost-4200:a1', 'staging:a1', 'staging:a2']);
-  const staging = res.annotations.find(a => a.id === 'staging:a1');
-  assert.equal(staging.base, 'staging');
-  assert.equal(staging.url, 'https://staging.example.com/checkout');
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { basesOf, baseSummaries, isMultiBase, findAnnotation, displayId } from '../dist/mcp/aggregate.js';
+import { makeWorkspaceDir, makeReviewDir, startMcpClient } from './helpers/mcp.js';
+
+test('aggregate: basesOf lists every base, or the one a filter names', () => {
+  const dir = makeWorkspaceDir();
+  assert.deepEqual(basesOf(dir).map(b => b.slug), ['localhost-4200', 'staging']);
+  assert.deepEqual(basesOf(dir, 'staging').map(b => b.slug), ['staging']);
+  assert.deepEqual(basesOf(dir, 'https://staging.example.com').map(b => b.slug), ['staging']);
+  assert.deepEqual(basesOf(dir, 'stag').map(b => b.slug), ['staging']);
+  assert.throws(() => basesOf(dir, 'nope'), /nope/);
 });
 
-test('mcp: the base filter narrows to one environment', async (t) => {
-  const { call } = await startWorkspaceMcp(t);
-  for (const base of ['staging', 'https://staging.example.com', 'stag']) {
-    const res = payload(await call('nit_list_annotations', { base }));
-    assert.deepEqual(res.annotations.map(a => a.id).sort(), ['staging:a1', 'staging:a2'], base);
-  }
+test('aggregate: isMultiBase distinguishes a workspace from a single review', () => {
+  assert.equal(isMultiBase(makeWorkspaceDir()), true);
+  assert.equal(isMultiBase(makeReviewDir()), false);
 });
 
-test('mcp: get and mark_fixed take qualified ids across bases', async (t) => {
-  const { call } = await startWorkspaceMcp(t);
-  const batch = payload(await call('nit_get_annotation', { id: ['staging:a1', 'localhost-4200:a1'] }));
-  assert.deepEqual(batch.annotations.map(a => a.id).sort(), ['localhost-4200:a1', 'staging:a1']);
-
-  const fixed = payload(await call('nit_mark_fixed', { id: 'staging:a1', reason: 'done' }));
-  assert.equal(fixed.annotation.id, 'staging:a1');
-  assert.equal(fixed.annotation.status, 'fixed');
-
-  const after = payload(await call('nit_list_annotations', { base: 'localhost-4200' }));
-  assert.equal(after.annotations[0].status, 'verified', 'the other base is untouched');
+test('aggregate: displayId qualifies only when there is more than one base', () => {
+  assert.equal(displayId(true, 'staging', 'a1'), 'staging:a1');
+  assert.equal(displayId(false, 'staging', 'a1'), 'a1');
 });
 
-test('mcp: an unknown qualified id is an error naming it', async (t) => {
-  const { call } = await startWorkspaceMcp(t);
-  const res = await call('nit_get_annotation', { id: 'staging:a99' });
-  assert.ok(res.isError);
-  assert.match(res.content[0].text, /staging:a99/);
+test('aggregate: baseSummaries counts each base', () => {
+  const summaries = baseSummaries(makeWorkspaceDir());
+  const staging = summaries.find(s => s.slug === 'staging');
+  assert.equal(staging.total, 2);
+  assert.equal(staging.actionable, 1);  // a1 is an open change-request; a2 is a comment
+  assert.equal(summaries.find(s => s.slug === 'localhost-4200').actionable, 0); // verified
 });
 
-test('mcp: a single-base review keeps plain ids and the review envelope', async (t) => {
-  const { call } = await startFixtureMcp(t);
-  const res = payload(await call('nit_list_annotations', {}));
-  assert.deepEqual(res.annotations.map(a => a.id), ['a1', 'a2']);
-  assert.ok(res.review, 'single-base output is unchanged');
-  assert.equal(payload(await call('nit_mark_fixed', { id: 'a1' })).annotation.id, 'a1');
+test('aggregate: findAnnotation resolves qualified ids to the owning base', () => {
+  const dir = makeWorkspaceDir();
+  const hit = findAnnotation(dir, 'staging:a1');
+  assert.equal(hit.base.slug, 'staging');
+  assert.equal(hit.annotation.id, 'a1', 'the id on disk is never rewritten');
+  assert.equal(findAnnotation(dir, 'localhost-4200:a1').base.slug, 'localhost-4200');
+  assert.equal(findAnnotation(dir, 'staging:a99'), null);
+  assert.equal(findAnnotation(dir, 'nosuchbase:a1'), null);
+});
+
+test('aggregate: a bare id still resolves, so merged ids work on a single base', () => {
+  const dir = makeReviewDir();
+  assert.equal(findAnnotation(dir, 'a1').annotation.id, 'a1');
+  assert.equal(findAnnotation(dir, 'a99'), null);
+});
+
+test('aggregate: the MCP server starts on a workspace with no root annotations.json', async (t) => {
+  const client = await startMcpClient(makeWorkspaceDir());
+  t.after(() => client.close());
+  const { tools } = await client.listTools();
+  assert.ok(tools.some(x => x.name === 'nit_list_annotations'), 'the server came up and registered its tools');
 });
 ```
 
-Import `startWorkspaceMcp` in `test/mcp.test.js`.
-
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run build && node --test test/mcp.test.js`
-Expected: FAIL — `nit mcp <workspace>` throws "no annotations.json in …" at startup.
+Run: `npm run build && node --test test/unit-mcp-aggregate.test.js`
+Expected: FAIL — cannot find module `../dist/mcp/aggregate.js`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -2459,13 +2478,13 @@ and extend `INSTRUCTIONS` with:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npm run build && node --test test/mcp.test.js`
-Expected: the first four new tests still fail (tools.ts is not wired yet) but the server starts. Wire the tools in Task 12; re-run there. If the *existing* single-base tests fail here, fix that before moving on.
+Run: `npm run build && node --test test/unit-mcp-aggregate.test.js && node --test test/mcp.test.js`
+Expected: PASS both — the new aggregate tests, and every pre-existing single-base MCP test unchanged. This task commits green; the tool wiring the workspace needs lands in Task 12.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/mcp/aggregate.ts src/mcp/server.ts test/helpers/mcp.js
+git add src/mcp/aggregate.ts src/mcp/server.ts test/helpers/mcp.js test/unit-mcp-aggregate.test.js
 git commit -m "feat(mcp): workspace-aware base lookup and qualified id resolution"
 ```
 
@@ -2476,20 +2495,71 @@ git commit -m "feat(mcp): workspace-aware base lookup and qualified id resolutio
 **Files:**
 - Modify: `src/mcp/tools.ts`
 - Modify: `src/mcp/schema.ts` (add `base` to the list shape)
-- Test: `test/mcp.test.js` (the tests written in Task 11)
+- Test: `test/mcp.test.js`
 
 **Interfaces:**
-- Consumes: everything Task 11 produced.
+- Consumes: everything Task 11 produced (`basesOf`, `baseSummaries`, `isMultiBase`, `findAnnotation`, `displayId`, `Located`, and the `makeWorkspaceDir` / `startWorkspaceMcp` helpers).
 - Produces: no new exports; `nit_list_annotations` rows gain `base` and `url`.
 
 - [ ] **Step 1: Write the failing test**
 
-Already written in Task 11. Confirm the four workspace tests fail for the right reason.
+Append to `test/mcp.test.js`, importing `startWorkspaceMcp` from `./helpers/mcp.js` alongside the existing helpers:
+
+```js
+test('mcp: a workspace lists every base with qualified ids', async (t) => {
+  const { call } = await startWorkspaceMcp(t);
+  const res = payload(await call('nit_list_annotations', {}));
+  assert.equal(res.total, 3);
+  assert.equal(res.actionable, 1); // staging a1 only; a2 is a comment, localhost a1 verified
+  assert.deepEqual(res.bases.map(b => b.slug).sort(), ['localhost-4200', 'staging']);
+  const ids = res.annotations.map(a => a.id).sort();
+  assert.deepEqual(ids, ['localhost-4200:a1', 'staging:a1', 'staging:a2']);
+  const staging = res.annotations.find(a => a.id === 'staging:a1');
+  assert.equal(staging.base, 'staging');
+  assert.equal(staging.url, 'https://staging.example.com/checkout');
+});
+
+test('mcp: the base filter narrows to one environment', async (t) => {
+  const { call } = await startWorkspaceMcp(t);
+  for (const base of ['staging', 'https://staging.example.com', 'stag']) {
+    const res = payload(await call('nit_list_annotations', { base }));
+    assert.deepEqual(res.annotations.map(a => a.id).sort(), ['staging:a1', 'staging:a2'], base);
+  }
+});
+
+test('mcp: get and mark_fixed take qualified ids across bases', async (t) => {
+  const { call } = await startWorkspaceMcp(t);
+  const batch = payload(await call('nit_get_annotation', { id: ['staging:a1', 'localhost-4200:a1'] }));
+  assert.deepEqual(batch.annotations.map(a => a.id).sort(), ['localhost-4200:a1', 'staging:a1']);
+
+  const fixed = payload(await call('nit_mark_fixed', { id: 'staging:a1', reason: 'done' }));
+  assert.equal(fixed.annotation.id, 'staging:a1');
+  assert.equal(fixed.annotation.status, 'fixed');
+
+  const after = payload(await call('nit_list_annotations', { base: 'localhost-4200' }));
+  assert.equal(after.annotations[0].status, 'verified', 'the other base is untouched');
+});
+
+test('mcp: an unknown qualified id is an error naming it', async (t) => {
+  const { call } = await startWorkspaceMcp(t);
+  const res = await call('nit_get_annotation', { id: 'staging:a99' });
+  assert.ok(res.isError);
+  assert.match(res.content[0].text, /staging:a99/);
+});
+
+test('mcp: a single-base review keeps plain ids and the review envelope', async (t) => {
+  const { call } = await startFixtureMcp(t);
+  const res = payload(await call('nit_list_annotations', {}));
+  assert.deepEqual(res.annotations.map(a => a.id), ['a1', 'a2']);
+  assert.ok(res.review, 'single-base output is unchanged');
+  assert.equal(payload(await call('nit_mark_fixed', { id: 'a1' })).annotation.id, 'a1');
+});
+```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npm run build && node --test test/mcp.test.js`
-Expected: FAIL on `res.bases` being undefined and ids coming back unqualified.
+Expected: FAIL on `res.bases` being undefined and ids coming back unqualified. The single-base test at the end already passes — it pins the back-compat the wiring must not break.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -3140,7 +3210,7 @@ git commit -m "feat(cli): doctor reports the review folder layout"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `test/cli-help.test.js`:
+Two parts. First append the CLI-help regression to `test/cli-help.test.js`:
 
 ```js
 test('cli: list and clear appear in help with their flags', () => {
@@ -3162,10 +3232,68 @@ test('cli: list and clear appear in help with their flags', () => {
 });
 ```
 
+Then create `test/docs.test.js` — this task's own red-to-green cycle. Docs that silently fall behind the CLI are the failure mode here, so the test reads the shipped markdown and checks it documents what actually exists:
+
+```js
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// The docs are part of the published package; these assert they describe the
+// CLI that actually ships, so a new command cannot land undocumented.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const read = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+
+test('docs: the README command table lists every command the CLI exposes', () => {
+  const readme = read('README.md');
+  for (const cmd of ['nit list', 'nit clear']) {
+    assert.ok(readme.includes(cmd), `README documents ${cmd}`);
+  }
+  assert.match(readme, /bases\.json/, 'README shows the workspace layout');
+});
+
+test('docs: the command reference has a section per new command', () => {
+  const commands = read('docs/wiki/commands.md');
+  assert.match(commands, /^## nit list/m);
+  assert.match(commands, /^## nit clear/m);
+  for (const flag of ['--base', '--all', '--verified', '--dry-run', '--json', '--actionable']) {
+    assert.ok(commands.includes(flag), `commands.md documents ${flag}`);
+  }
+  assert.ok(commands.includes('-v, --version'), 'commands.md documents -v');
+});
+
+test('docs: mcp.md explains bases, qualified ids and the clear tool', () => {
+  const mcp = read('docs/wiki/mcp.md');
+  assert.match(mcp, /nit_clear_verified/);
+  assert.match(mcp, /staging:a1|<base>:<id>/, 'qualified id format is shown');
+  assert.match(mcp, /nit:\/\/base\//, 'base-scoped resource uris are documented');
+});
+
+test('docs: annotations.md states the schema is unchanged and shows bases.json', () => {
+  const annotations = read('docs/wiki/annotations.md');
+  assert.match(annotations, /bases\.json/);
+});
+
+test('docs: the source map covers every module in src/', () => {
+  const srcReadme = read('src/README.md');
+  const modules = [];
+  for (const dir of ['cli', 'store', 'mcp', 'util', 'overlay']) {
+    for (const name of fs.readdirSync(path.join(ROOT, 'src', dir))) {
+      if (name.endsWith('.ts')) modules.push(`${dir}/${name}`);
+    }
+  }
+  const missing = modules.filter(m => !srcReadme.includes(path.basename(m)));
+  assert.deepEqual(missing, [], `src/README.md is missing: ${missing.join(', ')}`);
+});
+```
+
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npm run build && node --test test/cli-help.test.js`
-Expected: PASS if Tasks 8-9 wired the help text correctly; FAIL names the missing flag. Fix `src/cli/index.ts` if it fails — the docs must describe what the CLI actually does.
+Run: `npm run build && node --test test/docs.test.js test/cli-help.test.js`
+Expected: `docs.test.js` FAILS on every assertion — none of the documentation is written yet, and `src/README.md` is missing ten modules that already exist. `cli-help.test.js` should pass if Tasks 8-9 wired the help text; if it does not, fix `src/cli/index.ts` first — the docs must describe what the CLI actually does.
 
 - [ ] **Step 3: Write the documentation**
 
@@ -3210,8 +3338,8 @@ Extend the "Agent handoff" paragraph with one sentence: one MCP server covers ev
 
 - [ ] **Step 4: Verify the docs match reality**
 
-Run: `npm run build && node --test test/cli-help.test.js`
-Then check every command example in the new docs actually runs:
+Run: `npm run build && node --test test/docs.test.js test/cli-help.test.js`
+Expected: PASS. Then check every command example in the new docs actually runs:
 
 ```bash
 node dist/cli/index.js list --help
@@ -3222,7 +3350,7 @@ node dist/cli/index.js list nit-review
 - [ ] **Step 5: Commit**
 
 ```bash
-git add README.md docs/ src/README.md test/cli-help.test.js
+git add README.md docs/ src/README.md test/cli-help.test.js test/docs.test.js
 git commit -m "docs: multi-base workspaces, nit list and nit clear"
 ```
 
