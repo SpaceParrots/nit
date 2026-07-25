@@ -9,6 +9,7 @@ import { runSetup, confirmReviewDir } from './setup.js';
 import { runExport } from './export.js';
 import { runImport } from './import.js';
 import { runStatus, displayPath } from './status.js';
+import { runList } from './list.js';
 import { resolveFeedbackSource } from './source.js';
 import { isActionable } from '../store/stats.js';
 import { startSession } from '../browser/session.js';
@@ -17,7 +18,7 @@ import { startMcpServer } from '../mcp/server.js';
 import { errorMessage } from '../util/error.js';
 import { readUserConfig } from '../util/user-config.js';
 import { pkgVersion } from '../util/version.js';
-import type { SessionMode } from '../types.js';
+import type { AnnotationStatus, AnnotationType, SessionMode } from '../types.js';
 
 /** Options shared by every command that launches a browser. */
 interface BrowserCmdOptions {
@@ -194,6 +195,48 @@ program.command('status')
   .option('--json', 'print the stats as JSON instead of a report')
   .action((dir: string, opts: { json?: boolean }) => {
     runStatus(dir, { json: Boolean(opts.json) });
+  });
+
+program.command('list')
+  .aliases(['ls'])
+  .summary('list the base URLs in a review, or the annotated urls in one')
+  .description('See what a review workspace holds. With no options it lists every base URL\n'
+    + '(local, staging, production …) with its counts; with --base it lists the\n'
+    + 'annotated urls inside one of them.\n\n'
+    + 'Nothing is written — safe to run against a review someone else is editing.\n'
+    + 'Every filter applies to both shapes, and --json feeds the same numbers to a script.')
+  .argument('[dir]', 'review workspace (or an annotations.json path)', 'nit-review')
+  .option('-b, --base <name>', 'only this base — a slug, a url, or an unambiguous prefix')
+  .option('--all', 'show annotated urls for every base')
+  .addOption(new Option('--status <status>', 'only annotations with this status')
+    .choices(['open', 'fixed', 'wontfix', 'verified', 'reopened']))
+  .addOption(new Option('--type <type>', 'only this annotation type').choices(['change-request', 'comment']))
+  .option('--route <path>', 'only annotations on this route (exact route or bare pathname)')
+  .option('--author <name>', 'only annotations by this author')
+  .option('--actionable', 'only open/reopened change-requests')
+  .option('--json', 'print the listing as JSON instead of a report')
+  .addHelpText('after', `
+Examples:
+  $ nit list                                  every base URL with its counts
+  $ nit list --base staging                   the annotated urls on staging
+  $ nit list --all --actionable               everything still waiting, everywhere
+  $ nit list --base staging --status verified what is already ruled on staging`)
+  .action((dir: string, opts: {
+    base?: string; all?: boolean; status?: AnnotationStatus; type?: AnnotationType;
+    route?: string; author?: string; actionable?: boolean; json?: boolean;
+  }) => {
+    runList(dir, {
+      base: opts.base,
+      all: opts.all,
+      json: opts.json,
+      filter: {
+        status: opts.status,
+        type: opts.type,
+        route: opts.route,
+        author: opts.author,
+        actionable: opts.actionable,
+      },
+    });
   });
 
 program.command('export')
