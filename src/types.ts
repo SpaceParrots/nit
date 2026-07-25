@@ -277,6 +277,38 @@ export interface OverlayApi {
   setUiHidden: (hidden: boolean) => void;
 }
 
+// ---------------------------------------------------------------------------
+// Workspace: a review folder holding one review folder per base URL.
+// ---------------------------------------------------------------------------
+
+/** Where a workspace's annotations live: nowhere, one flat review, or per-base subfolders. */
+export type WorkspaceLayout = 'empty' | 'flat' | 'multi';
+
+/** One base URL inside a workspace, and the review folder that holds it. */
+export interface BaseRef {
+  /** folder name inside the workspace; also what `--base` and qualified ids name */
+  slug: string;
+  /** the site under review for this base, from its own `review.url` */
+  url: string;
+  /** absolute path of the base's review folder */
+  dir: string;
+  /** absolute path of its annotations.json */
+  file: string;
+  /** ISO timestamp the base was registered (from bases.json, when known) */
+  createdAt?: string;
+  /** ISO timestamp of the last session against this base (from bases.json) */
+  lastSeenAt?: string;
+}
+
+/** A review folder read as a workspace. */
+export interface Workspace {
+  /** absolute path of the workspace directory */
+  dir: string;
+  layout: WorkspaceLayout;
+  /** every base found, slug-sorted; empty for a fresh folder */
+  bases: BaseRef[];
+}
+
 declare global {
   interface Window {
     /** session config injected before the overlay bundle (inject.ts) */
