@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { baseSlug, qualifyId, parseQualifiedId, isSafeSlug, openWorkspace, readIndex } from '../dist/store/workspace.js';
+import { baseSlug, qualifyId, parseQualifiedId, isSafeSlug, openWorkspace, readIndex, resolveBase } from '../dist/store/workspace.js';
 import { tmpDir } from './helpers/tmp.js';
 
 test('workspace: baseSlug derives host + non-default port', () => {
@@ -130,4 +130,39 @@ test('workspace: bases.json content never reaches path.join — paths come only 
   // see the 'readIndex drops an unsafe slug' test above for that guard itself.
   assert.deepEqual(ws.bases.map(b => b.slug), ['staging']);
   for (const b of ws.bases) assert.ok(b.dir.startsWith(dir), 'every base stays inside the workspace');
+});
+
+/** A three-base workspace, for resolution tests. */
+function threeBaseWorkspace() {
+  const dir = tmpDir('nit-ws-');
+  writeReview(path.join(dir, 'staging'), 'https://staging.example.com', ['a1']);
+  writeReview(path.join(dir, 'localhost-4200'), 'http://localhost:4200', ['a1']);
+  writeReview(path.join(dir, 'stage-two'), 'https://stage-two.example.com', ['a1']);
+  return openWorkspace(dir);
+}
+
+test('workspace: resolveBase matches slug, url, origin and unique prefix', () => {
+  const ws = threeBaseWorkspace();
+  assert.equal(resolveBase(ws, 'staging').slug, 'staging');
+  assert.equal(resolveBase(ws, 'STAGING').slug, 'staging');                          // case-insensitive
+  assert.equal(resolveBase(ws, 'https://staging.example.com').slug, 'staging');      // exact url
+  assert.equal(resolveBase(ws, 'https://staging.example.com/checkout').slug, 'staging'); // same origin
+  assert.equal(resolveBase(ws, 'localhost').slug, 'localhost-4200');                 // unique prefix
+});
+
+test('workspace: resolveBase reports ambiguity and misses with the candidates', () => {
+  const ws = threeBaseWorkspace();
+  // "stag" prefixes both staging and stage-two
+  assert.throws(() => resolveBase(ws, 'stag'), /ambiguous.*stage-two.*staging|ambiguous.*staging.*stage-two/s);
+  assert.throws(() => resolveBase(ws, 'prod'), /no base.*prod/s);
+  assert.throws(() => resolveBase(ws, 'prod'), /localhost-4200/s); // names what does exist
+  assert.throws(() => resolveBase(ws, '   '), /no base/s);
+});
+
+test('workspace: an exact slug beats a prefix of another slug', () => {
+  const dir = tmpDir('nit-ws-');
+  writeReview(path.join(dir, 'stage'), 'https://stage.example.com', ['a1']);
+  writeReview(path.join(dir, 'staging'), 'https://staging.example.com', ['a1']);
+  const ws = openWorkspace(dir);
+  assert.equal(resolveBase(ws, 'stage').slug, 'stage');
 });

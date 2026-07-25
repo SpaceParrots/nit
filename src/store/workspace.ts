@@ -202,3 +202,60 @@ function hasReviewUrl(v: unknown): v is { review: { url: string } } {
   if (!review || typeof review !== 'object') return false;
   return typeof (review as Record<string, unknown>).url === 'string';
 }
+
+/**
+ * Find the base a `--base` argument (or an MCP `base` parameter) names.
+ *
+ * Matching runs most-specific first — exact slug, exact url, same origin, then a
+ * unique case-insensitive slug prefix — so an exact name always beats a prefix
+ * of a longer one. One function serves the CLI and the MCP layer alike, so the
+ * two can never drift apart.
+ * @param ws the workspace to search
+ * @param nameOrUrl a slug, a full url, or an unambiguous slug prefix
+ * @returns the matching base
+ * @throws when nothing matches, or when a prefix matches several bases; the
+ *   message always names the workspace's actual bases
+ */
+export function resolveBase(ws: Workspace, nameOrUrl: string): BaseRef {
+  const query = nameOrUrl.trim().toLowerCase();
+  const known = describeBases(ws);
+  if (!query) throw new Error(`no base given — known bases: ${known}`);
+
+  const bySlug = ws.bases.find(b => b.slug.toLowerCase() === query);
+  if (bySlug) return bySlug;
+
+  const byUrl = ws.bases.find(b => b.url.toLowerCase() === query);
+  if (byUrl) return byUrl;
+
+  const origin = safeOrigin(query);
+  if (origin) {
+    const byOrigin = ws.bases.find(b => safeOrigin(b.url) === origin);
+    if (byOrigin) return byOrigin;
+  }
+
+  const prefixed = ws.bases.filter(b => b.slug.toLowerCase().startsWith(query));
+  if (prefixed.length === 1) return prefixed[0];
+  if (prefixed.length > 1) {
+    throw new Error(`base "${nameOrUrl}" is ambiguous — it matches ${prefixed.map(b => b.slug).join(', ')}`);
+  }
+  throw new Error(`no base "${nameOrUrl}" in ${ws.dir} — known bases: ${known}`);
+}
+
+/** The workspace's base slugs as a comma-separated list, for error messages. */
+export function describeBases(ws: Workspace): string {
+  return ws.bases.length ? ws.bases.map(b => b.slug).join(', ') : '(none yet)';
+}
+
+/**
+ * A url's origin, or null when it is not an http(s) url. Used to treat
+ * `https://x.test` and `https://x.test/checkout` as the same base.
+ */
+export function safeOrigin(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
