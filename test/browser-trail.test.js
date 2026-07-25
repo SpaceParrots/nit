@@ -29,7 +29,7 @@ test('nit review — click trail', async t => {
     await page.locator('.nit-save').click();
     return waitFor(() => {
       try {
-        const d = readAnnotations(S.out);
+        const d = readAnnotations(S.dir);
         return d.annotations.find(x => x.comment === comment) ?? null;
       } catch { return null; } // annotations.json not written yet
     }, { message: `annotation "${comment}" written` });
@@ -72,7 +72,7 @@ test('nit review — click trail', async t => {
     await page.locator('.nit-pop-comment').fill('about page annotation');
     await page.locator('.nit-save').click();
     const a = await waitFor(() => {
-      const d = readAnnotations(S.out);
+      const d = readAnnotations(S.dir);
       return d.annotations.find(x => x.comment === 'about page annotation') ?? null;
     }, { message: 'about annotation written' });
 

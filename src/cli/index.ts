@@ -61,7 +61,7 @@ Examples:
   $ nit view feedback-ann.json --url https://staging.example.com
   $ nit export                                   pack nit-review/ into a shareable zip
   $ nit import 2026-07-21-example.com-ann.nit.zip
-  $ nit merge nit-review/annotations.json imported/annotations.json --out review-merged`);
+  $ nit merge nit-review/staging-example-com/annotations.json imported/annotations.json --out review-merged`);
 
 // -V is declared hidden above so it stays accepted for scripts written against
 // commander's default flag; commander only auto-handles the flag it owns.
@@ -91,7 +91,11 @@ withBrowserOptions(
       + 'switches desktop/mobile, sorts and groups them by page, time or state, jumps to\n'
       + 'the page an annotation was found on, records an issue reference, edits comment\n'
       + 'texts, deletes items, and finishes the review.\n\n'
-      + 'Writes <out>/annotations.json, review.md, fix-annotations.md and shots/*.png.')
+      + 'Writes <out>/<base>/annotations.json, review.md, fix-annotations.md and shots/*.png\n'
+      + '— <base> is a short name for this url\'s folder inside <out>, derived from its\n'
+      + 'host by default (override with --base). A pre-existing single-url review at\n'
+      + '<out>/annotations.json is migrated into a base folder automatically the first\n'
+      + 'time a second, different url is reviewed into the same <out>.')
     .argument('<url>', 'page to open (https:// is assumed when no scheme is given)')
     .option('-o, --out <dir>', 'output directory', 'nit-review')
     .option('-a, --author <name>', 'author recorded on each annotation (default: from nit setup, else your OS user name)')

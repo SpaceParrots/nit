@@ -42,9 +42,11 @@ test('capture context', async t => {
   const page = S.session.page;
   // annotations.json doesn't exist until the first save flushes it — swallow
   // the pre-existence ENOENT so waitFor keeps polling instead of throwing.
+  // Read from S.dir (the base folder the session actually writes into, e.g.
+  // out/<slug>), not out itself — a fresh review is never flat.
   const readFile = () => {
     try {
-      return JSON.parse(fs.readFileSync(path.join(out, 'annotations.json'), 'utf8'));
+      return JSON.parse(fs.readFileSync(path.join(S.dir, 'annotations.json'), 'utf8'));
     } catch {
       return null;
     }

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { startFixtureServer } from './helpers/server.js';
 import { startTestSession, waitFor, readAnnotations } from './helpers/session.js';
 import { pngSize, SHOT_PADDING, MIN_SHOT_W, MIN_SHOT_H } from '../dist/capture/screenshot.js';
+import { baseSlug } from '../dist/store/workspace.js';
 
 test('nit review — capture flow', async t => {
   const server = await startFixtureServer();
@@ -37,7 +38,7 @@ test('nit review — capture flow', async t => {
 
     const data = await waitFor(() => {
       try {
-        const d = readAnnotations(S.out);
+        const d = readAnnotations(S.dir);
         return d.annotations.length >= 1 ? d : null;
       } catch { return null; }
     }, { message: 'annotations.json written' });
@@ -64,6 +65,17 @@ test('nit review — capture flow', async t => {
     assert.ok(a.createdAt);
   });
 
+  await t.test('m2: review writes into the url\'s base subfolder, not the workspace root', () => {
+    // Pins the layout `nit review` now writes: <out>/<slug>/annotations.json,
+    // never <out>/annotations.json — a regression back to the old flat path
+    // would otherwise leave every other assertion here silently passing,
+    // since they all already ask the session for its real S.dir.
+    const slug = baseSlug(server.url + '/');
+    assert.equal(S.dir, path.join(S.out, slug));
+    assert.ok(fs.existsSync(path.join(S.out, slug, 'annotations.json')), 'annotations.json is under the base subfolder');
+    assert.ok(!fs.existsSync(path.join(S.out, 'annotations.json')), 'nothing written at the workspace root');
+  });
+
   await t.test('m2: type + viewport-scope toggles are recorded', async () => {
     const box = await page.locator('#hero-title').boundingBox();
     await page.keyboard.press('Alt');
@@ -75,7 +87,7 @@ test('nit review — capture flow', async t => {
     await page.locator('.nit-save').click();
 
     const data = await waitFor(() => {
-      const d = readAnnotations(S.out);
+      const d = readAnnotations(S.dir);
       return d.annotations.some(x => x.id === 'a2') ? d : null;
     }, { message: 'second annotation' });
     const a = data.annotations.find(x => x.id === 'a2');
@@ -85,7 +97,7 @@ test('nit review — capture flow', async t => {
   });
 
   await t.test('security: bridge rejects calls from an untrusted iframe', async () => {
-    const before = readAnnotations(S.out).annotations.length;
+    const before = readAnnotations(S.dir).annotations.length;
     // A third-party iframe on the reviewed page can see the __nit* bindings, but
     // its calls must be rejected — it can't delete or forge annotations.
     const result = await page.evaluate(async () => {
@@ -106,7 +118,7 @@ test('nit review — capture flow', async t => {
     // Bindings exist in the frame but reject; a1 is still present, nothing forged.
     assert.equal(result.del.ok, false);
     assert.equal(result.save.ok, false);
-    const after = readAnnotations(S.out).annotations;
+    const after = readAnnotations(S.dir).annotations;
     assert.equal(after.length, before, 'no annotation added or removed by the iframe');
     assert.ok(after.some(x => x.id === 'a1'), 'a1 not deleted by the iframe');
   });
@@ -119,10 +131,10 @@ test('nit review — capture flow', async t => {
   });
 
   await t.test('m4: screenshot is a non-empty PNG with minimum context size', async () => {
-    const data = readAnnotations(S.out);
+    const data = readAnnotations(S.dir);
     const a = data.annotations.find(x => x.id === 'a1');
     assert.ok(a.screenshot, 'annotation has a screenshot');
-    const buf = fs.readFileSync(path.join(S.out, a.screenshot));
+    const buf = fs.readFileSync(path.join(S.dir, a.screenshot));
     assert.ok(buf.length > 200, 'png is not empty');
     const size = pngSize(buf);
     const r = a.target.rect;
@@ -172,24 +184,24 @@ test('nit review — capture flow', async t => {
   });
 
   await t.test('m9: delete removes annotation + shot, finish flushes and closes', async () => {
-    const before = readAnnotations(S.out);
+    const before = readAnnotations(S.dir);
     const doomed = before.annotations.find(a => a.id === 'a3');
     assert.ok(doomed, 'a3 exists before delete');
-    const shotFile = doomed.screenshot ? path.join(S.out, doomed.screenshot) : null;
+    const shotFile = doomed.screenshot ? path.join(S.dir, doomed.screenshot) : null;
 
     const res = await page.evaluate(() => window.__nitDelete('a3'));
     assert.ok(res.ok);
     await waitFor(() => {
-      const d = readAnnotations(S.out);
+      const d = readAnnotations(S.dir);
       return d.annotations.every(a => a.id !== 'a3') ? true : null;
     }, { message: 'annotation removed from file' });
     if (shotFile) assert.ok(!fs.existsSync(shotFile), 'screenshot file deleted');
 
     await page.evaluate(() => window.__nitFinish());
     await S.session.done;
-    assert.ok(fs.existsSync(path.join(S.out, 'review.md')), 'review.md flushed');
-    assert.ok(fs.existsSync(path.join(S.out, 'fix-annotations.md')), 'fix-annotations.md flushed');
-    const finalData = readAnnotations(S.out);
+    assert.ok(fs.existsSync(path.join(S.dir, 'review.md')), 'review.md flushed');
+    assert.ok(fs.existsSync(path.join(S.dir, 'fix-annotations.md')), 'fix-annotations.md flushed');
+    const finalData = readAnnotations(S.dir);
     assert.equal(finalData.annotations.length, 2);
   });
 });
