@@ -60,7 +60,9 @@ export function ensureBase(dir: string, url: string, alias?: string): BaseRef {
   // Already known? Match on origin so /checkout and /?x=1 do not fork a base.
   const existing = ws.bases.find(b => safeOrigin(b.url) === origin);
   if (existing) {
-    if (ws.layout === 'multi') touchBase(abs, ws.bases, existing.slug);
+    // touchBase already wrote this lastSeenAt to bases.json — return it here too,
+    // or the caller's BaseRef would read one review-session stale.
+    if (ws.layout === 'multi') return { ...existing, lastSeenAt: touchBase(abs, ws.bases, existing.slug) };
     return existing;
   }
 
@@ -205,10 +207,18 @@ function uniqueSlug(wsDir: string, desired: string): string {
   throw new Error(`cannot find a free folder name for base "${desired}" in ${wsDir}`);
 }
 
-/** Stamp `lastSeenAt` on one base, leaving the rest of the index alone. */
-function touchBase(wsDir: string, bases: BaseRef[], slug: string): void {
+/**
+ * Stamp `lastSeenAt` on one base, leaving the rest of the index alone.
+ * @param wsDir the workspace directory
+ * @param bases every base currently in the index
+ * @param slug the base to stamp
+ * @returns the ISO timestamp that was written, so the caller can hand back a
+ *   `BaseRef` that matches what is now on disk instead of a stale copy
+ */
+function touchBase(wsDir: string, bases: BaseRef[], slug: string): string {
   const now = new Date().toISOString();
   writeIndex(wsDir, bases.map(b => (b.slug === slug ? { ...b, lastSeenAt: now } : b)));
+  return now;
 }
 
 /**

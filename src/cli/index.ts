@@ -29,6 +29,8 @@ interface BrowserCmdOptions {
   url?: string;
   /** review: output directory */
   out?: string;
+  /** review: short name for this url's base folder inside the workspace */
+  base?: string;
   /** review: author recorded on each annotation */
   author?: string;
 }
@@ -92,7 +94,8 @@ withBrowserOptions(
       + 'Writes <out>/annotations.json, review.md, fix-annotations.md and shots/*.png.')
     .argument('<url>', 'page to open (https:// is assumed when no scheme is given)')
     .option('-o, --out <dir>', 'output directory', 'nit-review')
-    .option('-a, --author <name>', 'author recorded on each annotation (default: from nit setup, else your OS user name)'))
+    .option('-a, --author <name>', 'author recorded on each annotation (default: from nit setup, else your OS user name)')
+    .option('-b, --base <name>', 'short name for this url\'s folder inside the review workspace (default: derived from the host)'))
   .action(async (url: string, opts: BrowserCmdOptions, cmd: Command) => {
     // First review in a project: confirm the default output dir is intended here.
     const out = await confirmReviewDir(opts.out ?? 'nit-review', {
@@ -282,6 +285,7 @@ async function startBrowser(
     url: url ? normalizeUrl(url) : opts.url ? normalizeUrl(opts.url) : undefined,
     reviewFile: file,
     out: opts.out,
+    base: opts.base,
     author: opts.author ?? readUserConfig().author,
     viewportMode: opts.mobile || opts.device === 'mobile' ? 'mobile' : 'desktop',
     headless: Boolean(opts.headless),

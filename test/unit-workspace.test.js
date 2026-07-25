@@ -399,6 +399,7 @@ test('workspace: touchBase advances lastSeenAt on a re-reviewed base while creat
   const after = JSON.parse(fs.readFileSync(path.join(dir, 'bases.json'), 'utf8')).bases[0];
   assert.equal(after.createdAt, before.createdAt, 'createdAt is untouched');
   assert.notEqual(after.lastSeenAt, before.lastSeenAt, 'lastSeenAt advances on disk');
+  assert.equal(again.lastSeenAt, after.lastSeenAt, 'the returned BaseRef matches what was just persisted, not the pre-touch copy');
 });
 
 test('workspace: a failed rollback produces a different, more specific error than a clean rollback, naming the stranded folder', () => {
