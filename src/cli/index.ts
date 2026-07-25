@@ -10,6 +10,7 @@ import { runExport } from './export.js';
 import { runImport } from './import.js';
 import { runStatus, displayPath } from './status.js';
 import { runList } from './list.js';
+import { runClear } from './clear.js';
 import { resolveFeedbackSource } from './source.js';
 import { isActionable } from '../store/stats.js';
 import { startSession } from '../browser/session.js';
@@ -236,6 +237,45 @@ Examples:
         author: opts.author,
         actionable: opts.actionable,
       },
+    });
+  });
+
+program.command('clear')
+  .aliases(['rm'])
+  .summary('remove annotations from a base, or from every base')
+  .description('Remove annotations once they have served their purpose — typically the ones\n'
+    + 'already ruled Verified after a fix round.\n\n'
+    + 'A scope is always required: --base <name> for one environment, --all for every\n'
+    + 'one. Without --status the whole scope is emptied; --verified (or --status) narrows\n'
+    + 'it. The base folder and its review metadata always survive, so the next review of\n'
+    + 'that url keeps its review id.\n\n'
+    + 'Screenshots of removed annotations are deleted too. Use --dry-run to see what\n'
+    + 'would go, and --yes to skip the confirmation in scripts.')
+  .argument('[dir]', 'review workspace', 'nit-review')
+  .option('-b, --base <name>', 'clear this base — a slug, a url, or an unambiguous prefix')
+  .option('--all', 'clear every base in the workspace')
+  .option('--verified', 'only annotations ruled verified (same as --status verified)')
+  .addOption(new Option('--status <status>', 'only annotations with this status')
+    .choices(['open', 'fixed', 'wontfix', 'verified', 'reopened']))
+  .option('-y, --yes', 'skip the confirmation prompt')
+  .option('--dry-run', 'print what would be cleared and exit without writing')
+  .addHelpText('after', `
+Examples:
+  $ nit clear --base staging --verified   drop what is already ruled on staging
+  $ nit clear --all --verified            same, across every environment
+  $ nit clear --base staging              empty staging entirely (prompts)
+  $ nit clear --all --verified --dry-run  see what would go`)
+  .action(async (dir: string, opts: {
+    base?: string; all?: boolean; verified?: boolean; status?: AnnotationStatus;
+    yes?: boolean; dryRun?: boolean;
+  }) => {
+    await runClear(dir, {
+      base: opts.base,
+      all: opts.all,
+      // --verified is sugar; an explicit --status wins if somebody passes both
+      status: opts.status ?? (opts.verified ? 'verified' : undefined),
+      yes: opts.yes,
+      dryRun: opts.dryRun,
     });
   });
 
