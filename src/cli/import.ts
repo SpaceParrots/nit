@@ -22,10 +22,12 @@ export interface ImportResult {
 }
 
 /**
- * Unpack a nit export. The zip must contain an annotations.json at its root;
- * entries that would escape the target directory (zip-slip) are skipped, and an
- * existing non-empty target is refused rather than overwritten.
+ * Unpack a nit export. The zip must contain an annotations.json — at its root
+ * for a single review, or one per base folder for a whole workspace. Entries
+ * that would escape the target directory (zip-slip) are skipped, and an existing
+ * non-empty target is refused rather than overwritten.
  * @param zipFile a zip created by `nit export`
+ * @param opts see {@link ImportOptions}
  * @throws when the file is not a nit export or the target dir is already in use
  */
 export function runImport(zipFile: string, { out, log = line => console.log(line) }: ImportOptions = {}): ImportResult {
@@ -37,8 +39,11 @@ export function runImport(zipFile: string, { out, log = line => console.log(line
   } catch (e) {
     throw new Error(`cannot read ${absZip} — not a valid zip file`, { cause: e });
   }
-  if (!entries['annotations.json']) {
-    throw new Error(`not a nit export: ${path.basename(absZip)} has no annotations.json at its root`);
+  // A workspace export nests one review folder per base, so the root file is
+  // absent by design; anything with neither shape is not a nit export.
+  const isWorkspace = Object.keys(entries).some(name => /^[^/]+\/annotations\.json$/.test(name));
+  if (!entries['annotations.json'] && !isWorkspace) {
+    throw new Error(`not a nit export: ${path.basename(absZip)} has no annotations.json`);
   }
 
   const target = path.resolve(out ?? defaultDirName(absZip));
@@ -63,8 +68,13 @@ export function runImport(zipFile: string, { out, log = line => console.log(line
 
   const rel = path.relative(process.cwd(), target) || '.';
   log(`imported ${files} file${files === 1 ? '' : 's'} -> ${target}`);
-  log(`view it:    nit view ${path.join(rel, 'annotations.json')}`);
-  log(`merge it:   nit merge <your>/annotations.json ${path.join(rel, 'annotations.json')}`);
+  if (isWorkspace) {
+    log(`see what is in it:  nit list ${rel}`);
+    log(`view one base:      nit view ${rel} --base <name>`);
+  } else {
+    log(`view it:    nit view ${path.join(rel, 'annotations.json')}`);
+    log(`merge it:   nit merge <your>/annotations.json ${path.join(rel, 'annotations.json')}`);
+  }
   return { dir: target, files };
 }
 

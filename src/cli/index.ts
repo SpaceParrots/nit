@@ -301,11 +301,14 @@ program.command('export')
   .description('Pack a review folder (annotations.json, review.md, fix-annotations.md and\n'
     + 'shots/) into a single zip you can send to a co-founder. The default file name\n'
     + 'carries the review id and author, e.g. 2026-07-21-example.com-ann.nit.zip.\n\n'
+    + 'A review covering several base URLs packs all of them, each under its own\n'
+    + 'folder; --base packs one of them as a plain single-review zip.\n\n'
     + 'The other side unpacks it with:  nit import <file>')
   .argument('[dir]', 'review directory (or an annotations.json path)', 'nit-review')
+  .option('-b, --base <name>', 'pack only this base — a slug, a url, or an unambiguous prefix')
   .option('-o, --out <file>', 'output zip path (default: derived from review id + author)')
-  .action((dir: string, opts: { out?: string }) => {
-    runExport(dir, { out: opts.out });
+  .action((dir: string, opts: { base?: string; out?: string }) => {
+    runExport(dir, { base: opts.base, out: opts.out });
   });
 
 program.command('import')

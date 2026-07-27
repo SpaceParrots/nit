@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { zipSync } from 'fflate';
 import { runExport } from '../dist/cli/export.js';
 import { runImport } from '../dist/cli/import.js';
+import { ensureBase, openWorkspace } from '../dist/store/workspace.js';
+import { createStore } from '../dist/store/store.js';
 import { tmpDir } from './helpers/tmp.js';
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli', 'index.js');
@@ -117,4 +119,59 @@ test('import: skips zip-slip entries instead of writing outside the target', () 
   assert.equal(fs.existsSync(path.join(base, 'safe', 'evil.txt')), false);
   assert.equal(fs.existsSync(path.join(base, 'evil2.txt')), false);
   assert.ok(logs.some(l => l.includes('skipped unsafe zip entry')));
+});
+
+/** A workspace with one open change-request per base. */
+function makeWorkspace(bases) {
+  const dir = tmpDir('nit-ws-export-');
+  for (const [url, alias] of bases) {
+    const base = ensureBase(dir, url, alias);
+    const store = createStore(base.dir, { url: base.url, author: 'Kevin' });
+    store.upsert({ id: 'a1', type: 'change-request', status: 'open', comment: 'c', route: '/', screenshot: null, createdAt: '2026-07-20T10:00:00Z' });
+    store.flush();
+  }
+  return dir;
+}
+
+test('export/import: a workspace round-trips with every base', () => {
+  const dir = makeWorkspace([['https://staging.example.com', 'staging'], ['http://localhost:4200', undefined]]);
+  const zip = path.join(tmpDir('nit-ws-zip-'), 'ws.nit.zip');
+  runExport(dir, { out: zip, log: noLog });
+
+  const target = path.join(tmpDir('nit-ws-in-'), 'restored');
+  runImport(zip, { out: target, log: noLog });
+
+  const ws = openWorkspace(target);
+  assert.equal(ws.layout, 'multi');
+  assert.deepEqual(ws.bases.map(b => b.slug), ['localhost-4200', 'staging']);
+  assert.ok(fs.existsSync(path.join(target, 'bases.json')));
+  assert.equal(ws.bases[1].url, 'https://staging.example.com');
+});
+
+test('export: --base packs one base in the single-review zip format', () => {
+  const dir = makeWorkspace([['https://staging.example.com', 'staging']]);
+  ensureBase(dir, 'http://localhost:4200');
+
+  const zip = path.join(tmpDir('nit-ws-zip-'), 'one.nit.zip');
+  runExport(dir, { base: 'staging', out: zip, log: noLog });
+
+  const target = path.join(tmpDir('nit-ws-in-'), 'one');
+  runImport(zip, { out: target, log: noLog });
+  assert.ok(fs.existsSync(path.join(target, 'annotations.json')), 'a plain review folder, as before');
+  assert.equal(openWorkspace(target).layout, 'flat');
+});
+
+test('export: a workspace with a single base still packs it flat', () => {
+  const dir = makeWorkspace([['https://staging.example.com', 'staging']]);
+  const zip = path.join(tmpDir('nit-ws-zip-'), 'sole.nit.zip');
+  runExport(dir, { out: zip, log: noLog });
+
+  const target = path.join(tmpDir('nit-ws-in-'), 'sole');
+  runImport(zip, { out: target, log: noLog });
+  assert.ok(fs.existsSync(path.join(target, 'annotations.json')), 'nothing to disambiguate, so no nesting');
+});
+
+test('export: an unknown --base names the bases that do exist', () => {
+  const dir = makeWorkspace([['https://staging.example.com', 'staging'], ['http://localhost:4200', undefined]]);
+  assert.throws(() => runExport(dir, { base: 'prod', out: path.join(tmpDir('nit-ws-zip-'), 'x.zip'), log: noLog }), /prod/);
 });
