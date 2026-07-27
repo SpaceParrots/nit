@@ -2,14 +2,14 @@
 // nit list — what base urls a workspace holds, and which urls were annotated
 // inside one. Read-only: nothing is created, normalized or backed up, so running
 // it against a review someone else is editing is always safe.
-import fs from 'node:fs';
 import { openWorkspace, resolveBase } from '../store/workspace.js';
+import { readAnnotations } from '../store/read.js';
 import { isActionable } from '../store/stats.js';
 import { resolveAnnotationUrl } from '../store/url.js';
 import { routePath } from '../util/route.js';
 import { displayPath, ago } from './status.js';
 import type {
-  Annotation, AnnotationStatus, AnnotationType, BaseRef, ReviewData, WorkspaceLayout,
+  Annotation, AnnotationStatus, AnnotationType, BaseRef, WorkspaceLayout,
 } from '../types.js';
 
 /** Which annotations a listing should count. */
@@ -99,7 +99,13 @@ export function buildListResult(dir: string, { base, filter = {} }: ListOptions)
   const ws = openWorkspace(dir);
   const scope = base ? [resolveBase(ws, base)] : ws.bases;
 
-  const bases = scope.map(ref => buildBaseRow(ref, filter)).filter(row => row.total > 0);
+  // A filtered listing answers "where is the work matching this?", so a base
+  // with no match is noise and drops out. An unfiltered one answers "what does
+  // this review cover?" — there, hiding a base that exists on disk (freshly
+  // created, or just emptied by `nit clear`) would contradict `nit status`,
+  // `nit doctor` and the folder itself.
+  const filtered = hasFilter(filter);
+  const bases = scope.map(ref => buildBaseRow(ref, filter)).filter(row => !filtered || row.total > 0);
   bases.sort((a, b) => b.total - a.total || a.slug.localeCompare(b.slug));
   return {
     dir: ws.dir,
@@ -108,6 +114,16 @@ export function buildListResult(dir: string, { base, filter = {} }: ListOptions)
     total: bases.reduce((n, b) => n + b.total, 0),
     actionable: bases.reduce((n, b) => n + b.actionable, 0),
   };
+}
+
+/**
+ * Whether a listing was narrowed at all. `actionable: false` is not a filter —
+ * it is the flag's own default, and treating it as one would silently hide
+ * every empty base again.
+ * @param filter see {@link ListFilter}
+ */
+function hasFilter(filter: ListFilter): boolean {
+  return Boolean(filter.status ?? filter.type ?? filter.route ?? filter.author ?? filter.actionable);
 }
 
 /** Count one base's annotations, grouped by the url they sit on. */
@@ -142,17 +158,6 @@ function buildBaseRow(ref: BaseRef, filter: ListFilter): BaseRow {
     lastChange,
     urls: [...urls.values()].sort((a, b) => b.count - a.count || a.url.localeCompare(b.url)),
   };
-}
-
-/** A review file's annotations; unreadable or odd entries are skipped, not fatal. */
-function readAnnotations(file: string): Annotation[] {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<ReviewData>;
-    return (Array.isArray(parsed.annotations) ? parsed.annotations : [])
-      .filter((a): a is Annotation => Boolean(a) && typeof a === 'object');
-  } catch {
-    return [];
-  }
 }
 
 /**

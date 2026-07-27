@@ -73,6 +73,33 @@ test('list: filters narrow the counts and drop empty bases', () => {
   assert.equal(result.total, 1);
 });
 
+test('list: an unfiltered listing keeps a base that has no annotations yet', () => {
+  const dir = seedWorkspace();
+  ensureBase(dir, 'https://prod.example.com', 'prod');   // created, nothing captured yet
+
+  const all = buildListResult(dir, {});
+  assert.ok(all.bases.some(b => b.slug === 'prod'), 'a base with 0 annotations is still part of the review');
+  assert.equal(all.bases.find(b => b.slug === 'prod').total, 0);
+  assert.equal(all.total, 4, 'an empty base adds nothing to the totals');
+
+  const lines = [];
+  runList(dir, { log: l => lines.push(l) });
+  assert.match(lines.join('\n'), /prod/, 'and it is visible in the report');
+
+  const filtered = buildListResult(dir, { filter: { actionable: true } });
+  assert.ok(!filtered.bases.some(b => b.slug === 'prod'), 'a filtered listing still drops what does not match');
+});
+
+test('list: --base on an empty base reports the base, not "nothing matches"', () => {
+  const dir = seedWorkspace();
+  ensureBase(dir, 'https://prod.example.com', 'prod');
+  const lines = [];
+  runList(dir, { base: 'prod', log: l => lines.push(l) });
+  const text = lines.join('\n');
+  assert.match(text, /prod/);
+  assert.doesNotMatch(text, /Nothing matches/);
+});
+
 test('list: a flat review folder lists as one base', () => {
   const dir = tmpDir('nit-list-');
   const store = createStore(dir, { url: 'https://fainin.dev/', author: 'Kevin' });
