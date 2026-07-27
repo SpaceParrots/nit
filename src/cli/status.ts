@@ -6,11 +6,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { resolveReviewFile } from '../store/store.js';
 import { openWorkspace, resolveBase } from '../store/workspace.js';
+import { asReviewData, readReviewData } from '../store/read.js';
 import { reviewStats } from '../store/stats.js';
 import type { ReviewStats } from '../store/stats.js';
 import { errorMessage } from '../util/error.js';
 import type {
-  AnnotationStatus, AnnotationType, BaseRef, ReviewData, Workspace,
+  AnnotationStatus, AnnotationType, BaseRef, Workspace,
 } from '../types.js';
 
 /** Statuses in lifecycle order, so the report always reads the same way. */
@@ -63,14 +64,17 @@ export function runStatus(
   if (!exists) {
     throw new Error(`no annotations.json in ${dir} — nothing to report (run: nit review <url>)`);
   }
-  let data: ReviewData;
+  // Unparseable JSON is worth failing on here — the user named this one file
+  // and would otherwise read "0 annotations" as fact. Everything past the parse
+  // is narrowed rather than cast, so an odd-but-valid file still reports.
+  let parsed: unknown;
   try {
-    data = JSON.parse(fs.readFileSync(file, 'utf8')) as ReviewData;
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (e) {
     throw new Error(`${file} is not readable as JSON (${errorMessage(e)})`, { cause: e });
   }
 
-  const stats = reviewStats(data, file);
+  const stats = reviewStats(asReviewData(parsed), file);
   if (json) {
     log(JSON.stringify(stats, null, 2));
   } else {
@@ -199,15 +203,6 @@ function workspaceNextSteps(ws: Workspace, per: BaseReport[]): string[] {
   }
   if (!steps.length) steps.push(`Nothing actionable — see what is where:  nit list ${dir}`);
   return steps;
-}
-
-/** Parse a review file for stats; an unreadable one counts as empty rather than fatal. */
-function readReviewData(file: string): ReviewData {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as ReviewData;
-  } catch {
-    return { review: { id: '', url: '', createdAt: '', authors: [] }, annotations: [] };
-  }
 }
 
 /** The human-readable report, as lines. */

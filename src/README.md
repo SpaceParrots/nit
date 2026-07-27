@@ -92,6 +92,11 @@ src/
 │  ├─ workspace-write.ts # ensureBase()/writeIndex(): create a base folder, migrate a
 │  │                     # flat review lazily (rolled back on failure). Re-exported by
 │  │                     # workspace.ts so callers import one path
+│  ├─ read.ts   # the one tolerant reader for annotations.json, shared by every
+│  │            # read-only consumer (status, list, a clear dry run): narrows
+│  │            # parsed JSON into ReviewData field by field, never casts, and
+│  │            # degrades an unreadable file to an empty review. Writers use
+│  │            # createStore instead — it owns normalization and the backup
 │  ├─ stats.ts  # pure reviewStats() + isActionable(), what `nit status` reports
 │  ├─ clear.ts  # pure selectForClear() + clearBase(): what a clear scope matches, and
 │  │            # the one operation that applies it (deletes via Store.remove)
