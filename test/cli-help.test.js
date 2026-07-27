@@ -112,6 +112,32 @@ test('cli: -v, -V and --version all print the package version', () => {
   }
 });
 
+test('cli: list and clear appear in help with their flags', () => {
+  const top = run('--help');
+  assert.ok(top.out.includes('list'));
+  assert.ok(top.out.includes('clear'));
+
+  const list = run('list', '--help');
+  assert.equal(list.code, 0);
+  for (const flag of ['--base', '--all', '--status', '--actionable', '--json']) {
+    assert.ok(list.out.includes(flag), `list help mentions ${flag}`);
+  }
+
+  const clear = run('clear', '--help');
+  assert.equal(clear.code, 0);
+  for (const flag of ['--base', '--all', '--verified', '--dry-run', '--yes']) {
+    assert.ok(clear.out.includes(flag), `clear help mentions ${flag}`);
+  }
+});
+
+test('cli: the base-aware commands all offer --base', () => {
+  for (const cmd of ['review', 'view', 'verify', 'status', 'export']) {
+    const { code, out } = run(cmd, '--help');
+    assert.equal(code, 0, `${cmd} --help exits 0`);
+    assert.ok(out.includes('--base'), `${cmd} help mentions --base`);
+  }
+});
+
 test('cli: -h is help, same as --help', () => {
   const short = run('-h');
   const long = run('--help');

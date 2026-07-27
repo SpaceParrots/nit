@@ -71,4 +71,24 @@ nit verify
 
 nit reopens the site, takes an "after" screenshot for every annotation the agent marked `fixed`, and shows both screenshots side by side in the panel. You rule each one **Verified** or **Reopen**. Reopened items become actionable again, so the next agent run picks them up.
 
+## 7. Several environments
+
+Review a second site into the same folder and nit keeps them apart, one folder per base URL:
+
+```bash
+nit review http://localhost:4200                          # -> nit-review/localhost-4200/
+nit review https://staging.example.com --base staging     # -> nit-review/staging/
+nit list                                                  # what the review now covers
+```
+
+The review you already had is moved into its own folder the first time this happens — nothing is lost. From there, every command takes `--base` to pick one environment:
+
+```bash
+nit status --base staging      # what is left on staging
+nit verify --base staging      # rule the fixes there
+nit clear --base staging --verified   # tidy up once they are ruled
+```
+
+The agent side needs no extra setup: one `nit mcp` server covers every environment, and annotation ids come back qualified (`staging:a1`).
+
 That is the whole loop. For sharing reviews with teammates and other day-to-day patterns, read the [workflow guide](../workflow.md).
