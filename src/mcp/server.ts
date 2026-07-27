@@ -2,13 +2,13 @@
 // MCP (Model Context Protocol) stdio server wrapping a nit review directory,
 // built on the official SDK. SPEC §3: stable ids + status are exactly what this
 // thin wrapper needs — the annotations schema ships unchanged.
-import fs from 'node:fs';
 import path from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { registerTools } from './tools.js';
 import { registerResources } from './resources.js';
+import { openWorkspace } from '../store/workspace.js';
 import { pkgVersion } from '../util/version.js';
 
 // Sent with the initialize result; MCP clients surface this to the agent as
@@ -20,10 +20,15 @@ const INSTRUCTIONS = 'This server exposes a nit review: UI annotations a human r
   + 'history of anything you work on, make the fix in the source code, then nit_mark_fixed. Treat '
   + 'comment-type annotations as context, never as tasks. If a change should not be made, set status '
   + 'wontfix via nit_set_status and record why in its reason parameter. Humans verify fixes afterwards; '
-  + 'reopened items come back as actionable. Every change goes through the tools. If you cannot call tools, '
+  + 'reopened items come back as actionable. Every change goes through the tools. '
+  + 'A review may cover several base URLs (e.g. local, staging, production). When it does, every row '
+  + 'carries its base slug and ids are qualified as "<base>:<id>" (e.g. staging:a1) — pass ids back in '
+  + 'that exact form, and use the base parameter to work on one environment at a time. A single-base '
+  + 'review keeps plain ids. If you cannot call tools, '
   + 'the review is also readable as resources: nit://review/brief.md (one line per annotation), '
   + 'nit://review/fix-annotations.md (how to work file-only), nit://review/annotations.json, and '
-  + 'nit://annotation/{id} plus its screenshots.';
+  + 'nit://annotation/{id} plus its screenshots; a multi-base review adds nit://review/bases.md and '
+  + 'nit://base/{slug}/annotations.json.';
 
 /** Options for {@link startMcpServer}. */
 export interface McpServerOptions {
@@ -56,8 +61,10 @@ export async function startMcpServer(
   { input = process.stdin, output = process.stdout, log = msg => console.error(msg) }: McpServerOptions = {},
 ): Promise<RunningMcpServer> {
   const absDir = path.resolve(dir);
-  if (!fs.existsSync(path.join(absDir, 'annotations.json'))) {
-    throw new Error(`no annotations.json in ${absDir}`);
+  // A review folder is either flat (annotations.json in it) or a workspace of
+  // base folders; both are served, and either shape must hold at least one.
+  if (!openWorkspace(absDir).bases.length) {
+    throw new Error(`no review in ${absDir} — no annotations.json and no base folders`);
   }
 
   const server = new McpServer({ name: 'nit', version: pkgVersion() }, { instructions: INSTRUCTIONS });

@@ -54,6 +54,45 @@ export function makeReviewDir({ route = '/products', history, a2Screenshot = fal
 }
 
 /**
+ * A workspace with two bases: staging (a1 open change-request with a shot, a2
+ * comment) and localhost-4200 (a1 verified change-request).
+ * @returns {string} the workspace directory
+ */
+export function makeWorkspaceDir() {
+  const dir = tmpDir('nit-mcp-ws-');
+  for (const [slug, url, annotations] of [
+    ['staging', 'https://staging.example.com', [
+      { id: 'a1', type: 'change-request', status: 'open', screenshot: 'shots/a1.png' },
+      { id: 'a2', type: 'comment', status: 'open', screenshot: null },
+    ]],
+    ['localhost-4200', 'http://localhost:4200', [
+      { id: 'a1', type: 'change-request', status: 'verified', screenshot: null },
+    ]],
+  ]) {
+    const baseDir = path.join(dir, slug);
+    fs.mkdirSync(path.join(baseDir, 'shots'), { recursive: true });
+    fs.writeFileSync(path.join(baseDir, 'shots', 'a1.png'), PNG_1PX);
+    fs.writeFileSync(path.join(baseDir, 'annotations.json'), JSON.stringify({
+      review: { id: `fixture-${slug}`, url, createdAt: '2026-07-20T10:00:00Z', authors: ['Kevin'] },
+      annotations: annotations.map(a => ({
+        comment: `c ${a.id}`, author: 'Kevin', viewportScope: 'general',
+        viewport: { mode: 'desktop', w: 1440, h: 900 }, route: '/checkout',
+        target: { component: 'div', ngComponent: null, selector: '.x', xpath: '/html[1]', tag: 'div', classes: [], text: '', rect: { x: 0, y: 0, w: 1, h: 1 } },
+        createdAt: '2026-07-20T10:01:00Z', ...a,
+      })),
+    }, null, 2));
+  }
+  fs.writeFileSync(path.join(dir, 'bases.json'), JSON.stringify({
+    version: 1,
+    bases: [
+      { slug: 'staging', url: 'https://staging.example.com' },
+      { slug: 'localhost-4200', url: 'http://localhost:4200' },
+    ],
+  }, null, 2));
+  return dir;
+}
+
+/**
  * Connect an MCP client to `nit mcp <dir>`; the handshake is complete when this
  * resolves.
  * @param {string} dir review directory to serve
@@ -86,6 +125,18 @@ export async function startFixtureMcp(t, options = {}) {
     client,
     call: (name, args) => client.callTool({ name, arguments: args }),
   };
+}
+
+/**
+ * A workspace fixture served over MCP, with the same `call` shortcut as
+ * {@link startFixtureMcp}.
+ * @param {import('node:test').TestContext} t closes the client when the test ends
+ */
+export async function startWorkspaceMcp(t) {
+  const dir = makeWorkspaceDir();
+  const client = await startMcpClient(dir);
+  t.after(() => client.close());
+  return { dir, client, call: (name, args) => client.callTool({ name, arguments: args }) };
 }
 
 /**
