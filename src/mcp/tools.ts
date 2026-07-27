@@ -7,6 +7,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createStore, safeShotPath } from '../store/store.js';
 import { writeDerivedFiles } from '../store/derived.js';
+import { clearBase } from '../store/clear.js';
 import { isActionable } from '../store/stats.js';
 import { resolveAnnotationUrl } from '../store/url.js';
 import { errorMessage } from '../util/error.js';
@@ -16,6 +17,7 @@ import { basesOf, baseSummaries, displayId, findAnnotation, isMultiBase } from '
 import type { Located } from './aggregate.js';
 import { compressHistory } from './history.js';
 import {
+  clearVerifiedInputShape,
   getAnnotationInputShape,
   listInputShape,
   markFixedInputShape,
@@ -27,6 +29,10 @@ import {
 // nothing here reaches into an open world, and repeating a call is always safe.
 const READ_ONLY = { readOnlyHint: true, idempotentHint: true, openWorldHint: false } as const;
 const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
+// The one tool that deletes. Clearing *unruled* feedback stays CLI-only, behind
+// a confirmation prompt: an agent must not be able to remove human feedback
+// nobody has ruled on yet.
+const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } as const;
 
 /** How long a `statusReason` / `reason` may be before it is truncated. */
 const REASON_MAX_LEN = 500;
@@ -98,6 +104,16 @@ export function registerTools(server: McpServer, dir: string): void {
     inputSchema: setIssueRefInputShape,
     annotations: WRITE,
   }, ({ id, ref }) => guard(() => setIssueRef(dir, id, ref)));
+
+  server.registerTool('nit_clear_verified', {
+    title: 'Clear verified annotations',
+    description: 'Delete the annotations a human has already ruled "verified" — housekeeping after a fix round, once the '
+      + 'work they describe is done and confirmed. Their screenshots are deleted with them. Everything else is left alone: '
+      + 'open, reopened, fixed and wontfix annotations are never touched, and the review folder and its metadata survive. '
+      + 'Omit `base` to sweep every base URL, or name one to clear a single environment. This cannot be undone.',
+    inputSchema: clearVerifiedInputShape,
+    annotations: DESTRUCTIVE,
+  }, ({ base }) => guard(() => clearVerified(dir, base)));
 }
 
 /** Run a handler, reporting a thrown error to the agent instead of the client. */
@@ -354,6 +370,23 @@ function writeAnnotation(dir: string, id: string, changes: Partial<Annotation>):
   hit.store.flush();
   writeDerivedFiles(hit.store);
   return structured({ annotation: { ...ann, id: displayId(isMultiBase(dir), hit.base.slug, ann.id) } });
+}
+
+/**
+ * Clear the verified annotations of one base, or of every base. Only `verified`
+ * is ever removed here — an agent must not be able to delete feedback a human
+ * has not ruled on yet; that is what `nit clear` (with its prompt) is for.
+ * @param dir the review directory or workspace
+ * @param base optional base to limit the sweep to
+ * @throws when `base` names no base — reported to the agent by {@link guard}
+ */
+function clearVerified(dir: string, base: string | undefined): CallToolResult {
+  const results = basesOf(dir, base).map(ref => clearBase(ref, { status: 'verified' }));
+  return structured({
+    cleared: results.reduce((n, r) => n + r.cleared, 0),
+    remaining: results.reduce((n, r) => n + r.remaining, 0),
+    bases: results.map(r => ({ slug: r.slug, cleared: r.cleared, remaining: r.remaining })),
+  });
 }
 
 /**

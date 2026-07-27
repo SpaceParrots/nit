@@ -56,6 +56,11 @@ export const setStatusInputShape = {
     .describe('why this status — required in spirit for wontfix; persisted on the annotation as statusReason'),
 };
 
+export const clearVerifiedInputShape = {
+  base: z.string().optional()
+    .describe('only this base URL — its slug (e.g. staging), its full url, or an unambiguous prefix; omit to clear every base'),
+};
+
 export const setIssueRefInputShape = {
   id: z.string().describe('annotation id, e.g. a1'),
   // Not `.max(200)`: the handler trims and truncates rather than rejecting, so a
