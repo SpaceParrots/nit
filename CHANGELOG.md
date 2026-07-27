@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/SpaceParrots/nit/compare/v1.2.0...v1.3.0) (2026-07-27)
+
+
+### Features
+
+* multi-base-URL workspaces, nit list and nit clear ([#13](https://github.com/SpaceParrots/nit/issues/13)) ([9b61631](https://github.com/SpaceParrots/nit/commit/9b6163192d8928fd8abffe8c7c67b667476e1a44))
+
 ## [1.2.0](https://github.com/SpaceParrots/nit/compare/v1.1.0...v1.2.0) (2026-07-23)
 
 
