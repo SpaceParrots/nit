@@ -31,6 +31,8 @@ export const listInputShape = {
   status: statusSchema.optional().describe('only annotations with this status'),
   type: annotationTypeSchema.optional().describe('only this annotation type'),
   route: z.string().optional().describe('only annotations on this route; an exact route or a bare pathname like /products'),
+  base: z.string().optional()
+    .describe('only annotations for this base URL — its slug (e.g. staging), its full url, or an unambiguous prefix'),
 };
 
 export const getAnnotationInputShape = {

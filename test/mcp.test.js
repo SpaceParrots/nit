@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { tmpDir, readAnnotations } from './helpers/tmp.js';
-import { startFixtureMcp, startMcpClient, payload } from './helpers/mcp.js';
+import { startFixtureMcp, startMcpClient, startWorkspaceMcp, payload } from './helpers/mcp.js';
 
 const TOOL_NAMES = ['nit_get_annotation', 'nit_list_annotations', 'nit_mark_fixed', 'nit_set_issue_ref', 'nit_set_status'];
 
@@ -375,4 +375,62 @@ test('mcp: reason is persisted as statusReason and cleared/replaced on every sta
   const longReason = 'x'.repeat(600);
   const capped = payload(await call('nit_set_status', { id: 'a1', status: 'open', reason: longReason }));
   assert.equal(capped.annotation.statusReason.length, 500, 'capped at 500 chars');
+});
+
+// --- multi-base workspaces --------------------------------------------------
+
+test('mcp: a workspace lists every base with qualified ids', async (t) => {
+  const { call } = await startWorkspaceMcp(t);
+  const res = payload(await call('nit_list_annotations', {}));
+  assert.equal(res.total, 3);
+  assert.equal(res.actionable, 1); // staging a1 only; a2 is a comment, localhost a1 verified
+  assert.deepEqual(res.bases.map(b => b.slug).sort(), ['localhost-4200', 'staging']);
+  const ids = res.annotations.map(a => a.id).sort();
+  assert.deepEqual(ids, ['localhost-4200:a1', 'staging:a1', 'staging:a2']);
+  const staging = res.annotations.find(a => a.id === 'staging:a1');
+  assert.equal(staging.base, 'staging');
+  assert.equal(staging.url, 'https://staging.example.com/checkout');
+});
+
+test('mcp: the base filter narrows to one environment', async (t) => {
+  const { call } = await startWorkspaceMcp(t);
+  for (const base of ['staging', 'https://staging.example.com', 'stag']) {
+    const res = payload(await call('nit_list_annotations', { base }));
+    assert.deepEqual(res.annotations.map(a => a.id).sort(), ['staging:a1', 'staging:a2'], base);
+  }
+});
+
+test('mcp: get and mark_fixed take qualified ids across bases', async (t) => {
+  const { call } = await startWorkspaceMcp(t);
+  const batch = payload(await call('nit_get_annotation', { id: ['staging:a1', 'localhost-4200:a1'] }));
+  assert.deepEqual(batch.annotations.map(a => a.id).sort(), ['localhost-4200:a1', 'staging:a1']);
+
+  const fixed = payload(await call('nit_mark_fixed', { id: 'staging:a1', reason: 'done' }));
+  assert.equal(fixed.annotation.id, 'staging:a1');
+  assert.equal(fixed.annotation.status, 'fixed');
+
+  const after = payload(await call('nit_list_annotations', { base: 'localhost-4200' }));
+  assert.equal(after.annotations[0].status, 'verified', 'the other base is untouched');
+});
+
+test('mcp: a screenshot comes from the owning base folder', async (t) => {
+  const { call } = await startWorkspaceMcp(t);
+  const res = await call('nit_get_annotation', { id: 'staging:a1' });
+  assert.ok(res.content.some(c => c.type === 'image'), 'the shot in staging/shots is found');
+});
+
+test('mcp: an unknown qualified id is an error naming it', async (t) => {
+  const { call } = await startWorkspaceMcp(t);
+  const res = await call('nit_get_annotation', { id: 'staging:a99' });
+  assert.ok(res.isError);
+  assert.match(res.content[0].text, /staging:a99/);
+});
+
+test('mcp: a single-base review keeps plain ids and the review envelope', async (t) => {
+  const { call } = await startFixtureMcp(t);
+  const res = payload(await call('nit_list_annotations', {}));
+  assert.deepEqual(res.annotations.map(a => a.id), ['a1', 'a2']);
+  assert.ok(res.review, 'single-base output is unchanged');
+  assert.equal(res.annotations[0].base, undefined, 'no base column on a single-base review');
+  assert.equal(payload(await call('nit_mark_fixed', { id: 'a1' })).annotation.id, 'a1');
 });
