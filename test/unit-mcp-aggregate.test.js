@@ -49,7 +49,7 @@ test('aggregate: a bare id still resolves, so merged ids work on a single base',
   assert.equal(findAnnotation(dir, 'a99'), null);
 });
 
-test('aggregate: the MCP server starts on a workspace with no root annotations.json', async (t) => {
+test('aggregate: the MCP server starts on a workspace with no root annotations.json', async t => {
   const client = await startMcpClient(makeWorkspaceDir());
   t.after(() => client.close());
   const { tools } = await client.listTools();

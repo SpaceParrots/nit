@@ -17,6 +17,8 @@ import type {
 const STATUS_ORDER: readonly AnnotationStatus[] = ['open', 'reopened', 'fixed', 'verified', 'wontfix'];
 /** Routes listed inline before the rest is summarized as "+N more". */
 const ROUTES_SHOWN = 4;
+/** Width of the report's label column, wide enough for `last change`. */
+const LABEL_WIDTH = 12;
 
 /** Options for {@link runStatus}. */
 export interface StatusOptions {
@@ -101,17 +103,20 @@ function reportWorkspace(
 
   log(`nit status — ${displayPath(ws.dir)}`);
   log('');
+  // a slug can be longer than the label column a single review uses, so the
+  // column grows to fit rather than running into the url next to it
+  const width = Math.max(LABEL_WIDTH, ...per.map(p => p.ref.slug.length + 2));
   for (const { ref, stats } of per) {
     log(row(ref.slug, [
       ref.url,
       `${stats.total} annotation${stats.total === 1 ? '' : 's'}`,
       `${stats.actionable} actionable`,
       stats.lastChange ? ago(stats.lastChange.at, now) : null,
-    ]));
+    ], width));
   }
   log('');
   log(row('total', `${aggregate.total} annotation${aggregate.total === 1 ? '' : 's'} across `
-    + `${per.length} base URL${per.length === 1 ? '' : 's'} · ${aggregate.actionable} actionable`));
+    + `${per.length} base URL${per.length === 1 ? '' : 's'} · ${aggregate.actionable} actionable`, width));
   log('');
   for (const line of workspaceNextSteps(ws, per)) log(line);
   return aggregate;
@@ -257,10 +262,15 @@ function routeSummary(stats: ReviewStats): string {
   return shown.join(' · ') + (rest > 0 ? ` · +${rest} more` : '');
 }
 
-/** One aligned `label  value` line; empty parts are dropped. */
-function row(label: string, value: string | (string | null)[]): string {
+/**
+ * One aligned `label  value` line; empty parts are dropped.
+ * @param label the left column
+ * @param value the right column — an array is joined with ` · `
+ * @param width how wide the label column is (grows for long base slugs)
+ */
+function row(label: string, value: string | (string | null)[], width = LABEL_WIDTH): string {
   const text = Array.isArray(value) ? value.filter(Boolean).join(' · ') : value;
-  return `  ${label.padEnd(12)}${text || '—'}`;
+  return `  ${label.padEnd(width)}${text || '—'}`;
 }
 
 /** Paths relative to the cwd when they live under it — shorter, still pasteable. */

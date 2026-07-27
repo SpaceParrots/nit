@@ -379,7 +379,7 @@ test('mcp: reason is persisted as statusReason and cleared/replaced on every sta
 
 // --- multi-base workspaces --------------------------------------------------
 
-test('mcp: a workspace lists every base with qualified ids', async (t) => {
+test('mcp: a workspace lists every base with qualified ids', async t => {
   const { call } = await startWorkspaceMcp(t);
   const res = payload(await call('nit_list_annotations', {}));
   assert.equal(res.total, 3);
@@ -392,7 +392,7 @@ test('mcp: a workspace lists every base with qualified ids', async (t) => {
   assert.equal(staging.url, 'https://staging.example.com/checkout');
 });
 
-test('mcp: the base filter narrows to one environment', async (t) => {
+test('mcp: the base filter narrows to one environment', async t => {
   const { call } = await startWorkspaceMcp(t);
   for (const base of ['staging', 'https://staging.example.com', 'stag']) {
     const res = payload(await call('nit_list_annotations', { base }));
@@ -400,7 +400,7 @@ test('mcp: the base filter narrows to one environment', async (t) => {
   }
 });
 
-test('mcp: get and mark_fixed take qualified ids across bases', async (t) => {
+test('mcp: get and mark_fixed take qualified ids across bases', async t => {
   const { call } = await startWorkspaceMcp(t);
   const batch = payload(await call('nit_get_annotation', { id: ['staging:a1', 'localhost-4200:a1'] }));
   assert.deepEqual(batch.annotations.map(a => a.id).sort(), ['localhost-4200:a1', 'staging:a1']);
@@ -413,20 +413,20 @@ test('mcp: get and mark_fixed take qualified ids across bases', async (t) => {
   assert.equal(after.annotations[0].status, 'verified', 'the other base is untouched');
 });
 
-test('mcp: a screenshot comes from the owning base folder', async (t) => {
+test('mcp: a screenshot comes from the owning base folder', async t => {
   const { call } = await startWorkspaceMcp(t);
   const res = await call('nit_get_annotation', { id: 'staging:a1' });
   assert.ok(res.content.some(c => c.type === 'image'), 'the shot in staging/shots is found');
 });
 
-test('mcp: an unknown qualified id is an error naming it', async (t) => {
+test('mcp: an unknown qualified id is an error naming it', async t => {
   const { call } = await startWorkspaceMcp(t);
   const res = await call('nit_get_annotation', { id: 'staging:a99' });
   assert.ok(res.isError);
   assert.match(res.content[0].text, /staging:a99/);
 });
 
-test('mcp: nit_clear_verified removes only verified annotations', async (t) => {
+test('mcp: nit_clear_verified removes only verified annotations', async t => {
   const { dir, call } = await startWorkspaceMcp(t);
   const res = payload(await call('nit_clear_verified', {}));
   assert.equal(res.cleared, 1);   // localhost-4200:a1 is the only verified one
@@ -437,14 +437,14 @@ test('mcp: nit_clear_verified removes only verified annotations', async (t) => {
   assert.ok(fs.existsSync(path.join(dir, 'localhost-4200', 'annotations.json')), 'the base folder survives');
 });
 
-test('mcp: nit_clear_verified can be scoped to one base', async (t) => {
+test('mcp: nit_clear_verified can be scoped to one base', async t => {
   const { call } = await startWorkspaceMcp(t);
   const res = payload(await call('nit_clear_verified', { base: 'staging' }));
   assert.equal(res.cleared, 0, 'staging has nothing verified');
   assert.deepEqual(payload(await call('nit_list_annotations', {})).annotations.length, 3);
 });
 
-test('mcp: nit_clear_verified never touches unruled feedback', async (t) => {
+test('mcp: nit_clear_verified never touches unruled feedback', async t => {
   const { call } = await startWorkspaceMcp(t);
   await call('nit_mark_fixed', { id: 'staging:a1' });
   const res = payload(await call('nit_clear_verified', {}));
@@ -453,7 +453,7 @@ test('mcp: nit_clear_verified never touches unruled feedback', async (t) => {
   assert.equal(res.cleared, 1);
 });
 
-test('mcp: clearing is advertised as destructive', async (t) => {
+test('mcp: clearing is advertised as destructive', async t => {
   const { client } = await startWorkspaceMcp(t);
   const { tools } = await client.listTools();
   const clear = tools.find(x => x.name === 'nit_clear_verified');
@@ -462,7 +462,7 @@ test('mcp: clearing is advertised as destructive', async (t) => {
   assert.equal(clear.annotations.readOnlyHint, false);
 });
 
-test('mcp: a single-base review keeps plain ids and the review envelope', async (t) => {
+test('mcp: a single-base review keeps plain ids and the review envelope', async t => {
   const { call } = await startFixtureMcp(t);
   const res = payload(await call('nit_list_annotations', {}));
   assert.deepEqual(res.annotations.map(a => a.id), ['a1', 'a2']);
