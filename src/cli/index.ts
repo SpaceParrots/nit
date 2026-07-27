@@ -32,7 +32,10 @@ interface BrowserCmdOptions {
   url?: string;
   /** review: output directory */
   out?: string;
-  /** review: short name for this url's base folder inside the workspace */
+  /**
+   * review: short name for this url's base folder inside the workspace;
+   * view/verify: which base of a workspace to open
+   */
   base?: string;
   /** review: author recorded on each annotation */
   author?: string;
@@ -126,14 +129,16 @@ withBrowserOptions(
       + 'file — its annotations.json is used.')
     .argument('[source]', 'review directory, or a feedback file (annotations.json)', 'nit-review')
     .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file')
+    .option('-b, --base <name>', 'which base URL of the review to open — a slug, a url, or an unambiguous prefix')
     .addHelpText('after', `
 Examples:
   $ nit view                             replay ./nit-review
   $ nit view review-merged               a review folder
   $ nit view feedback-ann.json           a specific feedback file
+  $ nit view --base staging              the staging base of a multi-base review
   $ nit view -u http://localhost:4200    the stored url moved — open this one`))
   .action(async (source: string, opts: BrowserCmdOptions, cmd: Command) => {
-    const src = resolveFeedbackSource('view', source, cmd.args.length > 0);
+    const src = resolveFeedbackSource('view', source, cmd.args.length > 0, opts.base);
     const session = await startBrowser('view', { file: src.file, opts });
     const total = session.store.annotations.length;
     console.log(`nit view — ${displayPath(src.file)}`);
@@ -155,14 +160,16 @@ withBrowserOptions(
       + 'file — its annotations.json is used.')
     .argument('[source]', 'review directory, or a feedback file (annotations.json)', 'nit-review')
     .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file')
+    .option('-b, --base <name>', 'which base URL of the review to verify — a slug, a url, or an unambiguous prefix')
     .addHelpText('after', `
 Examples:
   $ nit verify                           rule the fixes in ./nit-review
   $ nit verify review-merged             a review folder
   $ nit verify feedback-ann.json         a specific feedback file
+  $ nit verify --base staging            the staging base of a multi-base review
   $ nit verify -u http://localhost:4200  the stored url moved — open this one`))
   .action(async (source: string, opts: BrowserCmdOptions, cmd: Command) => {
-    const src = resolveFeedbackSource('verify', source, cmd.args.length > 0);
+    const src = resolveFeedbackSource('verify', source, cmd.args.length > 0, opts.base);
     const session = await startBrowser('verify', { file: src.file, opts });
     const fixed = session.store.annotations.filter(a => a.status === 'fixed').length;
     console.log(`nit verify — ${displayPath(src.file)}`);
@@ -191,12 +198,20 @@ program.command('status')
   .description('A quick read on a review folder, without opening a browser: where the\n'
     + 'annotations file is, when it last changed and by whom, how many annotations\n'
     + 'there are by status and type, which routes they sit on, and what to do next.\n\n'
+    + 'A review covering several base URLs reports one line per base plus the totals;\n'
+    + '--base narrows to one and reports it like any single review.\n\n'
     + 'Nothing is written — safe to run against a review someone else is editing.\n'
     + 'Use --json to feed the same numbers to a script or CI.')
   .argument('[dir]', 'review directory (or an annotations.json path)', 'nit-review')
+  .option('-b, --base <name>', 'only this base — a slug, a url, or an unambiguous prefix')
   .option('--json', 'print the stats as JSON instead of a report')
-  .action((dir: string, opts: { json?: boolean }) => {
-    runStatus(dir, { json: Boolean(opts.json) });
+  .addHelpText('after', `
+Examples:
+  $ nit status                           what is in nit-review/
+  $ nit status --base staging            just the staging base
+  $ nit status --json                    the same numbers, for a script`)
+  .action((dir: string, opts: { base?: string; json?: boolean }) => {
+    runStatus(dir, { base: opts.base, json: Boolean(opts.json) });
   });
 
 program.command('list')

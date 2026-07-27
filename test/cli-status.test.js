@@ -8,6 +8,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runStatus, ago } from '../dist/cli/status.js';
+import { ensureBase } from '../dist/store/workspace.js';
+import { createStore } from '../dist/store/store.js';
 import { tmpDir } from './helpers/tmp.js';
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'cli', 'index.js');
@@ -152,6 +154,61 @@ test('status: CLI prints the report and defaults to nit-review', () => {
   const json = spawnSync(process.execPath, [CLI, 'stats', 'nit-review', '--json'], { cwd: base, encoding: 'utf8', timeout: 30000 });
   assert.equal(json.status, 0, json.stderr);
   assert.equal(JSON.parse(json.stdout).total, 5, 'the alias and --json work together');
+});
+
+test('status: a multi-base workspace reports every base', () => {
+  const dir = tmpDir('nit-status-ws-');
+  for (const [url, alias] of [['https://staging.example.com', 'staging'], ['http://localhost:4200', undefined]]) {
+    const base = ensureBase(dir, url, alias);
+    const store = createStore(base.dir, { url: base.url, author: 'Kevin' });
+    store.upsert({
+      id: 'a1', type: 'change-request', comment: 'c', status: 'open', author: 'Kevin',
+      viewportScope: 'general', viewport: { mode: 'desktop', w: 1440, h: 900 }, route: '/',
+      target: { component: 'div', ngComponent: null, selector: '.x', xpath: '/html[1]', tag: 'div', classes: [], text: '', rect: { x: 0, y: 0, w: 1, h: 1 } },
+      screenshot: null, createdAt: '2026-07-20T10:00:00Z',
+    });
+    store.flush();
+  }
+  const lines = [];
+  runStatus(dir, { log: l => lines.push(l) });
+  const text = lines.join('\n');
+  assert.match(text, /staging/);
+  assert.match(text, /localhost-4200/);
+  assert.match(text, /2 annotations/);
+});
+
+test('status: --base narrows to one base', () => {
+  const dir = tmpDir('nit-status-ws-');
+  const base = ensureBase(dir, 'https://staging.example.com', 'staging');
+  createStore(base.dir, { url: base.url, author: 'Kevin' }).flush();
+  ensureBase(dir, 'http://localhost:4200');
+  const lines = [];
+  runStatus(dir, { base: 'staging', log: l => lines.push(l) });
+  assert.doesNotMatch(lines.join('\n'), /localhost-4200/);
+});
+
+test('status: --json over a workspace carries the per-base breakdown', () => {
+  const dir = tmpDir('nit-status-ws-');
+  for (const [url, alias] of [['https://staging.example.com', 'staging'], ['http://localhost:4200', undefined]]) {
+    const base = ensureBase(dir, url, alias);
+    const store = createStore(base.dir, { url: base.url });
+    store.upsert({ id: 'a1', type: 'change-request', comment: 'c', status: 'open', route: '/', createdAt: '2026-07-20T10:00:00Z' });
+    store.flush();
+  }
+  const lines = [];
+  const stats = runStatus(dir, { json: true, log: l => lines.push(l) });
+  assert.equal(lines.length, 1, 'one JSON document, nothing else');
+  assert.deepEqual(JSON.parse(lines[0]), JSON.parse(JSON.stringify(stats)));
+  assert.equal(stats.total, 2);
+  assert.equal(stats.actionable, 2);
+  assert.deepEqual(stats.bases.map(b => b.slug), ['localhost-4200', 'staging']);
+  assert.equal(stats.bases[1].url, 'https://staging.example.com');
+});
+
+test('status: an unknown --base names the bases that do exist', () => {
+  const dir = tmpDir('nit-status-ws-');
+  ensureBase(dir, 'https://staging.example.com', 'staging');
+  assert.throws(() => runStatus(dir, { base: 'prod', log: () => {} }), /no base "prod"|known bases/);
 });
 
 test('status: relative time reads naturally at every scale', () => {

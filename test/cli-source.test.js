@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolveFeedbackSource } from '../dist/cli/source.js';
+import { ensureBase } from '../dist/store/workspace.js';
+import { createStore } from '../dist/store/store.js';
 import { tmpDir } from './helpers/tmp.js';
 
 /** Write a review folder with the given annotations and return its dir. */
@@ -89,6 +91,45 @@ test('source: verify with everything ruled says so instead of opening a dead que
   assert.throws(() => resolveFeedbackSource('verify', dir, true), e => {
     assert.match(e.message, /nothing left to verify/);
     assert.match(e.message, /every change-request is ruled/);
+    return true;
+  });
+});
+
+/** A workspace with `slugs` bases, each holding one open change-request. */
+function makeWorkspace(bases) {
+  const dir = tmpDir('nit-source-ws-');
+  for (const [url, alias] of bases) {
+    const base = ensureBase(dir, url, alias);
+    const store = createStore(base.dir, { url: base.url });
+    store.upsert({ id: 'a1', type: 'change-request', status: 'open', comment: 'c', route: '/' });
+    store.flush();
+  }
+  return dir;
+}
+
+test('source: several bases and no --base is an error naming them', () => {
+  const dir = makeWorkspace([['https://staging.example.com', 'staging'], ['http://localhost:4200', undefined]]);
+  assert.throws(() => resolveFeedbackSource('view', dir, true), /--base/);
+  assert.throws(() => resolveFeedbackSource('view', dir, true), /staging/);
+});
+
+test('source: one base is used without asking', () => {
+  const dir = makeWorkspace([['https://staging.example.com', 'staging']]);
+  assert.equal(resolveFeedbackSource('view', dir, true).file, path.join(dir, 'staging', 'annotations.json'));
+});
+
+test('source: --base picks one of several', () => {
+  const dir = makeWorkspace([['https://staging.example.com', 'staging'], ['http://localhost:4200', undefined]]);
+  const src = resolveFeedbackSource('view', dir, true, 'staging');
+  assert.equal(src.file, path.join(dir, 'staging', 'annotations.json'));
+  assert.equal(src.dir, path.join(dir, 'staging'));
+});
+
+test('source: a base with nothing to verify still explains itself', () => {
+  const dir = makeWorkspace([['https://staging.example.com', 'staging']]);
+  assert.throws(() => resolveFeedbackSource('verify', dir, true), e => {
+    assert.match(e.message, /nothing to verify/);
+    assert.match(e.message, /1 actionable change-request is waiting/);
     return true;
   });
 });
