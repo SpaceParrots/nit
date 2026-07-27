@@ -37,7 +37,7 @@ test('nit review — pick-time screenshot staging', async t => {
     assert.ok(size.width >= MIN_SHOT_W - 2, `staged width ${size.width} ≥ context minimum`);
     assert.ok(size.height >= MIN_SHOT_H - 2, `staged height ${size.height} ≥ context minimum`);
     // nothing on disk yet — the buffer only becomes a file on save
-    assert.ok(!fs.existsSync(path.join(S.out, 'shots', 'a1.png')), 'no file before save');
+    assert.ok(!fs.existsSync(path.join(S.dir, 'shots', 'a1.png')), 'no file before save');
   });
 
   await t.test('saving consumes the staged shot instead of re-capturing', async () => {
@@ -47,12 +47,12 @@ test('nit review — pick-time screenshot staging', async t => {
 
     const a = await waitFor(() => {
       try {
-        return readAnnotations(S.out).annotations.find(x => x.comment === 'badge context shot') ?? null;
+        return readAnnotations(S.dir).annotations.find(x => x.comment === 'badge context shot') ?? null;
       } catch { return null; }
     }, { message: 'annotation written' });
 
     assert.ok(a.screenshot, 'annotation has a screenshot');
-    const onDisk = fs.readFileSync(path.join(S.out, a.screenshot));
+    const onDisk = fs.readFileSync(path.join(S.dir, a.screenshot));
     assert.ok(staged.equals(onDisk), 'the file IS the staged buffer, byte for byte');
     assert.equal(S.session.pendingShot, null, 'pending shot consumed');
   });
@@ -68,7 +68,7 @@ test('nit review — pick-time screenshot staging', async t => {
     }));
     assert.equal(res.ok, true);
     assert.ok(res.annotation.screenshot, 'fallback capture produced a screenshot');
-    const buf = fs.readFileSync(path.join(S.out, res.annotation.screenshot));
+    const buf = fs.readFileSync(path.join(S.dir, res.annotation.screenshot));
     const size = pngSize(buf);
     assert.ok(size.width >= MIN_SHOT_W - 2, 'fallback shot also carries context');
   });

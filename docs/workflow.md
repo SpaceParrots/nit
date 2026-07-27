@@ -49,6 +49,32 @@ When the session ends, nit prints a summary: verified, reopened, still fixed.
 
 Run the agent again on the reopened items, verify again, and repeat until the list is empty. This loop is cheap; each round is usually a single command plus one agent run.
 
+## Several environments
+
+Most products run in more than one place: a dev server, staging, production. One review folder holds all of them, one subfolder per base URL, so you keep a single agent handoff instead of juggling folders.
+
+```bash
+nit review https://staging.example.com --base staging   # annotate staging
+nit list                                                # staging · 7 annotations · 3 actionable
+```
+
+Then run the normal loop, scoped to that environment:
+
+```bash
+nit mcp nit-review                     # the agent sees every base; ids read staging:a1
+nit verify --base staging              # rule the fixes on staging
+nit clear --base staging --verified    # drop what is done, keep the rest
+```
+
+When the same release reaches production, review it there and repeat — the staging history stays where it is:
+
+```bash
+nit review https://example.com --base prod
+nit list --all --actionable            # everything still waiting, everywhere
+```
+
+`--base` accepts the slug (`staging`), the full url, or an unambiguous prefix (`stag`). Commands that open a browser insist on one when there are several bases, rather than guessing which environment you meant.
+
 ## With a team
 
 Everyone reviews on their own, then one person merges:
@@ -77,6 +103,7 @@ Pins appear on the pages they were made on, and clicking an item in the panel na
 
 - **Mobile issues**: start with `nit review --mobile`, or switch the viewport from the panel. Scope annotations to the viewport where they matter.
 - **Issue tracking**: put a ticket key or url into an annotation's issue-ref field from the panel, or let the agent do it through `nit_set_issue_ref`. It shows up as a chip in the list and as a link in `review.md`.
-- **Keep review folders out of git**: `nit setup` offers the `.gitignore` entry. The zips from `nit export` are the sharing format instead.
+- **Keep review folders out of git**: `nit setup` offers the `.gitignore` entry. The zips from `nit export` are the sharing format instead. A multi-base review exports whole; `nit export --base staging` packs one environment as the plain single-review zip a teammate expects.
+- **Housekeeping**: `nit clear --all --verified` after a verify round keeps the next round's list short. Add `--dry-run` first if you want to see what would go. Agents can do the same sweep themselves through `nit_clear_verified`, but only for items a human has already ruled.
 - **Untrusted files**: annotation files are treated as untrusted input by design. When you replay a file that did not come from your own team, prefer `nit view --url <your-staging-url>` so the browser opens the origin you chose rather than the one stored in the file.
 - **CI or scripted runs**: every browser command accepts `--headless`.

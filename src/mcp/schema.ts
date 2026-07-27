@@ -17,8 +17,10 @@
  * zod lives in the MCP layer only.
  */
 import { z } from 'zod';
+import { ANNOTATION_STATUSES } from '../types.js';
 
-export const STATUSES = ['open', 'fixed', 'wontfix', 'verified', 'reopened'] as const;
+/** The five annotation statuses, re-exported from `../types.js` — the single source of truth. */
+export const STATUSES = ANNOTATION_STATUSES;
 
 export const statusSchema = z.enum(STATUSES);
 export const annotationTypeSchema = z.enum(['change-request', 'comment']);
@@ -29,6 +31,8 @@ export const listInputShape = {
   status: statusSchema.optional().describe('only annotations with this status'),
   type: annotationTypeSchema.optional().describe('only this annotation type'),
   route: z.string().optional().describe('only annotations on this route; an exact route or a bare pathname like /products'),
+  base: z.string().optional()
+    .describe('only annotations for this base URL — its slug (e.g. staging), its full url, or an unambiguous prefix'),
 };
 
 export const getAnnotationInputShape = {
@@ -50,6 +54,11 @@ export const setStatusInputShape = {
   status: statusSchema.describe('the new status'),
   reason: z.string().optional()
     .describe('why this status — required in spirit for wontfix; persisted on the annotation as statusReason'),
+};
+
+export const clearVerifiedInputShape = {
+  base: z.string().optional()
+    .describe('only this base URL — its slug (e.g. staging), its full url, or an unambiguous prefix; omit to clear every base'),
 };
 
 export const setIssueRefInputShape = {

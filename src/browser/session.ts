@@ -10,6 +10,7 @@ import { wireBridge } from './bridge.js';
 import { openPanel } from './panel.js';
 import { createStore } from '../store/store.js';
 import type { Store } from '../store/store.js';
+import { ensureBase } from '../store/workspace.js';
 import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
 import { errorMessage } from '../util/error.js';
 import type { OverlayEvent, PlacedRef, HiddenRef, SessionMode, ViewportMode, ViewportResult } from '../types.js';
@@ -107,6 +108,8 @@ export interface StartSessionOptions {
   reviewFile?: string;
   /** output directory for review mode (default `nit-review`) */
   out?: string;
+  /** short name for this url's base folder inside the workspace (`--base staging`) */
+  base?: string;
   /** recorded on every annotation (default: OS user name) */
   author?: string;
   /** initial viewport */
@@ -133,6 +136,7 @@ export async function startSession(opts: StartSessionOptions): Promise<NitSessio
     url,
     mode = 'review',
     out = 'nit-review',
+    base,
     author = defaultAuthor(),
     viewportMode = 'desktop',
     headless = false,
@@ -154,7 +158,12 @@ export async function startSession(opts: StartSessionOptions): Promise<NitSessio
     if (!targetUrl) throw new Error('feedback file has no review.url — pass --url <url>');
   } else {
     if (!url) throw new Error('review mode needs a url');
-    store = createStore(path.resolve(out), { url, author });
+    // `out` names the workspace; the session writes into the base folder for this
+    // url, which ensureBase creates (migrating a flat review folder when this is
+    // the second base url it has seen). `url` is narrowed non-empty by the throw
+    // above — ensureBase throws on '' and undefined alike, so neither may reach it.
+    const target = ensureBase(path.resolve(out), url, base);
+    store = createStore(target.dir, { url, author });
     targetUrl = url;
   }
 

@@ -14,6 +14,51 @@ nit-review/
 
 `annotations.json` is the source of truth. `review.md` and `fix-annotations.md` are re-rendered from it on every write.
 
+## Where annotations live: one folder per base URL
+
+A review can cover several sites — local, staging, production. Each base URL then gets its own subfolder, and that subfolder is byte-for-byte the folder above:
+
+```
+nit-review/
+├─ bases.json           # the index of base URLs (see below)
+├─ staging/             # a complete review folder, exactly as described above
+│  ├─ annotations.json
+│  ├─ review.md
+│  ├─ fix-annotations.md
+│  └─ shots/
+└─ localhost-4200/
+   └─ …
+```
+
+**The annotation schema itself does not change**, and neither do the ids: `staging/annotations.json` holds a plain `a1`, and each base counts its own ids from `a1` up. The qualified `staging:a1` form exists only where output spans bases — the MCP tools and `nit list` — and is translated back the moment it reaches a file.
+
+A review of a single site stays flat: `annotations.json` sits directly in `nit-review/`, with no `bases.json`. It becomes a folder-per-base layout only when a *second*, genuinely different base url is reviewed into it, at which point the existing review is moved into its own subfolder, screenshots and all.
+
+`bases.json` records which folder is which:
+
+```json
+{
+  "version": 1,
+  "bases": [
+    {
+      "slug": "staging",
+      "url": "https://staging.example.com",
+      "createdAt": "2026-07-25T09:00:00.000Z",
+      "lastSeenAt": "2026-07-27T14:12:03.000Z"
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `slug` | The folder name, and what `--base` and a qualified id name. Lowercase letters, digits and dashes only. |
+| `url` | The site this base covers. A base's own `review.url` wins when the two disagree. |
+| `createdAt` | When the base was first registered. |
+| `lastSeenAt` | When a session last reviewed this base. |
+
+It is an *index*, not the source of truth: a subfolder holding an `annotations.json` is a base whether or not it is listed, and an entry naming a folder that is gone is ignored. So a review survives a `git clone`, an unzip, or a hand-edit — the same tolerance `annotations.json` itself gets. If you delete `bases.json`, nit rebuilds what it needs from the folders.
+
 ## One annotation
 
 ```json

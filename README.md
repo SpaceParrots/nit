@@ -49,6 +49,8 @@ Or without installing: `npx @spaceparrots/nit review https://example.com`
 | `nit view [source]` | `v`, `replay` | Replay a review (default `nit-review/`) with pins re-anchored on their routes |
 | `nit verify [source]` | `check` | Capture after-shots for fixed items, rule Verified / Reopen (default `nit-review/`) |
 | `nit status [dir]` | `stats` | What is in a review: file, last change, counts, what is left |
+| `nit list [dir]` | `ls` | List the base URLs in a review, or the annotated urls in one |
+| `nit clear [dir]` | `rm` | Remove annotations from a base, or from every base |
 | `nit export [dir]` | `pack` | Pack a review into a shareable zip |
 | `nit import <zip>` | `unpack` | Unpack a teammate's review zip |
 | `nit merge <file...>` | `combine` | Combine feedback files into one consolidated review |
@@ -62,17 +64,25 @@ All flags are in the [command reference](./docs/wiki/commands.md); reviewing its
 
 ```
 nit-review/
-├─ annotations.json     # structured, agent-readable
-├─ review.md            # human-readable, screenshots embedded, ACTIONABLE markers
-├─ fix-annotations.md   # the contract for the fixing agent
-└─ shots/*.png          # context screenshots (+ after-shots from nit verify)
+├─ bases.json              # the base URLs this review covers
+├─ staging/                # one review folder per base URL
+│  ├─ annotations.json     #   structured, agent-readable
+│  ├─ review.md            #   human-readable, screenshots embedded, ACTIONABLE markers
+│  ├─ fix-annotations.md   #   the contract for the fixing agent
+│  └─ shots/*.png          #   context screenshots (+ after-shots from nit verify)
+└─ localhost-4200/
+   └─ …
 ```
+
+A review of a single site stays flat — `annotations.json` sits directly in `nit-review/`. The base folders appear the first time you review a *second* url into the same folder, and the existing review is moved into its own folder as part of that. `nit list` shows what a review covers; every command takes `--base <name>` to work on one environment.
 
 Each annotation carries the element reference (component, selector, XPath, text), the route and viewport, a status (`open`, `fixed`, `verified`, `reopened`, `wontfix`), optional issue ref, and a click trail for reproducing hidden states. Field-by-field details are in the [annotation file reference](./docs/wiki/annotations.md).
 
 ## Agent handoff
 
-Point your agent at the folder and let it follow `fix-annotations.md`, or register the MCP server (`nit mcp-install`) and let it work through tools: `nit_list_annotations` (rows carry the full working record), `nit_get_annotation` (batchable; screenshots included as images), `nit_mark_fixed`, `nit_set_status` (with a persisted `reason` for wontfix), `nit_set_issue_ref`. Payloads are deliberately token-lean. The review is also readable as resources (`nit://review/brief.md`, `nit://review/annotations.json`, `nit://annotation/<id>`, …) for sessions without tool access. [MCP server and coding agents](./docs/wiki/mcp.md) has the details and prompt suggestions.
+Point your agent at the folder and let it follow `fix-annotations.md`, or register the MCP server (`nit mcp-install`) and let it work through tools: `nit_list_annotations` (rows carry the full working record), `nit_get_annotation` (batchable; screenshots included as images), `nit_mark_fixed`, `nit_set_status` (with a persisted `reason` for wontfix), `nit_set_issue_ref`, `nit_clear_verified` (housekeeping after a verify round). Payloads are deliberately token-lean. The review is also readable as resources (`nit://review/brief.md`, `nit://review/annotations.json`, `nit://annotation/<id>`, …) for sessions without tool access.
+
+One server covers every environment: with several base URLs each row carries its `base` and navigable `url`, ids are qualified `staging:a1`, and the `base` parameter narrows tools to one of them. [MCP server and coding agents](./docs/wiki/mcp.md) has the details and prompt suggestions.
 
 ## Documentation
 

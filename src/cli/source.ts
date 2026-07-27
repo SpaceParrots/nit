@@ -5,7 +5,9 @@
 // end (missing file, empty review, no fixed items) is caught here first, with
 // an error that always names the next step.
 import fs from 'node:fs';
+import path from 'node:path';
 import { resolveReviewFile } from '../store/store.js';
+import { openWorkspace, resolveBase, describeBases } from '../store/workspace.js';
 import { isActionable } from '../store/stats.js';
 import { displayPath } from './status.js';
 import { errorMessage } from '../util/error.js';
@@ -26,22 +28,63 @@ export interface FeedbackSource {
 /**
  * Resolve the `[source]` argument of `nit view` / `nit verify` and check there
  * is actually something for the command to do.
+ *
+ * A workspace covering several base URLs has to narrow to one first: both
+ * commands drive a browser at exactly one site. A workspace with a single base
+ * is used silently; several bases require a `--base` rather than a guess about
+ * which environment the human meant.
  * @param cmd which command asks — each phrases its own suggestions
  * @param input what the user typed, or the default `nit-review`
  * @param explicit whether the user typed it — a defaulted lookup phrases the
  *   not-found error as "no review found" rather than blaming a path the user
  *   never gave
+ * @param base optional base to work on — a slug, a url, or an unambiguous prefix
  * @throws with a short suggestion list when the file is missing, unreadable,
- *   or holds no work for the command
+ *   or holds no work for the command; when `base` names no base (via
+ *   {@link resolveBase}); or when the workspace holds several bases and none
+ *   was named
  */
-export function resolveFeedbackSource(cmd: 'view' | 'verify', input: string, explicit: boolean): FeedbackSource {
-  const { dir, file, exists } = resolveReviewFile(input);
-  const where = displayPath(file);
+export function resolveFeedbackSource(
+  cmd: 'view' | 'verify',
+  input: string,
+  explicit: boolean,
+  base?: string,
+): FeedbackSource {
+  const ws = openWorkspace(input);
+  if (base) {
+    const ref = resolveBase(ws, base);
+    // a flat review resolves to the folder itself, so this covers both layouts
+    return readSource(cmd, ref.file, `${input} --base ${ref.slug}`);
+  }
+  if (ws.layout === 'multi') {
+    if (ws.bases.length === 1) return readSource(cmd, ws.bases[0].file, input);
+    throw new Error(`${displayPath(ws.dir)} holds ${ws.bases.length} base URLs — pass --base to pick one\n`
+      + `  bases: ${describeBases(ws)}\n`
+      + `  e.g.  nit ${cmd} ${input} --base ${ws.bases[0].slug}`);
+  }
+
+  const { file, exists } = resolveReviewFile(input);
   if (!exists) {
+    const where = displayPath(file);
     throw new Error((explicit
       ? `no annotations file at ${where}`
       : `no review found — looked for ${where}`) + '\n' + notFoundHints(cmd));
   }
+  return readSource(cmd, file, explicit ? input : '');
+}
+
+/**
+ * Read one annotations file and check it holds work for `cmd`.
+ * @param cmd which command asks
+ * @param file an annotations file that exists
+ * @param viewTarget what a "look at it with nit view" hint should point at;
+ *   empty when the caller defaulted its way here and has no path to echo back
+ * @throws when the file is not readable as JSON, has no annotations, or (for
+ *   `verify`) holds nothing marked fixed
+ */
+function readSource(cmd: 'view' | 'verify', file: string, viewTarget: string): FeedbackSource {
+  const dir = path.dirname(file);
+  const where = displayPath(file);
 
   let raw: unknown;
   try {
@@ -64,7 +107,7 @@ export function resolveFeedbackSource(cmd: 'view' | 'verify', input: string, exp
     const fixed = annotations.filter(a => a.status === 'fixed').length;
     if (!fixed) {
       const actionable = annotations.filter(isActionable).length;
-      const view = `  Look at the review any time:  nit view ${explicit ? input : ''}`.trimEnd();
+      const view = `  Look at the review any time:  nit view ${viewTarget}`.trimEnd();
       throw new Error(actionable
         ? `nothing to verify in ${where} — no annotation is marked fixed yet\n`
           + `  ${actionable} actionable change-request${actionable === 1 ? ' is' : 's are'} waiting — hand them to your agent:  nit mcp ${displayPath(dir)}\n`

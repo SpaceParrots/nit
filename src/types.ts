@@ -12,10 +12,19 @@
 export type AnnotationType = 'change-request' | 'comment';
 
 /**
- * Lifecycle: `open` → (agent) `fixed` → (nit verify) `verified` | `reopened`.
- * `reopened` change-requests are actionable again.
+ * Every status an annotation can carry, lifecycle order: `open` → (agent)
+ * `fixed` → (nit verify) `verified` | `reopened`. `reopened` change-requests
+ * are actionable again.
+ *
+ * The single source of truth for the status enum — {@link AnnotationStatus}
+ * is derived from it, and the MCP schema (`src/mcp/schema.ts`) and the CLI's
+ * `--status` choices (`src/cli/index.ts`) import it too, so the five names
+ * live in exactly one place.
  */
-export type AnnotationStatus = 'open' | 'fixed' | 'wontfix' | 'verified' | 'reopened';
+export const ANNOTATION_STATUSES = ['open', 'fixed', 'wontfix', 'verified', 'reopened'] as const;
+
+/** One of {@link ANNOTATION_STATUSES}. */
+export type AnnotationStatus = typeof ANNOTATION_STATUSES[number];
 
 /** Which viewports an annotation applies to; replay filters by the active mode. */
 export type ViewportScope = 'general' | 'desktop' | 'mobile';
@@ -275,6 +284,38 @@ export interface PanelState {
 export interface OverlayApi {
   cmd: (c: PanelCmd) => void;
   setUiHidden: (hidden: boolean) => void;
+}
+
+// ---------------------------------------------------------------------------
+// Workspace: a review folder holding one review folder per base URL.
+// ---------------------------------------------------------------------------
+
+/** Where a workspace's annotations live: nowhere, one flat review, or per-base subfolders. */
+export type WorkspaceLayout = 'empty' | 'flat' | 'multi';
+
+/** One base URL inside a workspace, and the review folder that holds it. */
+export interface BaseRef {
+  /** folder name inside the workspace; also what `--base` and qualified ids name */
+  slug: string;
+  /** the site under review for this base, from its own `review.url` */
+  url: string;
+  /** absolute path of the base's review folder */
+  dir: string;
+  /** absolute path of its annotations.json */
+  file: string;
+  /** ISO timestamp the base was registered (from bases.json, when known) */
+  createdAt?: string;
+  /** ISO timestamp of the last session against this base (from bases.json) */
+  lastSeenAt?: string;
+}
+
+/** A review folder read as a workspace. */
+export interface Workspace {
+  /** absolute path of the workspace directory */
+  dir: string;
+  layout: WorkspaceLayout;
+  /** every base found, slug-sorted; empty for a fresh folder */
+  bases: BaseRef[];
 }
 
 declare global {

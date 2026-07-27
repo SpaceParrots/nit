@@ -28,6 +28,18 @@ The overlay keeps pins current as the page changes: a MutationObserver re-anchor
 
 **Known limitation:** while a native `<dialog>` opened with `showModal()` is open, it sits in the browser's top layer above everything else, so nit's own popover can't be clicked from inside it. Pick the element while the dialog is open (the screenshot is staged at pick time), then close the dialog and save. Overlay-based dialogs (Angular CDK, Bootstrap, `.offcanvas`) aren't affected.
 
+## One folder, several base URLs
+
+A review folder can cover more than one site. The layer that makes that work sits **above** the store and **below** the CLI: each base URL gets a subfolder that is byte-for-byte an ordinary review folder, so the store, the renderers, the overlay and the annotation schema stay single-review and unchanged. Only the layer above knows there is more than one.
+
+Three decisions shape it:
+
+- **`bases.json` is an index, not the source of truth.** A subfolder holding an `annotations.json` is a base whether or not the index lists it (its url comes from its own `review.url`), and an entry naming a folder that no longer exists is ignored. A review therefore survives a `git clone`, an unzip, or a hand-edit — the same tolerance `annotations.json` itself gets.
+- **Migration is lazy.** A single-site review stays flat forever. It only becomes a folder-per-base layout when a *second*, genuinely different base url is reviewed into the same folder, and that move is rolled back as a whole if any part of it fails. People who only ever review one site never see their folder change shape.
+- **Slugs are validated before they are paths.** A base's folder name is matched against `/^[a-z0-9][a-z0-9-]*$/` before it is ever joined into a path, and the list of bases always comes from enumerating real directories rather than from the file. `bases.json` is hand-editable and travels inside shared zips, so a crafted `"slug": "../../.ssh"` must never resolve to anything.
+
+Base-qualified ids (`staging:a1`) exist only where output spans bases — the MCP tools, `nit list` — and are translated back to the plain `a1` on disk before anything is written.
+
 ## Trust model
 
 Annotation files are shared between teammates and written by AI agents, so nit treats them as untrusted input end to end:

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { tmpDir } from './helpers/tmp.js';
-import { startFixtureMcp, startMcpClient, PNG_1PX } from './helpers/mcp.js';
+import { startFixtureMcp, startMcpClient, startWorkspaceMcp, PNG_1PX } from './helpers/mcp.js';
 import { renderBriefMd } from '../dist/store/render.js';
 
 test('mcp resources — the review is listed as files an agent can read', async t => {
@@ -120,6 +120,68 @@ test('mcp resources — a merged, namespaced id round-trips through its uri', as
 
   const shot = await client.readResource({ uri: `${listed.uri}/screenshot` });
   assert.deepEqual(Buffer.from(shot.contents[0].blob, 'base64'), PNG_1PX);
+});
+
+test('resources: bases.md lists every base with its counts', async t => {
+  const { client } = await startWorkspaceMcp(t);
+  const res = await client.readResource({ uri: 'nit://review/bases.md' });
+  const text = res.contents[0].text;
+  assert.match(text, /staging/);
+  assert.match(text, /https:\/\/staging\.example\.com/);
+  assert.match(text, /localhost-4200/);
+});
+
+test('resources: a base has its own annotations.json and brief.md', async t => {
+  const { client } = await startWorkspaceMcp(t);
+  const json = await client.readResource({ uri: 'nit://base/staging/annotations.json' });
+  const data = JSON.parse(json.contents[0].text);
+  assert.deepEqual(data.annotations.map(a => a.id), ['a1', 'a2']);
+  assert.equal(data.review.url, 'https://staging.example.com');
+
+  const brief = await client.readResource({ uri: 'nit://base/staging/brief.md' });
+  assert.match(brief.contents[0].text, /a1/);
+});
+
+test('resources: every base file is listed and completable', async t => {
+  const { client } = await startWorkspaceMcp(t);
+  const { resources } = await client.listResources();
+  const uris = resources.map(r => r.uri);
+  assert.ok(uris.includes('nit://base/staging/annotations.json'));
+  assert.ok(uris.includes('nit://base/localhost-4200/review.md'));
+  assert.ok(uris.includes('nit://review/bases.md'));
+  // annotations are enumerated across bases, with the ids the tools hand out
+  assert.ok(uris.includes(`nit://annotation/${encodeURIComponent('staging:a1')}`));
+
+  const completion = await client.complete({
+    ref: { type: 'ref/resource', uri: 'nit://base/{slug}/{file}' },
+    argument: { name: 'slug', value: 'stag' },
+  });
+  assert.deepEqual(completion.completion.values, ['staging']);
+});
+
+test('resources: a qualified annotation id resolves, with its base screenshot', async t => {
+  const { client } = await startWorkspaceMcp(t);
+  const one = await client.readResource({ uri: `nit://annotation/${encodeURIComponent('staging:a1')}` });
+  assert.equal(JSON.parse(one.contents[0].text).id, 'a1', 'the id on disk is never rewritten');
+
+  const shot = await client.readResource({ uri: `nit://annotation/${encodeURIComponent('staging:a1')}/screenshot` });
+  assert.deepEqual(Buffer.from(shot.contents[0].blob, 'base64'), PNG_1PX);
+});
+
+test('resources: an unsafe or unknown base slug is refused', async t => {
+  const { client } = await startWorkspaceMcp(t);
+  await assert.rejects(() => client.readResource({ uri: 'nit://base/nope/annotations.json' }), /nope/);
+});
+
+test('resources: unprefixed uris still work on a single-base review', async t => {
+  const { client } = await startFixtureMcp(t);
+  const res = await client.readResource({ uri: 'nit://review/annotations.json' });
+  assert.deepEqual(JSON.parse(res.contents[0].text).annotations.map(a => a.id), ['a1', 'a2']);
+});
+
+test('resources: an unprefixed uri on a workspace says which base to ask for', async t => {
+  const { client } = await startWorkspaceMcp(t);
+  await assert.rejects(() => client.readResource({ uri: 'nit://review/annotations.json' }), /nit:\/\/base\/|staging/);
 });
 
 test('mcp resources — a poisoned screenshot path is refused, like the tool refuses it', async t => {

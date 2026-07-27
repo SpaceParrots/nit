@@ -5,6 +5,15 @@ import { tmpDir } from './tmp.js';
 
 export { tmpDir, readAnnotations, waitFor } from './tmp.js';
 
+/**
+ * @param {object} [overrides] passed through to `startSession`
+ * @returns {Promise<{session: object, out: string, dir: string, logs: string[], events: unknown[]}>}
+ *   `out` is the workspace root passed as `--out`; `dir` is where this
+ *   session's files actually land — `session.store.dir`, which for review
+ *   mode is `out/<slug>` (the base folder `ensureBase` created), not `out`
+ *   itself. Exposed here once so callers ask the session rather than
+ *   re-deriving the slug/layout rule in every test.
+ */
 export async function startTestSession(overrides = {}) {
   const out = overrides.out || tmpDir('nit-out-');
   const logs = [];
@@ -20,5 +29,5 @@ export async function startTestSession(overrides = {}) {
     onEvent: evt => events.push(evt),
     ...overrides,
   });
-  return { session, out, logs, events };
+  return { session, out, dir: session.store.dir, logs, events };
 }

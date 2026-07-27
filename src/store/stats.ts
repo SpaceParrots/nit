@@ -48,6 +48,20 @@ export interface ReviewStats {
   /** ISO mtime of annotations.json, or null when it cannot be read */
   fileUpdatedAt: string | null;
   screenshots: { files: number; bytes: number };
+  /**
+   * Per-base breakdown, present only when the report covers a multi-base
+   * workspace. The counts above are then the sum across these bases, so a
+   * `--json` consumer reads one familiar object either way.
+   */
+  bases?: BaseStats[];
+}
+
+/** One base's headline numbers inside a workspace-wide {@link ReviewStats}. */
+export interface BaseStats {
+  slug: string;
+  url: string;
+  total: number;
+  actionable: number;
 }
 
 /**

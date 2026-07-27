@@ -9,6 +9,8 @@ import { runSetup, confirmReviewDir } from './setup.js';
 import { runExport } from './export.js';
 import { runImport } from './import.js';
 import { runStatus, displayPath } from './status.js';
+import { runList } from './list.js';
+import { runClear } from './clear.js';
 import { resolveFeedbackSource } from './source.js';
 import { isActionable } from '../store/stats.js';
 import { startSession } from '../browser/session.js';
@@ -17,7 +19,8 @@ import { startMcpServer } from '../mcp/server.js';
 import { errorMessage } from '../util/error.js';
 import { readUserConfig } from '../util/user-config.js';
 import { pkgVersion } from '../util/version.js';
-import type { SessionMode } from '../types.js';
+import { ANNOTATION_STATUSES } from '../types.js';
+import type { AnnotationStatus, AnnotationType, SessionMode } from '../types.js';
 
 /** Options shared by every command that launches a browser. */
 interface BrowserCmdOptions {
@@ -29,6 +32,11 @@ interface BrowserCmdOptions {
   url?: string;
   /** review: output directory */
   out?: string;
+  /**
+   * review: short name for this url's base folder inside the workspace;
+   * view/verify: which base of a workspace to open
+   */
+  base?: string;
   /** review: author recorded on each annotation */
   author?: string;
 }
@@ -40,7 +48,10 @@ program
   .description('Point-and-click website annotation that hands small UI fixes to a coding agent.\n'
     + 'Annotate any site in a real browser; nit writes a structured review folder\n'
     + '(annotations.json + review.md + screenshots) that an agent fixes directly.')
-  .version(pkgVersion())
+  // commander binds one short flag per option, so -V (its default) is declared
+  // separately from the -v most CLIs use. Both print the same string.
+  .version(pkgVersion(), '-v, --version', 'print the nit version')
+  .addOption(new Option('-V').hideHelp())
   .showHelpAfterError('(run "nit <command> --help" for details)')
   .showSuggestionAfterError()
   .addHelpText('after', `
@@ -56,7 +67,14 @@ Examples:
   $ nit view feedback-ann.json --url https://staging.example.com
   $ nit export                                   pack nit-review/ into a shareable zip
   $ nit import 2026-07-21-example.com-ann.nit.zip
-  $ nit merge nit-review/annotations.json imported/annotations.json --out review-merged`);
+  $ nit merge nit-review/staging-example-com/annotations.json imported/annotations.json --out review-merged`);
+
+// -V is declared hidden above so it stays accepted for scripts written against
+// commander's default flag; commander only auto-handles the flag it owns.
+program.on('option:V', () => {
+  console.log(pkgVersion());
+  process.exit(0);
+});
 
 /** Attach the options shared by every command that launches a browser. */
 function withBrowserOptions(cmd: Command): Command {
@@ -79,10 +97,15 @@ withBrowserOptions(
       + 'switches desktop/mobile, sorts and groups them by page, time or state, jumps to\n'
       + 'the page an annotation was found on, records an issue reference, edits comment\n'
       + 'texts, deletes items, and finishes the review.\n\n'
-      + 'Writes <out>/annotations.json, review.md, fix-annotations.md and shots/*.png.')
+      + 'Writes <out>/<base>/annotations.json, review.md, fix-annotations.md and shots/*.png\n'
+      + '— <base> is a short name for this url\'s folder inside <out>, derived from its\n'
+      + 'host by default (override with --base). A pre-existing single-url review at\n'
+      + '<out>/annotations.json is migrated into a base folder automatically the first\n'
+      + 'time a second, different url is reviewed into the same <out>.')
     .argument('<url>', 'page to open (https:// is assumed when no scheme is given)')
     .option('-o, --out <dir>', 'output directory', 'nit-review')
-    .option('-a, --author <name>', 'author recorded on each annotation (default: from nit setup, else your OS user name)'))
+    .option('-a, --author <name>', 'author recorded on each annotation (default: from nit setup, else your OS user name)')
+    .option('-b, --base <name>', 'short name for this url\'s folder inside the review workspace (default: derived from the host)'))
   .action(async (url: string, opts: BrowserCmdOptions, cmd: Command) => {
     // First review in a project: confirm the default output dir is intended here.
     const out = await confirmReviewDir(opts.out ?? 'nit-review', {
@@ -106,14 +129,16 @@ withBrowserOptions(
       + 'file — its annotations.json is used.')
     .argument('[source]', 'review directory, or a feedback file (annotations.json)', 'nit-review')
     .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file')
+    .option('-b, --base <name>', 'which base URL of the review to open — a slug, a url, or an unambiguous prefix')
     .addHelpText('after', `
 Examples:
   $ nit view                             replay ./nit-review
   $ nit view review-merged               a review folder
   $ nit view feedback-ann.json           a specific feedback file
+  $ nit view --base staging              the staging base of a multi-base review
   $ nit view -u http://localhost:4200    the stored url moved — open this one`))
   .action(async (source: string, opts: BrowserCmdOptions, cmd: Command) => {
-    const src = resolveFeedbackSource('view', source, cmd.args.length > 0);
+    const src = resolveFeedbackSource('view', source, cmd.args.length > 0, opts.base);
     const session = await startBrowser('view', { file: src.file, opts });
     const total = session.store.annotations.length;
     console.log(`nit view — ${displayPath(src.file)}`);
@@ -135,14 +160,16 @@ withBrowserOptions(
       + 'file — its annotations.json is used.')
     .argument('[source]', 'review directory, or a feedback file (annotations.json)', 'nit-review')
     .option('-u, --url <url>', 'open this url instead of the one stored in the feedback file')
+    .option('-b, --base <name>', 'which base URL of the review to verify — a slug, a url, or an unambiguous prefix')
     .addHelpText('after', `
 Examples:
   $ nit verify                           rule the fixes in ./nit-review
   $ nit verify review-merged             a review folder
   $ nit verify feedback-ann.json         a specific feedback file
+  $ nit verify --base staging            the staging base of a multi-base review
   $ nit verify -u http://localhost:4200  the stored url moved — open this one`))
   .action(async (source: string, opts: BrowserCmdOptions, cmd: Command) => {
-    const src = resolveFeedbackSource('verify', source, cmd.args.length > 0);
+    const src = resolveFeedbackSource('verify', source, cmd.args.length > 0, opts.base);
     const session = await startBrowser('verify', { file: src.file, opts });
     const fixed = session.store.annotations.filter(a => a.status === 'fixed').length;
     console.log(`nit verify — ${displayPath(src.file)}`);
@@ -171,12 +198,101 @@ program.command('status')
   .description('A quick read on a review folder, without opening a browser: where the\n'
     + 'annotations file is, when it last changed and by whom, how many annotations\n'
     + 'there are by status and type, which routes they sit on, and what to do next.\n\n'
+    + 'A review covering several base URLs reports one line per base plus the totals;\n'
+    + '--base narrows to one and reports it like any single review.\n\n'
     + 'Nothing is written — safe to run against a review someone else is editing.\n'
     + 'Use --json to feed the same numbers to a script or CI.')
   .argument('[dir]', 'review directory (or an annotations.json path)', 'nit-review')
+  .option('-b, --base <name>', 'only this base — a slug, a url, or an unambiguous prefix')
   .option('--json', 'print the stats as JSON instead of a report')
-  .action((dir: string, opts: { json?: boolean }) => {
-    runStatus(dir, { json: Boolean(opts.json) });
+  .addHelpText('after', `
+Examples:
+  $ nit status                           what is in nit-review/
+  $ nit status --base staging            just the staging base
+  $ nit status --json                    the same numbers, for a script`)
+  .action((dir: string, opts: { base?: string; json?: boolean }) => {
+    runStatus(dir, { base: opts.base, json: Boolean(opts.json) });
+  });
+
+program.command('list')
+  .aliases(['ls'])
+  .summary('list the base URLs in a review, or the annotated urls in one')
+  .description('See what a review workspace holds. With no options it lists every base URL\n'
+    + '(local, staging, production …) with its counts; with --base it lists the\n'
+    + 'annotated urls inside one of them.\n\n'
+    + 'Nothing is written — safe to run against a review someone else is editing.\n'
+    + 'Every filter applies to both shapes, and --json feeds the same numbers to a script.')
+  .argument('[dir]', 'review workspace (or an annotations.json path)', 'nit-review')
+  .option('-b, --base <name>', 'only this base — a slug, a url, or an unambiguous prefix')
+  .option('--all', 'show annotated urls for every base')
+  .addOption(new Option('--status <status>', 'only annotations with this status')
+    .choices(ANNOTATION_STATUSES))
+  .addOption(new Option('--type <type>', 'only this annotation type').choices(['change-request', 'comment']))
+  .option('--route <path>', 'only annotations on this route (exact route or bare pathname)')
+  .option('--author <name>', 'only annotations by this author')
+  .option('--actionable', 'only open/reopened change-requests')
+  .option('--json', 'print the listing as JSON instead of a report')
+  .addHelpText('after', `
+Examples:
+  $ nit list                                  every base URL with its counts
+  $ nit list --base staging                   the annotated urls on staging
+  $ nit list --all --actionable               everything still waiting, everywhere
+  $ nit list --base staging --status verified what is already ruled on staging`)
+  .action((dir: string, opts: {
+    base?: string; all?: boolean; status?: AnnotationStatus; type?: AnnotationType;
+    route?: string; author?: string; actionable?: boolean; json?: boolean;
+  }) => {
+    runList(dir, {
+      base: opts.base,
+      all: opts.all,
+      json: opts.json,
+      filter: {
+        status: opts.status,
+        type: opts.type,
+        route: opts.route,
+        author: opts.author,
+        actionable: opts.actionable,
+      },
+    });
+  });
+
+program.command('clear')
+  .aliases(['rm'])
+  .summary('remove annotations from a base, or from every base')
+  .description('Remove annotations once they have served their purpose — typically the ones\n'
+    + 'already ruled Verified after a fix round.\n\n'
+    + 'A scope is always required: --base <name> for one environment, --all for every\n'
+    + 'one. Without --status the whole scope is emptied; --verified (or --status) narrows\n'
+    + 'it. The base folder and its review metadata always survive, so the next review of\n'
+    + 'that url keeps its review id.\n\n'
+    + 'Screenshots of removed annotations are deleted too. Use --dry-run to see what\n'
+    + 'would go, and --yes to skip the confirmation in scripts.')
+  .argument('[dir]', 'review workspace', 'nit-review')
+  .option('-b, --base <name>', 'clear this base — a slug, a url, or an unambiguous prefix')
+  .option('--all', 'clear every base in the workspace')
+  .option('--verified', 'only annotations ruled verified (same as --status verified)')
+  .addOption(new Option('--status <status>', 'only annotations with this status')
+    .choices(ANNOTATION_STATUSES))
+  .option('-y, --yes', 'skip the confirmation prompt')
+  .option('--dry-run', 'print what would be cleared and exit without writing')
+  .addHelpText('after', `
+Examples:
+  $ nit clear --base staging --verified   drop what is already ruled on staging
+  $ nit clear --all --verified            same, across every environment
+  $ nit clear --base staging              empty staging entirely (prompts)
+  $ nit clear --all --verified --dry-run  see what would go`)
+  .action(async (dir: string, opts: {
+    base?: string; all?: boolean; verified?: boolean; status?: AnnotationStatus;
+    yes?: boolean; dryRun?: boolean;
+  }) => {
+    await runClear(dir, {
+      base: opts.base,
+      all: opts.all,
+      // --verified is sugar; an explicit --status wins if somebody passes both
+      status: opts.status ?? (opts.verified ? 'verified' : undefined),
+      yes: opts.yes,
+      dryRun: opts.dryRun,
+    });
   });
 
 program.command('export')
@@ -185,11 +301,14 @@ program.command('export')
   .description('Pack a review folder (annotations.json, review.md, fix-annotations.md and\n'
     + 'shots/) into a single zip you can send to a co-founder. The default file name\n'
     + 'carries the review id and author, e.g. 2026-07-21-example.com-ann.nit.zip.\n\n'
+    + 'A review covering several base URLs packs all of them, each under its own\n'
+    + 'folder; --base packs one of them as a plain single-review zip.\n\n'
     + 'The other side unpacks it with:  nit import <file>')
   .argument('[dir]', 'review directory (or an annotations.json path)', 'nit-review')
+  .option('-b, --base <name>', 'pack only this base — a slug, a url, or an unambiguous prefix')
   .option('-o, --out <file>', 'output zip path (default: derived from review id + author)')
-  .action((dir: string, opts: { out?: string }) => {
-    runExport(dir, { out: opts.out });
+  .action((dir: string, opts: { base?: string; out?: string }) => {
+    runExport(dir, { base: opts.base, out: opts.out });
   });
 
 program.command('import')
@@ -272,6 +391,7 @@ async function startBrowser(
     url: url ? normalizeUrl(url) : opts.url ? normalizeUrl(opts.url) : undefined,
     reviewFile: file,
     out: opts.out,
+    base: opts.base,
     author: opts.author ?? readUserConfig().author,
     viewportMode: opts.mobile || opts.device === 'mobile' ? 'mobile' : 'desktop',
     headless: Boolean(opts.headless),

@@ -3,18 +3,21 @@
 // prefix so they stay unambiguous next to other MCP servers' tools in an agent's
 // combined tool list.
 import fs from 'node:fs';
-import path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createStore, safeShotPath } from '../store/store.js';
-import type { Store } from '../store/store.js';
-import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
+import { writeDerivedFiles } from '../store/derived.js';
+import { clearBase } from '../store/clear.js';
 import { isActionable } from '../store/stats.js';
+import { resolveAnnotationUrl } from '../store/url.js';
 import { errorMessage } from '../util/error.js';
 import { routePath } from '../util/route.js';
 import type { Annotation, AnnotationStatus } from '../types.js';
+import { basesOf, baseSummaries, displayId, isMultiBase, resolveAnnotation } from './aggregate.js';
+import type { Located } from './aggregate.js';
 import { compressHistory } from './history.js';
 import {
+  clearVerifiedInputShape,
   getAnnotationInputShape,
   listInputShape,
   markFixedInputShape,
@@ -26,6 +29,10 @@ import {
 // nothing here reaches into an open world, and repeating a call is always safe.
 const READ_ONLY = { readOnlyHint: true, idempotentHint: true, openWorldHint: false } as const;
 const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
+// The one tool that deletes. Clearing *unruled* feedback stays CLI-only, behind
+// a confirmation prompt: an agent must not be able to remove human feedback
+// nobody has ruled on yet.
+const DESTRUCTIVE = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } as const;
 
 /** How long a `statusReason` / `reason` may be before it is truncated. */
 const REASON_MAX_LEN = 500;
@@ -34,8 +41,13 @@ const REASON_MAX_LEN = 500;
  * Register the nit tools against a review directory. Handlers open the store per
  * call: the file is shared with humans (the panel) and other agents, so it is
  * re-read rather than cached.
+ *
+ * The directory may be a plain review folder or a workspace holding one review
+ * folder per base URL; the tools present both as one review, qualifying ids as
+ * `<base>:<id>` only when there really is more than one base (see
+ * `aggregate.ts`).
  * @param server the MCP server to register on
- * @param dir review directory containing annotations.json
+ * @param dir review directory, or a workspace of base folders
  */
 export function registerTools(server: McpServer, dir: string): void {
   server.registerTool('nit_list_annotations', {
@@ -44,11 +56,13 @@ export function registerTools(server: McpServer, dir: string): void {
       + 'issueRef, statusReason, updatedAt, updatedBy, component, ngComponent, selector, classes, text, historyCount. '
       + 'historyCount is omitted when the annotation has no recorded history. '
       + 'Start here: the result reports the actionable count, and actionable means type "change-request" with status "open" or "reopened". '
-      + 'Comments are context, not tasks. Filter by status, type, or route (exact route or bare pathname). '
+      + 'Comments are context, not tasks. Filter by status, type, route (exact route or bare pathname), or base. '
+      + 'When the review covers several base URLs, every row carries its base and the navigable url, ids come back '
+      + 'qualified as "<base>:<id>", and the result lists the bases with their counts. '
       + 'nit_get_annotation is only needed beyond this for the screenshot, the click history, or the xpath.',
     inputSchema: listInputShape,
     annotations: READ_ONLY,
-  }, args => guard(() => listAnnotations(createStore(dir), args)));
+  }, args => guard(() => listAnnotations(dir, args)));
 
   server.registerTool('nit_get_annotation', {
     title: 'Get annotation',
@@ -64,7 +78,7 @@ export function registerTools(server: McpServer, dir: string): void {
     inputSchema: getAnnotationInputShape,
     annotations: READ_ONLY,
   }, ({ id, includeXpath, includeScreenshot }) =>
-    guard(() => getAnnotation(dir, createStore(dir), id, includeXpath, includeScreenshot)));
+    guard(() => getAnnotation(dir, id, includeXpath, includeScreenshot)));
 
   server.registerTool('nit_mark_fixed', {
     title: 'Mark fixed',
@@ -72,7 +86,7 @@ export function registerTools(server: McpServer, dir: string): void {
       + 'verifies (or reopens) it later with nit verify. An optional reason is persisted on the annotation as statusReason.',
     inputSchema: markFixedInputShape,
     annotations: WRITE,
-  }, ({ id, reason }) => guard(() => setStatus(createStore(dir), id, 'fixed', reason)));
+  }, ({ id, reason }) => guard(() => setStatus(dir, id, 'fixed', reason)));
 
   server.registerTool('nit_set_status', {
     title: 'Set status',
@@ -82,14 +96,24 @@ export function registerTools(server: McpServer, dir: string): void {
       + 'next session does not re-litigate it — every status change replaces it, and omitting `reason` clears it.',
     inputSchema: setStatusInputShape,
     annotations: WRITE,
-  }, ({ id, status, reason }) => guard(() => setStatus(createStore(dir), id, status, reason)));
+  }, ({ id, status, reason }) => guard(() => setStatus(dir, id, status, reason)));
 
   server.registerTool('nit_set_issue_ref', {
     title: 'Set issue reference',
     description: 'Attach a tracker issue key (e.g. PROJ-123) or url to an annotation; an empty string clears it. Use it to link an annotation to the ticket or PR that covers it.',
     inputSchema: setIssueRefInputShape,
     annotations: WRITE,
-  }, ({ id, ref }) => guard(() => setIssueRef(createStore(dir), id, ref)));
+  }, ({ id, ref }) => guard(() => setIssueRef(dir, id, ref)));
+
+  server.registerTool('nit_clear_verified', {
+    title: 'Clear verified annotations',
+    description: 'Delete the annotations a human has already ruled "verified" — housekeeping after a fix round, once the '
+      + 'work they describe is done and confirmed. Their screenshots are deleted with them. Everything else is left alone: '
+      + 'open, reopened, fixed and wontfix annotations are never touched, and the review folder and its metadata survive. '
+      + 'Omit `base` to sweep every base URL, or name one to clear a single environment. This cannot be undone.',
+    inputSchema: clearVerifiedInputShape,
+    annotations: DESTRUCTIVE,
+  }, ({ base }) => guard(() => clearVerified(dir, base)));
 }
 
 /** Run a handler, reporting a thrown error to the agent instead of the client. */
@@ -104,6 +128,10 @@ function guard(run: () => CallToolResult): CallToolResult {
 /** The row `nit_list_annotations` returns per annotation. */
 interface AnnotationRow {
   id: string;
+  /** the owning base's slug; only on a review that covers several base URLs */
+  base?: string;
+  /** the navigable page this annotation sits on; alongside {@link AnnotationRow.base} */
+  url?: string;
   type: Annotation['type'];
   status: Annotation['status'];
   comment: string;
@@ -131,21 +159,9 @@ function summaryHistoryCount(history: Annotation['history']): number | undefined
   return history.length;
 }
 
-function listAnnotations(store: Store, { status, type, route }: {
-  status?: AnnotationStatus;
-  type?: Annotation['type'];
-  route?: string;
-}): CallToolResult {
-  // No filter given → the caller is reading the whole review, so the envelope
-  // is worth the review metadata; a filtered call already knows what it asked
-  // for, and repeating `review` on every page of results is pure waste.
-  const unfiltered = !status && !type && !route;
-  const all = store.annotations.filter(a =>
-    (!status || a.status === status)
-    && (!type || a.type === type)
-    // routes now carry query strings: accept an exact match or a path-only filter
-    && (!route || a.route === route || routePath(a.route) === route));
-  const annotations: AnnotationRow[] = all.map(a => ({
+/** One annotation as a list row; base-specific columns are added by the caller. */
+function toRow(a: Annotation): AnnotationRow {
+  return {
     id: a.id,
     type: a.type,
     status: a.status,
@@ -163,10 +179,54 @@ function listAnnotations(store: Store, { status, type, route }: {
     text: a.target?.text,
     // reproduction-trail length; the (compressed) trail comes with nit_get_annotation
     historyCount: summaryHistoryCount(a.history),
-  }));
-  const actionable = all.filter(isActionable).length;
+  };
+}
+
+/**
+ * List the review's annotations, across every base or within one.
+ * @param dir the review directory or workspace
+ * @param filters status/type/route narrow the annotations; base narrows the
+ *   environments (a slug, a url, or an unambiguous prefix)
+ * @throws when `base` names no base — reported to the agent by {@link guard}
+ */
+function listAnnotations(dir: string, { status, type, route, base }: {
+  status?: AnnotationStatus;
+  type?: Annotation['type'];
+  route?: string;
+  base?: string;
+}): CallToolResult {
+  const multi = isMultiBase(dir);
+  const refs = basesOf(dir, base);
+  // No filter given → the caller is reading the whole review, so the envelope
+  // is worth the review metadata; a filtered call already knows what it asked
+  // for, and repeating `review` on every page of results is pure waste.
+  const unfiltered = !status && !type && !route && !base;
+
+  const annotations: AnnotationRow[] = [];
+  let actionable = 0;
+  for (const ref of refs) {
+    for (const a of createStore(ref.dir).annotations) {
+      if (status && a.status !== status) continue;
+      if (type && a.type !== type) continue;
+      // routes carry query strings: accept an exact match or a path-only filter
+      if (route && a.route !== route && routePath(a.route) !== route) continue;
+      if (isActionable(a)) actionable += 1;
+      annotations.push({
+        ...toRow(a),
+        id: displayId(multi, ref.slug, a.id),
+        // the base and the navigable page, so an agent never has to reassemble
+        // them; resolveAnnotationUrl keeps a crafted route on the base's origin
+        ...(multi ? { base: ref.slug, url: resolveAnnotationUrl(ref.url, a.route) ?? a.route } : {}),
+      });
+    }
+  }
+
   return structured({
-    ...(unfiltered ? { review: store.data.review } : {}),
+    // A single-base review keeps the review envelope it has always had; a
+    // workspace reports its bases instead, since there is no single review.
+    ...(multi
+      ? { bases: baseSummaries(dir, base) }
+      : unfiltered && refs.length ? { review: createStore(refs[0].dir).data.review } : {}),
     total: annotations.length,
     actionable,
     annotations,
@@ -214,37 +274,55 @@ function dedupe(ids: string[]): string[] {
   return [...new Set(ids)];
 }
 
+/**
+ * Fetch one or more annotations in full. Ids may be qualified (`staging:a1`) or
+ * bare; each is resolved to the base that owns it, and screenshots are read from
+ * that base's own folder.
+ * @param dir the review directory or workspace
+ * @param id one id, or an array to batch
+ * @param includeXpath keep the fragile `target.xpath` locator
+ * @param includeScreenshot attach the before/after shots as image content
+ */
 function getAnnotation(
   dir: string,
-  store: Store,
   id: string | string[],
   includeXpath: boolean,
   includeScreenshot: boolean,
 ): CallToolResult {
+  const multi = isMultiBase(dir);
   const ids = Array.isArray(id) ? dedupe(id) : [id];
-  const found: Annotation[] = [];
+  const found: Located[] = [];
   const missing: string[] = [];
+  // one line per unresolved id, so a batch says *why* each one failed rather
+  // than lumping "ambiguous" in with "no such id"
+  const problems: string[] = [];
   for (const oneId of ids) {
-    const ann = store.annotations.find(a => a.id === oneId);
-    if (ann) found.push(ann);
-    else missing.push(oneId);
+    const resolved = resolveAnnotation(dir, oneId);
+    if (resolved.ok) found.push(resolved.hit);
+    else {
+      missing.push(oneId);
+      problems.push(resolved.error);
+    }
   }
 
-  if (found.length === 0) {
-    return toolError(`no annotation with id ${Array.isArray(id) ? missing.join(', ') : id}`);
-  }
+  if (found.length === 0) return toolError(problems.join('; '));
 
-  const records = found.map(a => buildAnnotationRecord(a, includeXpath));
+  const records = found.map(({ base, annotation }) => ({
+    ...buildAnnotationRecord(annotation, includeXpath),
+    id: displayId(multi, base.slug, annotation.id),
+    ...(multi ? { base: base.slug, url: resolveAnnotationUrl(base.url, annotation.route) ?? annotation.route } : {}),
+  }));
   const payload: Record<string, unknown> = Array.isArray(id)
     ? { annotations: records, ...(missing.length ? { missing } : {}) }
     : { annotation: records[0] };
   const result = structured(payload);
 
   if (includeScreenshot) {
-    for (const ann of found) {
-      for (const rel of [ann.screenshot, ann.screenshotAfter]) {
-        // annotations.json is shared/agent-editable — never read outside the review dir
-        const abs = safeShotPath(dir, rel);
+    for (const { base, annotation } of found) {
+      for (const rel of [annotation.screenshot, annotation.screenshotAfter]) {
+        // annotations.json is shared/agent-editable — never read outside the
+        // base's own review dir
+        const abs = safeShotPath(base.dir, rel);
         if (!abs) continue;
         try {
           result.content.push({
@@ -266,29 +344,55 @@ function normalizeReason(reason: string | undefined): string | undefined {
   return trimmed || undefined;
 }
 
-function setStatus(store: Store, id: string, status: AnnotationStatus, reason: string | undefined): CallToolResult {
+function setStatus(dir: string, id: string, status: AnnotationStatus, reason: string | undefined): CallToolResult {
   // Every status change replaces statusReason outright (an absent reason clears
   // it), so a stale wontfix rationale never survives a later reopen/fix.
   const changes: Partial<Annotation> = { status, statusReason: normalizeReason(reason) };
   if (status === 'verified' || status === 'reopened') changes.verifiedAt = new Date().toISOString();
-  return writeAnnotation(store, id, changes);
+  return writeAnnotation(dir, id, changes);
 }
 
-function setIssueRef(store: Store, id: string, ref: string): CallToolResult {
+function setIssueRef(dir: string, id: string, ref: string): CallToolResult {
   const value = ref.trim().slice(0, 200);
-  return writeAnnotation(store, id, { issueRef: value || undefined });
+  return writeAnnotation(dir, id, { issueRef: value || undefined });
 }
 
-/** Apply a change as the agent, persist, and keep the derived files in sync. */
-function writeAnnotation(store: Store, id: string, changes: Partial<Annotation>): CallToolResult {
-  const ann = store.patch(id, changes, 'agent');
+/**
+ * Apply a change as the agent, persist it in the base that owns the annotation,
+ * and keep that base's derived files in sync. The echoed id is qualified exactly
+ * as the list rows are, so an agent can feed it straight back.
+ * @param dir the review directory or workspace
+ * @param id the id as it arrived — qualified or bare
+ * @param changes the fields to overwrite
+ */
+function writeAnnotation(dir: string, id: string, changes: Partial<Annotation>): CallToolResult {
+  const resolved = resolveAnnotation(dir, id);
+  // an id matching several bases is refused, not guessed — see resolveAnnotation
+  if (!resolved.ok) return toolError(resolved.error);
+  const hit = resolved.hit;
+  // patch by the id on disk, never by the qualified form the caller passed
+  const ann = hit.store.patch(hit.annotation.id, changes, 'agent');
   if (!ann) return toolError(`no annotation with id ${id}`);
-  store.flush();
-  try {
-    fs.writeFileSync(path.join(store.dir, 'review.md'), renderReviewMd(store.data), 'utf8');
-    fs.writeFileSync(path.join(store.dir, 'fix-annotations.md'), FIX_ANNOTATIONS_MD, 'utf8');
-  } catch { /* best effort */ }
-  return structured({ annotation: ann });
+  hit.store.flush();
+  writeDerivedFiles(hit.store);
+  return structured({ annotation: { ...ann, id: displayId(isMultiBase(dir), hit.base.slug, ann.id) } });
+}
+
+/**
+ * Clear the verified annotations of one base, or of every base. Only `verified`
+ * is ever removed here — an agent must not be able to delete feedback a human
+ * has not ruled on yet; that is what `nit clear` (with its prompt) is for.
+ * @param dir the review directory or workspace
+ * @param base optional base to limit the sweep to
+ * @throws when `base` names no base — reported to the agent by {@link guard}
+ */
+function clearVerified(dir: string, base: string | undefined): CallToolResult {
+  const results = basesOf(dir, base).map(ref => clearBase(ref, { status: 'verified' }));
+  return structured({
+    cleared: results.reduce((n, r) => n + r.cleared, 0),
+    remaining: results.reduce((n, r) => n + r.remaining, 0),
+    bases: results.map(r => ({ slug: r.slug, cleared: r.cleared, remaining: r.remaining })),
+  });
 }
 
 /**

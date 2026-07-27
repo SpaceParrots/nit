@@ -5,18 +5,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolveReviewFile } from '../store/store.js';
+import { openWorkspace, resolveBase } from '../store/workspace.js';
+import { asReviewData, readReviewData } from '../store/read.js';
 import { reviewStats } from '../store/stats.js';
 import type { ReviewStats } from '../store/stats.js';
 import { errorMessage } from '../util/error.js';
-import type { AnnotationStatus, ReviewData } from '../types.js';
+import type {
+  AnnotationStatus, AnnotationType, BaseRef, Workspace,
+} from '../types.js';
 
 /** Statuses in lifecycle order, so the report always reads the same way. */
 const STATUS_ORDER: readonly AnnotationStatus[] = ['open', 'reopened', 'fixed', 'verified', 'wontfix'];
 /** Routes listed inline before the rest is summarized as "+N more". */
 const ROUTES_SHOWN = 4;
+/** Width of the report's label column, wide enough for `last change`. */
+const LABEL_WIDTH = 12;
 
 /** Options for {@link runStatus}. */
 export interface StatusOptions {
+  /** only this base — a slug, a url, or an unambiguous prefix */
+  base?: string;
   /** print the stats as JSON instead of a report (for scripts and CI) */
   json?: boolean;
   /** log sink */
@@ -28,32 +36,173 @@ export interface StatusOptions {
 /**
  * Report on a review folder. The annotations file is only read, so running this
  * against a review someone else is editing is always safe.
- * @param input review directory, or the path of an annotations.json inside one
+ *
+ * A workspace holding several base URLs reports one line per base plus the
+ * totals; naming one with `base` reports that base exactly as a single review
+ * has always been reported.
+ * @param input review directory, workspace directory, or the path of an
+ *   annotations.json inside one
+ * @param opts see {@link StatusOptions}
  * @returns the same stats that were printed
- * @throws when there is no annotations.json, or it cannot be parsed
+ * @throws when there is no annotations.json, when it cannot be parsed, or when
+ *   `base` names no base in the workspace (via {@link resolveBase})
  */
 export function runStatus(
   input = 'nit-review',
-  { json = false, log = line => console.log(line), now = new Date() }: StatusOptions = {},
+  { base, json = false, log = line => console.log(line), now = new Date() }: StatusOptions = {},
 ): ReviewStats {
+  // A workspace holds one review folder per base url. Resolve which review this
+  // report is about before falling through to the single-review path below.
+  const ws = openWorkspace(input);
+  // A named base always reports as a plain single review — the same lines, for
+  // one environment. It must resolve whatever the layout is, so a typo'd
+  // `--base prod` fails by name instead of silently reporting everything.
+  if (base) return runStatus(resolveBase(ws, base).dir, { json, log, now });
+  if (ws.layout === 'multi') return reportWorkspace(ws, ws.bases, { json, log, now });
+
   const { dir, file, exists } = resolveReviewFile(input);
   if (!exists) {
     throw new Error(`no annotations.json in ${dir} — nothing to report (run: nit review <url>)`);
   }
-  let data: ReviewData;
+  // Unparseable JSON is worth failing on here — the user named this one file
+  // and would otherwise read "0 annotations" as fact. Everything past the parse
+  // is narrowed rather than cast, so an odd-but-valid file still reports.
+  let parsed: unknown;
   try {
-    data = JSON.parse(fs.readFileSync(file, 'utf8')) as ReviewData;
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (e) {
     throw new Error(`${file} is not readable as JSON (${errorMessage(e)})`, { cause: e });
   }
 
-  const stats = reviewStats(data, file);
+  const stats = reviewStats(asReviewData(parsed), file);
   if (json) {
     log(JSON.stringify(stats, null, 2));
   } else {
     for (const line of report(stats, now)) log(line);
   }
   return stats;
+}
+
+/**
+ * Report on a workspace: one line per base, then the totals. The returned stats
+ * carry the same fields a single review does — summed across the bases — plus a
+ * `bases` breakdown, so a `--json` consumer sees one familiar object either way.
+ * @param ws the workspace being reported on
+ * @param bases the bases to report (every one of them today)
+ * @param opts json/log/now, threaded from {@link runStatus}
+ * @returns the aggregate stats that were printed
+ */
+function reportWorkspace(
+  ws: Workspace,
+  bases: BaseRef[],
+  { json, log, now }: { json: boolean; log: (line: string) => void; now: Date },
+): ReviewStats {
+  const per = bases.map(ref => ({ ref, stats: reviewStats(readReviewData(ref.file), ref.file) }));
+  const aggregate = aggregateStats(ws.dir, per);
+
+  if (json) {
+    log(JSON.stringify(aggregate, null, 2));
+    return aggregate;
+  }
+
+  log(`nit status — ${displayPath(ws.dir)}`);
+  log('');
+  // a slug can be longer than the label column a single review uses, so the
+  // column grows to fit rather than running into the url next to it
+  const width = Math.max(LABEL_WIDTH, ...per.map(p => p.ref.slug.length + 2));
+  for (const { ref, stats } of per) {
+    log(row(ref.slug, [
+      ref.url,
+      `${stats.total} annotation${stats.total === 1 ? '' : 's'}`,
+      `${stats.actionable} actionable`,
+      stats.lastChange ? ago(stats.lastChange.at, now) : null,
+    ], width));
+  }
+  log('');
+  log(row('total', `${aggregate.total} annotation${aggregate.total === 1 ? '' : 's'} across `
+    + `${per.length} base URL${per.length === 1 ? '' : 's'} · ${aggregate.actionable} actionable`, width));
+  log('');
+  for (const line of workspaceNextSteps(ws, per)) log(line);
+  return aggregate;
+}
+
+/** One base and what {@link reviewStats} made of it. */
+interface BaseReport {
+  ref: BaseRef;
+  stats: ReviewStats;
+}
+
+/**
+ * Sum per-base stats into one workspace-wide {@link ReviewStats}. Every
+ * countable field is summed rather than taken from one base, so the totals and
+ * the breakdowns can never disagree; `review` is left empty because a workspace
+ * has no single review block.
+ * @param dir the workspace directory
+ * @param per one entry per base, in report order
+ */
+function aggregateStats(dir: string, per: BaseReport[]): ReviewStats {
+  const byStatus: Partial<Record<AnnotationStatus, number>> = {};
+  const byType: Partial<Record<AnnotationType, number>> = {};
+  const routes = new Map<string, number>();
+  let lastChange: ReviewStats['lastChange'] = null;
+  let fileUpdatedAt: string | null = null;
+  const screenshots = { files: 0, bytes: 0 };
+
+  for (const { stats } of per) {
+    for (const [status, count] of Object.entries(stats.byStatus)) {
+      byStatus[status as AnnotationStatus] = (byStatus[status as AnnotationStatus] ?? 0) + count;
+    }
+    for (const [type, count] of Object.entries(stats.byType)) {
+      byType[type as AnnotationType] = (byType[type as AnnotationType] ?? 0) + count;
+    }
+    // the same route (`/checkout`) exists on several environments — one row
+    for (const r of stats.routes) routes.set(r.route, (routes.get(r.route) ?? 0) + r.count);
+    if (stats.lastChange && (!lastChange || stats.lastChange.at > lastChange.at)) lastChange = stats.lastChange;
+    if (stats.fileUpdatedAt && (!fileUpdatedAt || stats.fileUpdatedAt > fileUpdatedAt)) fileUpdatedAt = stats.fileUpdatedAt;
+    screenshots.files += stats.screenshots.files;
+    screenshots.bytes += stats.screenshots.bytes;
+  }
+
+  return {
+    file: dir,
+    dir,
+    review: {},
+    total: per.reduce((n, p) => n + p.stats.total, 0),
+    actionable: per.reduce((n, p) => n + p.stats.actionable, 0),
+    byStatus,
+    byType,
+    routes: [...routes].map(([route, count]) => ({ route, count }))
+      .sort((a, b) => b.count - a.count || a.route.localeCompare(b.route)),
+    lastChange,
+    fileUpdatedAt,
+    screenshots,
+    bases: per.map(p => ({
+      slug: p.ref.slug,
+      url: p.ref.url,
+      total: p.stats.total,
+      actionable: p.stats.actionable,
+    })),
+  };
+}
+
+/** What to do with this workspace right now, given what is in it. */
+function workspaceNextSteps(ws: Workspace, per: BaseReport[]): string[] {
+  const dir = displayPath(ws.dir);
+  const steps: string[] = [];
+  const waiting = per.find(p => p.stats.actionable);
+  if (waiting) {
+    steps.push(`${waiting.stats.actionable} actionable on ${waiting.ref.slug} — hand them to an agent:  nit mcp ${dir}`);
+  }
+  const fixed = per.find(p => p.stats.byStatus.fixed);
+  if (fixed) {
+    steps.push(`${fixed.stats.byStatus.fixed} fixed on ${fixed.ref.slug}, waiting on you:  nit verify ${dir} --base ${fixed.ref.slug}`);
+  }
+  const verified = per.find(p => p.stats.byStatus.verified);
+  if (verified) {
+    steps.push(`${verified.stats.byStatus.verified} already ruled on ${verified.ref.slug} — tidy up:  nit clear ${dir} --base ${verified.ref.slug} --verified`);
+  }
+  if (!steps.length) steps.push(`Nothing actionable — see what is where:  nit list ${dir}`);
+  return steps;
 }
 
 /** The human-readable report, as lines. */
@@ -108,10 +257,15 @@ function routeSummary(stats: ReviewStats): string {
   return shown.join(' · ') + (rest > 0 ? ` · +${rest} more` : '');
 }
 
-/** One aligned `label  value` line; empty parts are dropped. */
-function row(label: string, value: string | (string | null)[]): string {
+/**
+ * One aligned `label  value` line; empty parts are dropped.
+ * @param label the left column
+ * @param value the right column — an array is joined with ` · `
+ * @param width how wide the label column is (grows for long base slugs)
+ */
+function row(label: string, value: string | (string | null)[], width = LABEL_WIDTH): string {
   const text = Array.isArray(value) ? value.filter(Boolean).join(' · ') : value;
-  return `  ${label.padEnd(12)}${text || '—'}`;
+  return `  ${label.padEnd(width)}${text || '—'}`;
 }
 
 /** Paths relative to the cwd when they live under it — shorter, still pasteable. */
