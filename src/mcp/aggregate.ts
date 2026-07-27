@@ -25,6 +25,16 @@ export interface Located {
 }
 
 /**
+ * The outcome of resolving a caller-supplied id: exactly one annotation, or a
+ * ready-to-show reason why not. The failure is data rather than an exception
+ * because both callers have to render it — the tools as a tool error, the
+ * resources as a protocol error — and neither may proceed on a guess.
+ */
+export type Resolution =
+  | { ok: true; hit: Located }
+  | { ok: false; error: string };
+
+/**
  * Every base in the workspace, or just the one a `base` argument names.
  * @param dir the workspace directory
  * @param base optional slug, url or unambiguous prefix
@@ -82,26 +92,43 @@ export function baseSummaries(dir: string, base?: string): BaseSummary[] {
  * The qualified form is tried first, then the whole string as a plain id across
  * every base. That fallback matters: on a single-base workspace a merged id like
  * `kevin:a1` parses as slug `kevin`, which is not a base.
+ *
+ * The fallback deliberately refuses to pick when it matches in more than one
+ * base. Every base numbers its own annotations from `a1`, so a bare `a1` names
+ * a different piece of feedback in each environment; answering with whichever
+ * base sorts first would let `nit_mark_fixed` rule on an annotation the caller
+ * never asked about — silently, and in the wrong environment.
  * @param dir the workspace directory
  * @param wanted the id as it arrived
- * @returns the located annotation, or null when nothing matches
+ * @returns the located annotation, or why it could not be resolved to exactly one
  */
-export function findAnnotation(dir: string, wanted: string): Located | null {
+export function resolveAnnotation(dir: string, wanted: string): Resolution {
   const bases = basesOf(dir);
   const { slug, id } = parseQualifiedId(wanted);
 
+  // A qualified id names its base outright — at most one annotation can match.
   if (slug) {
     const ref = bases.find(b => b.slug === slug);
     if (ref) {
       const store = createStore(ref.dir);
       const annotation = store.annotations.find(a => a.id === id);
-      if (annotation) return { base: ref, store, annotation };
+      if (annotation) return { ok: true, hit: { base: ref, store, annotation } };
     }
   }
+
+  const hits: Located[] = [];
   for (const ref of bases) {
     const store = createStore(ref.dir);
     const annotation = store.annotations.find(a => a.id === wanted);
-    if (annotation) return { base: ref, store, annotation };
+    if (annotation) hits.push({ base: ref, store, annotation });
   }
-  return null;
+  if (hits.length === 1) return { ok: true, hit: hits[0] };
+  if (hits.length > 1) {
+    return {
+      ok: false,
+      error: `id "${wanted}" is ambiguous — it exists in ${hits.map(h => h.base.slug).join(', ')}; `
+        + `use a base-qualified id, e.g. ${qualifyId(hits[0].base.slug, wanted)}`,
+    };
+  }
+  return { ok: false, error: `no annotation with id ${wanted}` };
 }

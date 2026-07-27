@@ -13,7 +13,7 @@ import { resolveAnnotationUrl } from '../store/url.js';
 import { errorMessage } from '../util/error.js';
 import { routePath } from '../util/route.js';
 import type { Annotation, AnnotationStatus } from '../types.js';
-import { basesOf, baseSummaries, displayId, findAnnotation, isMultiBase } from './aggregate.js';
+import { basesOf, baseSummaries, displayId, isMultiBase, resolveAnnotation } from './aggregate.js';
 import type { Located } from './aggregate.js';
 import { compressHistory } from './history.js';
 import {
@@ -293,15 +293,19 @@ function getAnnotation(
   const ids = Array.isArray(id) ? dedupe(id) : [id];
   const found: Located[] = [];
   const missing: string[] = [];
+  // one line per unresolved id, so a batch says *why* each one failed rather
+  // than lumping "ambiguous" in with "no such id"
+  const problems: string[] = [];
   for (const oneId of ids) {
-    const hit = findAnnotation(dir, oneId);
-    if (hit) found.push(hit);
-    else missing.push(oneId);
+    const resolved = resolveAnnotation(dir, oneId);
+    if (resolved.ok) found.push(resolved.hit);
+    else {
+      missing.push(oneId);
+      problems.push(resolved.error);
+    }
   }
 
-  if (found.length === 0) {
-    return toolError(`no annotation with id ${Array.isArray(id) ? missing.join(', ') : id}`);
-  }
+  if (found.length === 0) return toolError(problems.join('; '));
 
   const records = found.map(({ base, annotation }) => ({
     ...buildAnnotationRecord(annotation, includeXpath),
@@ -362,8 +366,10 @@ function setIssueRef(dir: string, id: string, ref: string): CallToolResult {
  * @param changes the fields to overwrite
  */
 function writeAnnotation(dir: string, id: string, changes: Partial<Annotation>): CallToolResult {
-  const hit = findAnnotation(dir, id);
-  if (!hit) return toolError(`no annotation with id ${id}`);
+  const resolved = resolveAnnotation(dir, id);
+  // an id matching several bases is refused, not guessed — see resolveAnnotation
+  if (!resolved.ok) return toolError(resolved.error);
+  const hit = resolved.hit;
   // patch by the id on disk, never by the qualified form the caller passed
   const ann = hit.store.patch(hit.annotation.id, changes, 'agent');
   if (!ann) return toolError(`no annotation with id ${id}`);

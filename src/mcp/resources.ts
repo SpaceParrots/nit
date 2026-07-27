@@ -14,7 +14,7 @@ import type { Variables } from '@modelcontextprotocol/sdk/shared/uriTemplate.js'
 import { createStore, safeShotPath } from '../store/store.js';
 import { renderReviewMd, renderBriefMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
 import type { Annotation, BaseRef } from '../types.js';
-import { basesOf, baseSummaries, displayId, findAnnotation, isMultiBase } from './aggregate.js';
+import { basesOf, baseSummaries, displayId, isMultiBase, resolveAnnotation } from './aggregate.js';
 import type { Located } from './aggregate.js';
 
 const ANNOTATION_URI = 'nit://annotation/{id}';
@@ -215,13 +215,14 @@ function everyAnnotation(dir: string): ListedAnnotation[] {
  * base that owns it. Ids may arrive qualified (`staging:a1`) or bare.
  * @param dir the review directory or workspace
  * @param variables the template variables the SDK matched
- * @throws when no annotation has that id
+ * @throws when no annotation has that id, or when a bare id matches several
+ *   bases — a resource read must not serve whichever environment sorts first
  */
 function locate(dir: string, variables: Variables): Located {
   const id = decodeId(one(variables.id));
-  const hit = findAnnotation(dir, id);
-  if (!hit) throw new Error(`no annotation with id ${id}`);
-  return hit;
+  const resolved = resolveAnnotation(dir, id);
+  if (!resolved.ok) throw new Error(resolved.error);
+  return resolved.hit;
 }
 
 /**

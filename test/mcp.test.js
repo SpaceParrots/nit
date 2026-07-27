@@ -419,6 +419,22 @@ test('mcp: a screenshot comes from the owning base folder', async t => {
   assert.ok(res.content.some(c => c.type === 'image'), 'the shot in staging/shots is found');
 });
 
+test('mcp: an unqualified id that exists in several bases is refused, not guessed', async t => {
+  const { dir, call } = await startWorkspaceMcp(t);
+  const res = await call('nit_mark_fixed', { id: 'a1' });
+  assert.ok(res.isError, 'writing to an arbitrary environment would be silent data loss');
+  assert.match(res.content[0].text, /ambiguous/);
+  assert.match(res.content[0].text, /staging/);
+
+  for (const slug of ['staging', 'localhost-4200']) {
+    const data = JSON.parse(fs.readFileSync(path.join(dir, slug, 'annotations.json'), 'utf8'));
+    assert.notEqual(data.annotations.find(a => a.id === 'a1').status, 'fixed', `${slug} untouched`);
+  }
+
+  const get = await call('nit_get_annotation', { id: 'a1' });
+  assert.ok(get.isError, 'reads report the ambiguity too, instead of showing one at random');
+});
+
 test('mcp: an unknown qualified id is an error naming it', async t => {
   const { call } = await startWorkspaceMcp(t);
   const res = await call('nit_get_annotation', { id: 'staging:a99' });

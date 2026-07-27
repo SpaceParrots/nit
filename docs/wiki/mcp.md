@@ -65,7 +65,7 @@ A review folder can cover more than one site — local, staging, production — 
 
 What changes for an agent when a review has more than one base:
 
-- **Ids are qualified** as `<base>:<id>` — `staging:a1`, `localhost-4200:a1`. Pass them back in exactly that form; every tool accepts them, and every result echoes them. The ids stored on disk are never rewritten, so `staging/annotations.json` still holds a plain `a1`.
+- **Ids are qualified** as `<base>:<id>` — `staging:a1`, `localhost-4200:a1`. Pass them back in exactly that form; every tool accepts them, and every result echoes them. The ids stored on disk are never rewritten, so `staging/annotations.json` still holds a plain `a1`. An *unqualified* id is only accepted when exactly one base holds it: every base numbers its own annotations from `a1`, so a bare `a1` usually names different feedback in each environment, and nit refuses it with the qualified form to use rather than ruling on whichever base sorts first.
 - **Rows carry `base` and `url`.** `base` is the slug, `url` is the annotation's own page (the base url with its route applied), so the agent never has to reassemble one.
 - **`bases` replaces `review`.** An unfiltered `nit_list_annotations` reports a `bases` array (slug, url, total, actionable) instead of the single-review `review` envelope.
 - **`base` narrows any of it.** `nit_list_annotations` and `nit_clear_verified` take `base` — a slug, a full url, or an unambiguous prefix — to work one environment at a time.
