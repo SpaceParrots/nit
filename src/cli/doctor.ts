@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import type { BrowserType } from 'playwright';
+import { openWorkspace } from '../store/workspace.js';
 
 const require = createRequire(import.meta.url);
 const PKG_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -18,18 +19,23 @@ type LogSink = (line: string) => void;
 export interface DoctorOptions {
   /** install Chromium without asking (non-interactive setup) */
   yes?: boolean;
+  /** project directory whose `nit-review/` is reported (default the cwd) */
+  cwd?: string;
   /** log sink */
   log?: LogSink;
 }
 
 /**
- * Run the environment checks: Node version, npm dependencies, and the Playwright
- * Chromium browser. When Chromium is missing, offers to install it (or installs
- * straight away with `yes`); without a TTY the offer is skipped and the manual
- * command is printed instead.
- * @returns true when the environment is ready to run nit
+ * Run the environment checks: Node version, npm dependencies, the Playwright
+ * Chromium browser, and what shape the project's review folder is in. When
+ * Chromium is missing, offers to install it (or installs straight away with
+ * `yes`); without a TTY the offer is skipped and the manual command is printed
+ * instead.
+ * @param opts see {@link DoctorOptions}
+ * @returns true when the environment is ready to run nit; the review folder is
+ *   reported for orientation and never fails the check
  */
-export async function runDoctor({ yes = false, log = console.log }: DoctorOptions = {}): Promise<boolean> {
+export async function runDoctor({ yes = false, cwd = process.cwd(), log = console.log }: DoctorOptions = {}): Promise<boolean> {
   let ok = true;
   log('nit doctor\n');
 
@@ -83,10 +89,27 @@ export async function runDoctor({ yes = false, log = console.log }: DoctorOption
     ok = false;
   }
 
+  // 4. What is already in this project. A confused review folder is much easier
+  // to diagnose when doctor says what shape it is in; nothing here is a failure.
+  reportReviewFolder(cwd, log);
+
   log(ok
     ? '\nAll good — nit is ready. Try: nit review https://example.com'
     : '\nFix the issues above, then re-run: nit doctor');
   return ok;
+}
+
+/** One line on the project's `nit-review/`: how many base URLs it covers, or none yet. */
+function reportReviewFolder(cwd: string, log: LogSink): void {
+  const ws = openWorkspace(path.join(cwd, 'nit-review'));
+  if (ws.layout === 'multi') {
+    const n = ws.bases.length;
+    pass(log, `nit-review/ — ${n} base URL${n === 1 ? '' : 's'}: ${ws.bases.map(b => b.slug).join(', ')}`);
+  } else if (ws.layout === 'flat') {
+    pass(log, `nit-review/ — one review (${ws.bases[0].url || 'no url recorded'})`);
+  } else {
+    log('  [--] no review folder yet — run: nit review <url>');
+  }
 }
 
 function pass(log: LogSink, label: string): void {
