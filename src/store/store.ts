@@ -2,6 +2,7 @@
 // Read/write annotations.json (SPEC §3): stable ids, idempotent append, atomic writes.
 import fs from 'node:fs';
 import path from 'node:path';
+import { MAX_REOPEN_STEPS, sanitizeSteps } from '../util/history.js';
 import type { Annotation, AnnotationStatus, CaptureContext, ReviewData, ViewportMode } from '../types.js';
 
 /** Options for {@link createStore}. */
@@ -207,6 +208,10 @@ function freshReview(url: string | undefined): ReviewData['review'] {
  * the panel UI and MCP output. Applied both to a fresh save (bridge.ts) and to
  * every annotation loaded from annotations.json, since that file is shared and
  * hand-editable.
+ *
+ * `reopen` gets the same treatment at a much tighter cap: those selectors are
+ * the only thing nit ever clicks on a live page, so a crafted file must not be
+ * able to smuggle in a long list of them.
  */
 export function sanitizeContext(v: unknown): CaptureContext | undefined {
   if (!v || typeof v !== 'object') return undefined;
@@ -214,7 +219,13 @@ export function sanitizeContext(v: unknown): CaptureContext | undefined {
   if (c.kind !== 'dialog') return undefined;
   const selector = typeof c.selector === 'string' && c.selector ? c.selector.slice(0, 300) : undefined;
   const label = typeof c.label === 'string' && c.label ? c.label.slice(0, 60) : undefined;
-  return { kind: 'dialog', ...(selector ? { selector } : {}), ...(label ? { label } : {}) };
+  const reopen = sanitizeSteps(c.reopen, MAX_REOPEN_STEPS);
+  return {
+    kind: 'dialog',
+    ...(selector ? { selector } : {}),
+    ...(label ? { label } : {}),
+    ...(reopen ? { reopen } : {}),
+  };
 }
 
 function mtimeMsOf(file: string): number | null {

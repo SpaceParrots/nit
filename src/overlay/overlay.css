@@ -110,8 +110,11 @@ button, input, textarea, select { font: inherit; }
   resize: vertical;
 }
 .nit-pop-comment.nit-invalid { border-color: #ff5f57; }
-.nit-row { display: flex; align-items: center; gap: 8px; }
-.nit-row-label { font-size: 11px; color: var(--nit-muted); width: 64px; flex: none; }
+/* One source of truth for the form's label column: the checkbox row has no
+   label of its own and indents past it, so the two must agree. */
+.nit-popover { --nit-label-w: 64px; --nit-row-gap: 8px; }
+.nit-row { display: flex; align-items: center; gap: var(--nit-row-gap); }
+.nit-row-label { font-size: 11px; color: var(--nit-muted); width: var(--nit-label-w); flex: none; }
 .nit-seg { display: flex; gap: 4px; flex: 1; }
 .nit-seg-btn {
   flex: 1;
@@ -124,6 +127,15 @@ button, input, textarea, select { font: inherit; }
   cursor: pointer;
 }
 .nit-seg-btn--active { background: var(--nit-accent); color: var(--nit-accent-fg); border-color: var(--nit-accent); font-weight: 600; }
+/* Dialog confirmation — rendered only when the picked element looks like it
+   lives on an overlay surface, so it must not push the popover around when it
+   is absent. Indented to the control column so it lines up with the segments. */
+.nit-check {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding-left: calc(var(--nit-label-w) + var(--nit-row-gap));
+}
+.nit-check input { accent-color: var(--nit-accent); margin: 0; flex: none; }
+.nit-check-label { font-size: 11px; color: var(--nit-muted); }
 .nit-btnrow { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* ---- buttons ---- */

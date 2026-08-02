@@ -9,6 +9,7 @@ import { injectOverlay } from './inject.js';
 import { wireBridge } from './bridge.js';
 import { openPanel } from './panel.js';
 import { createStore } from '../store/store.js';
+import type { ReopenState } from './reopen.js';
 import type { Store } from '../store/store.js';
 import { ensureBase } from '../store/workspace.js';
 import { renderReviewMd, FIX_ANNOTATIONS_MD } from '../store/render.js';
@@ -96,6 +97,37 @@ export interface NitSession {
    * on return instead of capturing a still-blank page.
    */
   _afterUnplacedSeen?: Map<string, { first: number; last: number }>;
+  /**
+   * @internal verify mode: how far the automatic dialog re-open has got for a
+   * fixed annotation, keyed `${annotationId}:${viewportMode}` like
+   * `_afterCaptured` — a viewport switch re-lays-out the page and usually closes
+   * the dialog again, so each viewport gets its own attempt. `'waiting'` and
+   * `'pending'` hold the after-shot fallback back (capturing before the attempt
+   * has had its turn would bank a blank page); `'done'` means the one attempt is
+   * spent, win or lose, and the normal grace clock may run.
+   */
+  _reopen?: Map<string, ReopenState>;
+  /**
+   * @internal when each queued re-open first saw its annotation reported hidden
+   * behind a closed dialog, keyed like `_reopen`. The attempt waits out the same
+   * grace period the after-shot fallback uses, so it is not spent clicking at an
+   * SPA that has not rendered its opener yet.
+   */
+  _reopenWaiting?: Map<string, number>;
+  /**
+   * @internal ids whose dialog nit itself re-opened, mapped to the attempt that
+   * opened it — so it can close it again (Escape) once the after-shot is banked
+   * and leave the page clean for the next queue item, without cutting a
+   * still-running multi-step replay short. A dialog the reviewer opened by hand
+   * is never in here, and so is never closed under them.
+   */
+  _reopenOpened?: Map<string, Promise<void>>;
+  /**
+   * @internal the tail of the single chain every page-touching replay runs on
+   * (automatic and panel-driven alike). `ui` events arrive concurrently, so
+   * without it two replays could interleave their clicks on one page.
+   */
+  _reopenChain?: Promise<void>;
 }
 
 /** Options for {@link startSession}. */

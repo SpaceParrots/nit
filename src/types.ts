@@ -83,6 +83,15 @@ export interface CaptureContext {
   selector?: string;
   /** human-readable dialog name: aria-label → aria-labelledby → first heading */
   label?: string;
+  /**
+   * The clicks that re-open this surface, oldest first: the recorded click that
+   * opened it plus any clicks made inside it afterwards (a tab within the
+   * dialog). `nit verify` replays them so a fix inside a dialog can be
+   * screenshotted instead of falling back to a blank crop of the closed page;
+   * the panel's Reopen button replays the same steps on demand. Absent when the
+   * trail held no click from outside the surface.
+   */
+  reopen?: ClickStep[];
 }
 
 /** One recorded page click leading up to an annotation (reproduction trail). */
@@ -199,6 +208,8 @@ export type AnnotationResult = BridgeResult<{ annotation: Annotation }>;
 /** @deprecated use {@link AnnotationResult} — kept for one version */
 export type VerdictResult = AnnotationResult;
 export type GoToResult = BridgeResult<{ url: string }>;
+/** Outcome of replaying an annotation's recorded reopen clicks (`steps` = how many landed). */
+export type ReopenResult = BridgeResult<{ steps: number }>;
 export type ViewportResult = BridgeResult<{ mode: ViewportMode; w: number; h: number }>;
 
 /** Session snapshot returned by `__nitLoad` (overlay boot/resync). */
@@ -332,6 +343,8 @@ declare global {
     __nitSetIssueRef?: (id: string, ref: string) => Promise<AnnotationResult>;
     __nitSetComment?: (id: string, comment: string) => Promise<AnnotationResult>;
     __nitGoTo?: (id: string) => Promise<GoToResult>;
+    /** replay an annotation's `context.reopen` clicks to bring its dialog back on screen */
+    __nitReopen?: (id: string) => Promise<ReopenResult>;
     /** stage a screenshot at pick time, while transient state (dropdowns) is still visible */
     __nitStageShot?: (rect: Rect) => Promise<{ ok: boolean }>;
     __nitDelete?: (id: string) => Promise<{ ok: boolean }>;
