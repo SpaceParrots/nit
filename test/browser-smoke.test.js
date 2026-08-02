@@ -8,6 +8,7 @@ import { startFixtureServer } from './helpers/server.js';
 import { startTestSession, waitFor, readAnnotations } from './helpers/session.js';
 import { pngSize, SHOT_PADDING, MIN_SHOT_W, MIN_SHOT_H } from '../dist/capture/screenshot.js';
 import { baseSlug } from '../dist/store/workspace.js';
+import { PANEL_WIDTH } from '../dist/browser/panel.js';
 
 test('nit review — capture flow', async t => {
   const server = await startFixtureServer();
@@ -180,7 +181,7 @@ test('nit review — capture flow', async t => {
       return vp && vp.width === 1440 ? true : null;
     }, { message: 'back to desktop' });
     // the panel window itself must never be resized by viewport switching
-    assert.equal(panel.viewportSize().width, 344);
+    assert.equal(panel.viewportSize().width, PANEL_WIDTH);
   });
 
   await t.test('m9: delete removes annotation + shot, finish flushes and closes', async () => {
