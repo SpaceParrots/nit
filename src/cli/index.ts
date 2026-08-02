@@ -326,6 +326,7 @@ Examples:
     base?: string; all?: boolean; verified?: boolean; status?: AnnotationStatus;
     yes?: boolean; dryRun?: boolean; input?: boolean;
   }) => {
+    const interactive = canAsk({ input: opts.input });
     // Clearing without a scope has always been refused rather than guessed —
     // with a terminal, ask for one instead.
     const scope = await pickClearScope(dir, {
@@ -334,10 +335,10 @@ Examples:
       // --verified is sugar; an explicit --status wins if somebody passes both
       status: opts.status ?? (opts.verified ? 'verified' : undefined),
       yes: opts.yes,
-      interactive: canAsk({ input: opts.input }),
+      interactive,
     });
     if (!scope) return;
-    await runClear(dir, { ...scope, yes: opts.yes, dryRun: opts.dryRun });
+    await runClear(dir, { ...scope, yes: opts.yes, dryRun: opts.dryRun, interactive });
   });
 
 withPromptOption(program.command('export')

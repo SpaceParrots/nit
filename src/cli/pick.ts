@@ -166,23 +166,30 @@ export async function pickClearScope(
   { base, all, status, yes = false, cwd, interactive = false, prompts = clackPrompts }: PickClearScopeOptions = {},
 ): Promise<ClearScope | null> {
   const given = { base, all, status };
+  // `--yes` is "do not ask me anything", not just "skip the confirmation": a
+  // scripted clear that names a base nit cannot find has to fail the way it
+  // always did. Asking here would be answered by a human whose pick then goes
+  // through runClear with the confirmation already waived.
+  if (yes) return given;
   // A named base still has to exist — the same picker every other command gets.
   if (base) {
     const resolved = await resolveBaseArg(dir, base, { focus: 'verified', cwd, interactive, prompts });
     return resolved === null ? null : { ...given, base: resolved };
   }
-  // Both scopes (an error runClear owns), or a run that asked for no questions:
-  // nothing to add.
-  if (all || yes || !interactive) return given;
+  // Both scopes is an error runClear owns; nothing to add either way.
+  if (all || !interactive) return given;
   const ws = openWorkspace(path.resolve(cwd ?? process.cwd(), dir));
   if (!ws.bases.length) return given;
 
   const rows = ws.bases.map(b => ({ base: b, work: countWork(b) }));
-  const choices: Choice[] = baseRows(rows, 'verified');
+  const choices: Choice[] = [...baseChoices('verified', ws.bases).choices];
   if (rows.length > 1) {
     const total = rows.reduce((n, r) => n + r.work.total, 0);
     choices.push({ value: EVERY_BASE, label: `every base  (${count(total, 'annotation')})` });
   }
+  // Deliberately not baseChoices' "first base with work" cursor: on a
+  // destructive command the starting row should be the first one, not the one
+  // with the most to lose.
   const scope = await prompts.select(`Clear which base of ${displayPath(ws.dir)}?`, choices, rows[0].base.slug);
   if (scope === null) return cancel(prompts);
 
@@ -309,6 +316,8 @@ export async function pickImportTarget(
   const target = importTarget(zip, out, cwd);
   if (!interactive || !isBusy(target)) return out;
   const free = freeName(target);
+  // Nothing free to offer: runImport's refusal is still the right answer.
+  if (!free) return out;
   const ok = await prompts.select(
     `${displayPath(target)} is not empty — unpack into ${displayPath(free)} instead?`,
     [{ value: 'yes', label: `yes, import into ${path.basename(free)}` }, { value: 'no', label: 'no, stop here' }],
@@ -326,14 +335,22 @@ function isBusy(target: string): boolean {
   return fs.existsSync(target) && fs.readdirSync(target).length > 0;
 }
 
-/** `review`, `review-2`, `review-3`, … — the first name nothing is using. */
-function freeName(target: string): string {
-  for (let n = 2; n < 100; n++) {
+/**
+ * `review`, `review-2`, `review-3`, … — the first name nothing is using, or
+ * null when a hundred of them are taken. Every returned name is checked, so a
+ * caller can offer it without the import failing on the very refusal the
+ * question existed to avoid.
+ */
+function freeName(target: string): string | null {
+  for (let n = 2; n <= FREE_NAME_TRIES; n++) {
     const candidate = `${target}-${n}`;
     if (!fs.existsSync(candidate)) return candidate;
   }
-  return `${target}-${Date.now()}`;
+  return null;
 }
+
+/** How many `-N` names to try before giving up on finding a free one. */
+const FREE_NAME_TRIES = 100;
 
 /** The zips in `dir`, nit's own exports first, newest first within each group. */
 function listZips(dir: string): string[] {

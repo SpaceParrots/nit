@@ -15,7 +15,7 @@ Wherever a command needs to know *which* environment you mean, it takes `--base 
 
 ## When nit asks
 
-A command that cannot work out what you meant asks, rather than only telling you what was wrong: which base of a multi-base review, which url to review, which export to unpack, what a `nit clear` should cover. Every row shows what is inside the thing you would be choosing — urls, counts, what is fixed or already ruled — so the choice is made on the numbers rather than on the name. Escape cancels; nothing has happened yet at that point.
+A command that cannot work out what you meant asks, rather than only telling you what was wrong: which base of a multi-base review, which url to review, which export to unpack, what a `nit clear` should cover. Where there is something to compare — the bases, the scope of a clear — each row carries its url and counts, so the choice is made on the numbers rather than on the name; the zip list is ordered newest first instead. Escape cancels, and nothing has happened at that point.
 
 The questions only ever appear when a person is there to answer them: a terminal on **both** stdin and stdout, no `--no-input`, and no `--json`. Pipes, scripts, CI and agents shelling out to nit are never prompted — they get the same error, naming the flag to pass, that nit has always printed.
 
@@ -95,14 +95,14 @@ nit view localhost-4200                # the other base of ./nit-review
 nit view review-merged --base staging  # a base of some other folder needs --base
 ```
 
-If nothing you passed lands on one base — several bases and no pick, a `--base` that matches nothing or several, a name that is neither a path nor a base — nit asks in the terminal instead of stopping. Each row shows the base's url and what is waiting inside it, and the cursor starts on the first base that has work for the command you ran:
+If nothing you passed lands on one base — several bases and no pick, a `--base` that matches nothing or several, a name that is neither a path nor a base — nit asks in the terminal instead of stopping. Each row shows the base's url and what is waiting inside it, and the cursor starts on the first base that has work for the command you ran (`nit clear` is the exception: on a destructive command it starts on the first base, not on the one with the most to lose):
 
 ```
 $ nit verify
 
 ◆  nit-review holds 2 base URLs — which one?
-│  ● localhost-4200 (http://localhost:4200 · 3 fixed · 1 actionable)
-│  ○ staging (https://staging.example.com · 0 fixed · 2 actionable)
+│  ● localhost-4200  http://localhost:4200        3 fixed · 1 actionable
+│  ○ staging         https://staging.example.com  0 fixed · 2 actionable
 └
 ```
 
@@ -210,8 +210,8 @@ A scope is always required: `--base <name>` for one environment, `--all` for eve
 $ nit clear
 
 ◆  Clear which base of nit-review?
-│  ● localhost-4200  http://localhost:4200        1 verified · 2 total
-│  ○ staging         https://staging.example.com  2 verified · 3 total
+│  ○ localhost-4200  http://localhost:4200        1 verified · 2 total
+│  ● staging         https://staging.example.com  2 verified · 3 total
 │  ○ every base  (5 annotations)
 └
 ◆  What should go?
@@ -262,7 +262,7 @@ With no argument, nit offers the zips in the current directory, its own `.nit.zi
 | --- | --- |
 | `-o, --out <dir>` | Target directory (default: derived from the zip name) |
 
-## nit merge \<file...\> (alias: combine)
+## nit merge \<files...\> (alias: combine)
 
 Combines several feedback files into one consolidated review with per-author attribution. Screenshots are copied along.
 

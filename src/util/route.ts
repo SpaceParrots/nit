@@ -17,13 +17,22 @@ export function normalizeUrl(url: string): string {
   return /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`;
 }
 
-/** Whether {@link normalizeUrl} makes something the URL parser accepts. */
+/**
+ * Whether {@link normalizeUrl} turns something into a site nit could open: a
+ * parseable http(s) url with a host. The scheme check is the point — a typed
+ * answer goes on to drive a real browser, and `javascript:`, `data:` and
+ * friends parse perfectly well while being nothing nit should ever navigate
+ * to. Same http(s)-only rule the store applies to annotation routes.
+ * @param url what the user typed
+ */
 export function isUrlish(url: string): boolean {
+  let parsed: URL;
   try {
-    return Boolean(new URL(normalizeUrl(url.trim())).hostname);
+    parsed = new URL(normalizeUrl(url.trim()));
   } catch {
     return false;
   }
+  return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && Boolean(parsed.hostname);
 }
 
 /** The parts of `window.location` a route is built from. */

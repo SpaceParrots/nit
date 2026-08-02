@@ -174,6 +174,25 @@ test('source: a real directory wins over a base of the same name', () => {
   assert.equal(src.file, path.join(cwd, 'localhost-5273', 'annotations.json'), 'the folder in the cwd, not the base');
 });
 
+test('source: a directory that is no review still wins over a base of that name', () => {
+  // The app folder you happen to have called `staging`, next to a `staging`
+  // base: reading the name as the base would open a review nobody pointed at.
+  const cwd = makeProject([['https://staging.example.com', 'staging']]);
+  fs.mkdirSync(path.join(cwd, 'staging', 'src'), { recursive: true });
+  fs.writeFileSync(path.join(cwd, 'staging', 'package.json'), '{}');
+  assert.throws(() => resolveFeedbackSource('verify', 'staging', true, undefined, cwd), e => {
+    assert.match(e.message, /no annotations file at/, 'the path the user named is what gets reported');
+    assert.match(e.message, /staging/);
+    return true;
+  }, 'the base is never resolved silently — picking it is still offered, but only as a deliberate choice');
+});
+
+test('source: a file that is no review is reported, not read as a base', () => {
+  const cwd = makeProject([['https://staging.example.com', 'staging']]);
+  fs.writeFileSync(path.join(cwd, 'staging'), 'not a review');
+  assert.throws(() => resolveFeedbackSource('view', 'staging', true, undefined, cwd), /is not readable as JSON/);
+});
+
 test('source: a base name matching several bases says which ones', () => {
   const cwd = makeProject([['http://localhost:5273', undefined], ['http://localhost:4200', undefined]]);
   assert.throws(() => resolveFeedbackSource('view', 'local', true, undefined, cwd), e => {

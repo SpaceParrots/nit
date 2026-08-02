@@ -114,7 +114,11 @@ export function resolveFeedbackSource(
     // *base* of the default review folder: `nit verify localhost-5273` is the
     // shorthand everyone reaches for after nit has printed those slugs.
     const fallback = defaultWorkspace(cwd);
-    if (explicit && !isDefaultDir(target, cwd)) {
+    // Only a name that is no path at all may be read as a base. `exists` above
+    // means "holds an annotations.json", so without the existsSync a plain
+    // directory — an app folder called `staging` next to a `staging` base —
+    // would be silently swapped for a review the user never pointed at.
+    if (explicit && !isDefaultDir(target, cwd) && !fs.existsSync(target)) {
       const matches = matchBases(fallback, input);
       if (matches.length === 1) return readSource(cmd, matches[0].file, `--base ${matches[0].slug}`);
       if (matches.length > 1) {

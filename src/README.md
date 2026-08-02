@@ -39,8 +39,10 @@ src/
 │  ├─ pick.ts        # what nit asks when an argument is missing or fits nothing:
 │  │                 # which base (view/verify/status/list/export/clear), which
 │  │                 # scope to clear, which url to review, which zip to import.
-│  │                 # Every fallback is a no-op without a terminal and returns a
-│  │                 # plain value, so the commands stay sync and prompt-free
+│  │                 # Every fallback is a no-op without a terminal and hands back
+│  │                 # a plain value the command just uses, so no command has to
+│  │                 # learn how to ask (clear.ts keeps its own confirmation,
+│  │                 # gated by the same canAsk)
 │  ├─ list.ts        # `nit list`: base URLs with counts, or the annotated urls in one
 │  ├─ clear.ts       # `nit clear`: scope validation, confirmation prompt, dry run
 │  ├─ merge.ts       # `nit merge`: read feedback files, merge, copy screenshots

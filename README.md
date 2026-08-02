@@ -52,8 +52,8 @@ Or without installing: `npx @spaceparrots/nit review https://example.com`
 | `nit list [dir]` | `ls` | List the base URLs in a review, or the annotated urls in one |
 | `nit clear [dir]` | `rm` | Remove annotations from a base, or from every base |
 | `nit export [dir]` | `pack` | Pack a review into a shareable zip |
-| `nit import <zip>` | `unpack` | Unpack a teammate's review zip |
-| `nit merge <file...>` | `combine` | Combine feedback files into one consolidated review |
+| `nit import [zip]` | `unpack` | Unpack a teammate's review zip |
+| `nit merge <files...>` | `combine` | Combine feedback files into one consolidated review |
 | `nit mcp [dir]` | `serve` | Serve a review folder as an MCP server (stdio) |
 | `nit mcp-install [dir]` | `mcp-config` | Register the MCP server in this project's .mcp.json |
 | `nit doctor` | | Check the environment, install Chromium if missing |

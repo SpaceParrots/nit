@@ -103,6 +103,16 @@ test('clear scope: --yes means no questions, so a missing scope stays an error',
   assert.deepEqual(scope, { base: undefined, all: undefined, status: undefined });
 });
 
+test('clear scope: --yes with a base nit cannot find is an error, never a picker', async () => {
+  // The dangerous shape: a picked base would go on to runClear with the
+  // confirmation already waived by --yes, deleting from a base never named.
+  const cwd = makeProject(MIXED);
+  const scope = await pickClearScope('nit-review', {
+    cwd, interactive: true, prompts: silent(), yes: true, base: 'stagign',
+  });
+  assert.equal(scope.base, 'stagign', 'handed back untouched for runClear to reject');
+});
+
 test('clear scope: without a terminal the scope is left for runClear to refuse', async () => {
   const cwd = makeProject(MIXED);
   const scope = await pickClearScope('nit-review', { cwd, prompts: silent() });
@@ -172,6 +182,27 @@ test('review url: what cannot be a url is rejected before the browser opens', as
   assert.match(validate(''), /not a url/);
 });
 
+test('review url: escaping the text prompt opens no browser', async () => {
+  const cwd = tmpDir('nit-fallback-fresh-');
+  const prompts = scripted(null);
+  assert.equal(await pickReviewUrl('nit-review', { cwd, interactive: true, prompts }), null);
+  assert.equal(prompts.asked[0].kind, 'text', 'a fresh project goes straight to typing');
+  assert.equal(prompts.cancels.length, 1);
+});
+
+test('review url: a blank answer is a cancel, not an empty url', async () => {
+  const cwd = tmpDir('nit-fallback-fresh-');
+  const prompts = scripted('   ');
+  assert.equal(await pickReviewUrl('nit-review', { cwd, interactive: true, prompts }), null);
+  assert.equal(prompts.cancels.length, 1);
+});
+
+test('review url: a typed answer comes back trimmed', async () => {
+  const cwd = tmpDir('nit-fallback-fresh-');
+  const prompts = scripted('  http://localhost:3000  ');
+  assert.equal(await pickReviewUrl('nit-review', { cwd, interactive: true, prompts }), 'http://localhost:3000');
+});
+
 test('review url: without a terminal there is no url to offer', async () => {
   const cwd = makeProject(MIXED);
   assert.equal(await pickReviewUrl('nit-review', { cwd, prompts: silent() }), undefined);
@@ -204,6 +235,14 @@ test('import zip: nit exports come first, newest first, and other zips after', a
   const zip = await pickImportZip({ cwd, interactive: true, prompts });
   assert.equal(zip, path.join(cwd, 'new.nit.zip'));
   assert.deepEqual(prompts.asked[0].choices.map(c => c.label), ['new.nit.zip', 'old.nit.zip', 'other.zip']);
+});
+
+test('import zip: the list is capped so a downloads folder stays readable', async () => {
+  const cwd = withFiles(Array.from({ length: 15 }, (_, i) => `export-${String(i).padStart(2, '0')}.nit.zip`));
+  const prompts = scripted(null);
+  await pickImportZip({ cwd, interactive: true, prompts });
+  assert.equal(prompts.asked[0].choices.length, 12, 'MAX_ZIPS rows at most');
+  assert.equal(prompts.asked[0].choices[0].label, 'export-14.nit.zip', 'and the newest are the ones kept');
 });
 
 test('import zip: nothing to offer is the command\'s error, not a question', async () => {
@@ -250,6 +289,17 @@ test('import target: the free name skips every folder already in use', async () 
     cwd, interactive: true, prompts: scripted('yes'),
   });
   assert.equal(out, path.join(cwd, 'review-4'));
+});
+
+test('import target: with every name taken it offers none rather than an unchecked one', async () => {
+  const cwd = withFiles(['review.nit.zip']);
+  fs.mkdirSync(path.join(cwd, 'review'));
+  fs.writeFileSync(path.join(cwd, 'review', 'annotations.json'), '{}');
+  for (let n = 2; n <= 100; n++) fs.mkdirSync(path.join(cwd, `review-${n}`));
+  const out = await pickImportTarget('review.nit.zip', undefined, {
+    cwd, interactive: true, prompts: silent(),
+  });
+  assert.equal(out, undefined, 'runImport reports the occupied target itself');
 });
 
 test('import target: declining imports nothing and never overwrites', async () => {

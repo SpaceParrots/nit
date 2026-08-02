@@ -3,6 +3,7 @@
 // so a scope is mandatory (never guessed), the prompt names what is about to go,
 // and --dry-run shows the same numbers without writing.
 import { confirm, isCancel } from '@clack/prompts';
+import { canAsk } from './prompt.js';
 import { openWorkspace, resolveBase, describeBases } from '../store/workspace.js';
 import { clearBase } from '../store/clear.js';
 import type { ClearResult } from '../store/clear.js';
@@ -19,6 +20,11 @@ export interface ClearOptions {
   status?: AnnotationStatus;
   /** skip the confirmation prompt */
   yes?: boolean;
+  /**
+   * whether the confirmation may be asked at all (default: {@link canAsk} —
+   * a terminal at both ends). `--no-input` turns it off on a terminal too.
+   */
+  interactive?: boolean;
   /** report what would go, write nothing */
   dryRun?: boolean;
   /** log sink */
@@ -43,11 +49,12 @@ export interface ClearOptions {
  *   (the message lists the workspace's actual bases); when `dir` holds no
  *   review at all; when `base` names no base in the workspace (via
  *   {@link resolveBase}); or when a confirmation is needed (no `--yes`, a
- *   nonzero scope, not a dry run) but stdin is not a terminal to ask on
+ *   nonzero scope, not a dry run) but this run may not ask (no terminal, or
+ *   `--no-input`)
  */
 export async function runClear(
   dir = 'nit-review',
-  { base, all, status, yes = false, dryRun = false, log = line => console.log(line) }: ClearOptions = {},
+  { base, all, status, yes = false, dryRun = false, interactive = canAsk(), log = line => console.log(line) }: ClearOptions = {},
 ): Promise<ClearResult[]> {
   // Pure argument errors are checked before touching the filesystem: a typo'd
   // `--base x --all` should fail instantly, not after a full workspace scan.
@@ -80,7 +87,9 @@ export async function runClear(
     return preview;
   }
   if (!yes) {
-    if (!process.stdin.isTTY) {
+    // One gate for every question nit asks: a pipe, a CI run and `--no-input`
+    // all land here, and none of them can answer a prompt.
+    if (!interactive) {
       throw new Error(`refusing to clear ${total} ${what}${total === 1 ? '' : 's'} without a confirmation — pass --yes for scripts`);
     }
     const ok = await confirm({ message: `Clear ${total} ${what}${total === 1 ? '' : 's'} from ${where}? This cannot be undone.` });

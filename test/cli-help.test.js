@@ -82,12 +82,36 @@ test('cli: missing required argument fails with guidance', () => {
   assert.ok(merge.out.includes('--help'));
 
   // review and import ask instead — but only on a terminal, and this is a pipe
-  for (const [cmd, needs] of [['review', 'needs a url'], ['import', 'needs a zip']]) {
+  for (const [cmd, needs, example] of [
+    ['review', 'needs a url', /e\.g\. nit review https?:\/\/\S+/],
+    ['import', 'needs a zip', /e\.g\. nit import \S+\.zip/],
+  ]) {
     const { code, out } = run(cmd);
     assert.notEqual(code, 0, `${cmd} with no argument fails`);
     assert.ok(out.includes(needs), `${cmd} says what is missing`);
-    assert.ok(out.includes(`nit ${cmd} `), `${cmd} shows a worked example`);
+    assert.match(out, example, `${cmd} shows a worked example, not just its own name`);
   }
+});
+
+test('cli: --no-input suppresses the prompt rather than only being advertised', () => {
+  const cwd = tmpDir('nit-cli-noinput-');
+  for (const slug of ['staging', 'localhost-4200']) {
+    fs.mkdirSync(path.join(cwd, 'nit-review', slug), { recursive: true });
+    fs.writeFileSync(path.join(cwd, 'nit-review', slug, 'annotations.json'), JSON.stringify({
+      review: { url: `https://${slug}.test` },
+      annotations: [{ id: 'a1', type: 'change-request', status: 'verified', comment: 'c', route: '/' }],
+    }));
+  }
+  // A pipe cannot be prompted anyway, so --no-input is asserted where it is the
+  // only thing standing between the user and a question: with --all, which
+  // reaches runClear's confirmation.
+  const clear = runIn(cwd, 'clear', '--all', '--verified', '--no-input');
+  assert.notEqual(clear.code, 0);
+  assert.ok(clear.out.includes('--yes for scripts'), 'the confirmation refuses instead of asking');
+
+  const verify = runIn(cwd, 'verify', '--no-input');
+  assert.notEqual(verify.code, 0);
+  assert.ok(verify.out.includes('pass --base to pick one'), 'the base picker refuses instead of asking');
 });
 
 test('cli: --no-input turns the prompts off where they exist', () => {

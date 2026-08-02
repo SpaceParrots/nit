@@ -4,6 +4,7 @@
 // and `Prompts` is the small surface the fallbacks use — a @clack select and a
 // @clack text — behind an interface, so the flows are testable without a
 // terminal and there is one place to change how nit talks to a human.
+import type { Readable, Writable } from 'node:stream';
 import * as p from '@clack/prompts';
 
 /** One row of a {@link Prompts.select}. */
@@ -65,27 +66,49 @@ export function canAsk({ input = true, json = false, tty }: AskGate = {}): boole
   return tty ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
 }
 
-/** The real questions: @clack prompts on the terminal. */
-export const clackPrompts: Prompts = {
-  async select(question, choices, initial) {
-    const picked = await p.select({
-      message: question,
-      ...(initial === undefined ? {} : { initialValue: initial }),
-      options: choices.map(c => ({ value: c.value, label: c.label })),
-    });
-    return p.isCancel(picked) ? null : picked;
-  },
+/** The streams a prompt reads from and draws on (default: this process's). */
+export interface PromptStreams {
+  input?: Readable;
+  output?: Writable;
+}
 
-  async text(question, { placeholder, validate } = {}) {
-    const answer = await p.text({
-      message: question,
-      ...(placeholder === undefined ? {} : { placeholder }),
-      ...(validate ? { validate: (value = '') => validate(value) } : {}),
-    });
-    return p.isCancel(answer) ? null : answer;
-  },
+/**
+ * The real questions: @clack prompts on a terminal.
+ *
+ * Streams are injectable so the actual @clack path — cancellation, the initial
+ * selection, validation — can be exercised against a pair of mock TTYs instead
+ * of only through a stand-in. A green suite of fakes proves nothing about the
+ * implementation everyone actually runs.
+ * @param streams which streams to draw on (default: stdin/stdout)
+ */
+export function createClackPrompts({ input, output }: PromptStreams = {}): Prompts {
+  const streams = { ...(input ? { input } : {}), ...(output ? { output } : {}) };
+  return {
+    async select(question, choices, initial) {
+      const picked = await p.select({
+        message: question,
+        ...(initial === undefined ? {} : { initialValue: initial }),
+        options: choices.map(c => ({ value: c.value, label: c.label })),
+        ...streams,
+      });
+      return p.isCancel(picked) ? null : picked;
+    },
 
-  cancelled(message) {
-    p.cancel(message);
-  },
-};
+    async text(question, { placeholder, validate } = {}) {
+      const answer = await p.text({
+        message: question,
+        ...(placeholder === undefined ? {} : { placeholder }),
+        ...(validate ? { validate: (value = '') => validate(value) } : {}),
+        ...streams,
+      });
+      return p.isCancel(answer) ? null : answer;
+    },
+
+    cancelled(message) {
+      p.cancel(message, streams);
+    },
+  };
+}
+
+/** The questions as nit asks them on this process's terminal. */
+export const clackPrompts: Prompts = createClackPrompts();
