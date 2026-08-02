@@ -134,6 +134,103 @@ test('source: a base with nothing to verify still explains itself', () => {
   });
 });
 
+/** A project root whose ./nit-review holds `bases`, each with one open item. */
+function makeProject(bases) {
+  const cwd = tmpDir('nit-source-proj-');
+  for (const [url, alias] of bases) {
+    const base = ensureBase(path.join(cwd, 'nit-review'), url, alias);
+    const store = createStore(base.dir, { url: base.url });
+    store.upsert({ id: 'a1', type: 'change-request', status: 'open', comment: 'c', route: '/' });
+    store.flush();
+  }
+  return cwd;
+}
+
+test('source: a bare base name resolves against the default review folder', () => {
+  const cwd = makeProject([['https://staging.example.com', 'staging'], ['http://localhost:5273', undefined]]);
+  const src = resolveFeedbackSource('view', 'localhost-5273', true, undefined, cwd);
+  assert.equal(src.file, path.join(cwd, 'nit-review', 'localhost-5273', 'annotations.json'));
+});
+
+test('source: a bare base name takes a url or an unambiguous prefix too', () => {
+  const cwd = makeProject([['https://staging.example.com', 'staging'], ['http://localhost:5273', undefined]]);
+  const byPrefix = resolveFeedbackSource('view', 'stag', true, undefined, cwd);
+  assert.equal(byPrefix.dir, path.join(cwd, 'nit-review', 'staging'));
+  const byUrl = resolveFeedbackSource('view', 'http://localhost:5273', true, undefined, cwd);
+  assert.equal(byUrl.dir, path.join(cwd, 'nit-review', 'localhost-5273'));
+});
+
+test('source: a bare base name works on a flat review folder as well', () => {
+  const cwd = tmpDir('nit-source-flat-');
+  makeReview(path.join(cwd, 'nit-review'), [CR('a1', 'fixed')], 'http://localhost:5273');
+  const src = resolveFeedbackSource('verify', 'localhost-5273', true, undefined, cwd);
+  assert.equal(src.file, path.join(cwd, 'nit-review', 'annotations.json'));
+});
+
+test('source: a real directory wins over a base of the same name', () => {
+  const cwd = makeProject([['http://localhost:5273', undefined]]);
+  makeReview(path.join(cwd, 'localhost-5273'), [CR('b1', 'fixed')]);
+  const src = resolveFeedbackSource('verify', 'localhost-5273', true, undefined, cwd);
+  assert.equal(src.file, path.join(cwd, 'localhost-5273', 'annotations.json'), 'the folder in the cwd, not the base');
+});
+
+test('source: a directory that is no review still wins over a base of that name', () => {
+  // The app folder you happen to have called `staging`, next to a `staging`
+  // base: reading the name as the base would open a review nobody pointed at.
+  const cwd = makeProject([['https://staging.example.com', 'staging']]);
+  fs.mkdirSync(path.join(cwd, 'staging', 'src'), { recursive: true });
+  fs.writeFileSync(path.join(cwd, 'staging', 'package.json'), '{}');
+  assert.throws(() => resolveFeedbackSource('verify', 'staging', true, undefined, cwd), e => {
+    assert.match(e.message, /no annotations file at/, 'the path the user named is what gets reported');
+    assert.match(e.message, /staging/);
+    return true;
+  }, 'the base is never resolved silently — picking it is still offered, but only as a deliberate choice');
+});
+
+test('source: a file that is no review is reported, not read as a base', () => {
+  const cwd = makeProject([['https://staging.example.com', 'staging']]);
+  fs.writeFileSync(path.join(cwd, 'staging'), 'not a review');
+  assert.throws(() => resolveFeedbackSource('view', 'staging', true, undefined, cwd), /is not readable as JSON/);
+});
+
+test('source: a base name matching several bases says which ones', () => {
+  const cwd = makeProject([['http://localhost:5273', undefined], ['http://localhost:4200', undefined]]);
+  assert.throws(() => resolveFeedbackSource('view', 'local', true, undefined, cwd), e => {
+    assert.match(e.message, /ambiguous/);
+    assert.match(e.message, /localhost-4200, localhost-5273/);
+    return true;
+  });
+});
+
+test('source: a name that is neither a path nor a base lists the bases there are', () => {
+  const cwd = makeProject([['https://staging.example.com', 'staging'], ['http://localhost:5273', undefined]]);
+  assert.throws(() => resolveFeedbackSource('verify', 'localhost-1234', true, undefined, cwd), e => {
+    assert.match(e.message, /no annotations file at/);
+    assert.match(e.message, /localhost-5273, staging/);
+    assert.match(e.message, /nit verify localhost-5273/);
+    return true;
+  });
+});
+
+test('source: a wrong name next to a single-base review points at the bare command', () => {
+  const cwd = tmpDir('nit-source-flat-');
+  makeReview(path.join(cwd, 'nit-review'), [CR('a1', 'fixed')], 'http://localhost:5273');
+  assert.throws(() => resolveFeedbackSource('verify', 'localhost-1234', true, undefined, cwd), e => {
+    assert.match(e.message, /localhost-5273/);
+    assert.match(e.message, /Open it: +nit verify$/m);
+    return true;
+  });
+});
+
+test('source: several bases and no pick suggests the bare-name form for nit-review', () => {
+  const cwd = makeProject([['https://staging.example.com', 'staging'], ['http://localhost:5273', undefined]]);
+  assert.throws(() => resolveFeedbackSource('verify', 'nit-review', true, undefined, cwd), e => {
+    assert.match(e.message, /pass --base to pick one/);
+    assert.match(e.message, /e\.g\. {2}nit verify localhost-5273$/m);
+    return true;
+  });
+});
+
 test('source: hand-edited junk entries are tolerated, not crashed on', () => {
   const dir = makeReview(tmpDir('nit-source-'), [null, 'junk', 42, CR('a1', 'fixed')]);
   const src = resolveFeedbackSource('verify', dir, true);

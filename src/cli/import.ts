@@ -46,7 +46,7 @@ export function runImport(zipFile: string, { out, log = line => console.log(line
     throw new Error(`not a nit export: ${path.basename(absZip)} has no annotations.json`);
   }
 
-  const target = path.resolve(out ?? defaultDirName(absZip));
+  const target = importTarget(absZip, out);
   if (fs.existsSync(target) && fs.readdirSync(target).length > 0) {
     throw new Error(`${target} already exists and is not empty — pass --out <dir> to import elsewhere`);
   }
@@ -90,6 +90,18 @@ function safeEntryPath(targetDir: string, entryName: string): string | null {
   const resolved = path.resolve(targetDir, ...segments);
   const prefix = targetDir.endsWith(path.sep) ? targetDir : targetDir + path.sep;
   return resolved.startsWith(prefix) ? resolved : null;
+}
+
+/**
+ * Where a zip would be unpacked: `--out` when given, else a folder named after
+ * the zip. Exported because the CLI has to know the target *before* importing —
+ * an occupied one is a question worth asking (see `pickImportTarget`).
+ * @param zipFile the zip to import
+ * @param out `--out`, when the user passed one
+ * @param cwd the project root a relative target resolves against
+ */
+export function importTarget(zipFile: string, out?: string, cwd: string = process.cwd()): string {
+  return path.resolve(cwd, out ?? defaultDirName(path.resolve(cwd, zipFile)));
 }
 
 /** `feedback-ann.nit.zip` → `feedback-ann`; falls back to `nit-import`. */

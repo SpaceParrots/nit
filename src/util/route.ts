@@ -5,6 +5,36 @@
  * can use them.
  */
 
+/**
+ * A url the way a human types it on the command line: `example.com` and
+ * `localhost:4200` are urls to everyone but the URL parser, so a missing scheme
+ * is filled in. https, because the sites that need a scheme spelled out are the
+ * local ones (`http://localhost:3000`), and nobody should have to type the
+ * secure one.
+ * @param url what the user typed
+ */
+export function normalizeUrl(url: string): string {
+  return /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`;
+}
+
+/**
+ * Whether {@link normalizeUrl} turns something into a site nit could open: a
+ * parseable http(s) url with a host. The scheme check is the point — a typed
+ * answer goes on to drive a real browser, and `javascript:`, `data:` and
+ * friends parse perfectly well while being nothing nit should ever navigate
+ * to. Same http(s)-only rule the store applies to annotation routes.
+ * @param url what the user typed
+ */
+export function isUrlish(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(normalizeUrl(url.trim()));
+  } catch {
+    return false;
+  }
+  return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && Boolean(parsed.hostname);
+}
+
 /** The parts of `window.location` a route is built from. */
 export interface RouteLocation {
   pathname: string;

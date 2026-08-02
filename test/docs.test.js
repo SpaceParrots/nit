@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -22,10 +23,27 @@ test('docs: the command reference has a section per new command', () => {
   const commands = read('docs/wiki/commands.md');
   assert.match(commands, /^## nit list/m);
   assert.match(commands, /^## nit clear/m);
-  for (const flag of ['--base', '--all', '--verified', '--dry-run', '--json', '--actionable']) {
+  for (const flag of ['--base', '--all', '--verified', '--dry-run', '--json', '--actionable', '--no-input']) {
     assert.ok(commands.includes(flag), `commands.md documents ${flag}`);
   }
   assert.ok(commands.includes('-v, --version'), 'commands.md documents -v');
+});
+
+test('docs: the README table spells each command\'s arguments the way the CLI does', () => {
+  const readme = read('README.md');
+  const CLI = path.join(ROOT, 'dist', 'cli', 'index.js');
+  // `| \`nit verify [source]\` | …` -> ['verify', '[source]']
+  const rows = [...readme.matchAll(/^\| `nit ([a-z-]+)((?: [<[][^`]*)?)` \|/gm)];
+  assert.ok(rows.length >= 10, `found ${rows.length} command rows to check`);
+  for (const [, cmd, args] of rows) {
+    const help = spawnSync(process.execPath, [CLI, cmd, '--help'], { encoding: 'utf8', timeout: 30000 });
+    // commander prints `Usage: nit clear|rm [options] [dir]` — the aliases ride
+    // along in the command token, so skip it whole
+    const usage = /^Usage: nit \S+(.*)$/m.exec(help.stdout)?.[1] ?? '';
+    // the usage line also carries [options]; compare only the positional part
+    const declared = usage.replace(/\s*\[options\]\s*/, ' ').trim();
+    assert.equal(declared, args.trim(), `README says "nit ${cmd}${args}", the CLI says "nit ${cmd} ${declared}"`);
+  }
 });
 
 test('docs: mcp.md explains bases, qualified ids and the clear tool', () => {

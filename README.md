@@ -45,15 +45,15 @@ Or without installing: `npx @spaceparrots/nit review https://example.com`
 | Command | Alias | What it does |
 | --- | --- | --- |
 | `nit setup` | `init` | One-time project setup: review dir, .gitignore, MCP (wizard) |
-| `nit review <url>` | `r`, `annotate` | Open a browser and annotate a site |
+| `nit review [url]` | `r`, `annotate` | Open a browser and annotate a site |
 | `nit view [source]` | `v`, `replay` | Replay a review (default `nit-review/`) with pins re-anchored on their routes |
 | `nit verify [source]` | `check` | Capture after-shots for fixed items, rule Verified / Reopen (default `nit-review/`) |
 | `nit status [dir]` | `stats` | What is in a review: file, last change, counts, what is left |
 | `nit list [dir]` | `ls` | List the base URLs in a review, or the annotated urls in one |
 | `nit clear [dir]` | `rm` | Remove annotations from a base, or from every base |
 | `nit export [dir]` | `pack` | Pack a review into a shareable zip |
-| `nit import <zip>` | `unpack` | Unpack a teammate's review zip |
-| `nit merge <file...>` | `combine` | Combine feedback files into one consolidated review |
+| `nit import [zip]` | `unpack` | Unpack a teammate's review zip |
+| `nit merge <files...>` | `combine` | Combine feedback files into one consolidated review |
 | `nit mcp [dir]` | `serve` | Serve a review folder as an MCP server (stdio) |
 | `nit mcp-install [dir]` | `mcp-config` | Register the MCP server in this project's .mcp.json |
 | `nit doctor` | | Check the environment, install Chromium if missing |
@@ -74,7 +74,7 @@ nit-review/
    └─ …
 ```
 
-A review of a single site stays flat — `annotations.json` sits directly in `nit-review/`. The base folders appear the first time you review a *second* url into the same folder, and the existing review is moved into its own folder as part of that. `nit list` shows what a review covers; every command takes `--base <name>` to work on one environment.
+A review of a single site stays flat — `annotations.json` sits directly in `nit-review/`. The base folders appear the first time you review a *second* url into the same folder, and the existing review is moved into its own folder as part of that. `nit list` shows what a review covers; every command takes `--base <name>` to work on one environment, and `nit view` / `nit verify` also take the base name on its own — `nit verify localhost-4200`.
 
 Each annotation carries the element reference (component, selector, XPath, text), the route and viewport, a status (`open`, `fixed`, `verified`, `reopened`, `wontfix`), optional issue ref, and a click trail for reproducing hidden states. Field-by-field details are in the [annotation file reference](./docs/wiki/annotations.md).
 

@@ -29,7 +29,20 @@ src/
 │  ├─ status.ts      # `nit status`: read-only report (single review or per base), --json;
 │  │                 # also owns displayPath()/ago(), reused by list.ts and source.ts
 │  ├─ source.ts      # resolves the [source] of view/verify to one annotations file:
-│  │                 # directory, feedback file, or a base of a multi-base review
+│  │                 # directory, feedback file, or a base of a multi-base review —
+│  │                 # named with --base, or as the source itself once it is no path.
+│  │                 # Never prompts: a choice it cannot make is an
+│  │                 # AmbiguousSourceError carrying the bases to offer
+│  ├─ prompt.ts      # when nit may ask (canAsk: a TTY at both ends, no --no-input,
+│  │                 # no --json) and how (the Prompts seam over @clack, injected
+│  │                 # in tests so no flow needs a terminal to be covered)
+│  ├─ pick.ts        # what nit asks when an argument is missing or fits nothing:
+│  │                 # which base (view/verify/status/list/export/clear), which
+│  │                 # scope to clear, which url to review, which zip to import.
+│  │                 # Every fallback is a no-op without a terminal and hands back
+│  │                 # a plain value the command just uses, so no command has to
+│  │                 # learn how to ask (clear.ts keeps its own confirmation,
+│  │                 # gated by the same canAsk)
 │  ├─ list.ts        # `nit list`: base URLs with counts, or the annotated urls in one
 │  ├─ clear.ts       # `nit clear`: scope validation, confirmation prompt, dry run
 │  ├─ merge.ts       # `nit merge`: read feedback files, merge, copy screenshots
@@ -135,7 +148,7 @@ src/
 
 - **`types.ts` is the public contract.** The annotations.json schema is consumed by coding agents, the MCP server and other people's feedback files, so make additive changes only. The bridge types in the same file keep both runtimes honest about what crosses `exposeBinding`.
 - **Trust boundaries are typed as `unknown`.** Anything that arrives from a page (bridge payloads), from disk (annotation files) or over stdio (MCP messages) is `unknown` first and narrowed or validated before use. Annotation files are shared and agent-edited, and the inspected site's own JS can call the bindings.
-- **Pure modules stay pure.** `anchor/`, `capture/target.ts`, `store/render.ts`, `store/merge.ts`, `store/url.ts`, `store/stats.ts`, `workspace.ts`'s slug/id half (`baseSlug`, `qualifyId`, `parseQualifiedId`, `isSafeSlug`, `resolveBase`, `safeOrigin`), `store/clear.ts`'s `selectForClear`, `util/route.ts`, `util/history.ts`, `panel/filter.ts` and `panel/highlight.ts` have no side effects and are covered by table-driven tests.
+- **Pure modules stay pure.** `anchor/`, `capture/target.ts`, `store/render.ts`, `store/merge.ts`, `store/url.ts`, `store/stats.ts`, `workspace.ts`'s slug/id half (`baseSlug`, `qualifyId`, `parseQualifiedId`, `isSafeSlug`, `matchBases`, `resolveBase`, `safeOrigin`), `store/clear.ts`'s `selectForClear`, `util/route.ts`, `util/history.ts`, `panel/filter.ts` and `panel/highlight.ts` have no side effects and are covered by table-driven tests.
 - **A slug becomes a path segment.** Anything that names a base folder is validated against `/^[a-z0-9][a-z0-9-]*$/` before it is joined into a path, and base lists always come from enumerating real directories — `bases.json` is hand-editable and travels inside shared zips, so a crafted `"slug": "../../.ssh"` must never resolve to a real path.
 - **Imports use `.js` extensions** (`import ... from '../types.js'`). TypeScript NodeNext resolution means specifiers name the *emitted* files, so the compiled output runs on plain Node without rewriting.
 - **The overlay ships self-contained.** No runtime dependencies, all UI inside its shadow root, capture-phase listeners, and nothing that can take the host page down.
