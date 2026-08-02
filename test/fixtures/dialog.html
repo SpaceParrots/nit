@@ -5,34 +5,58 @@
 <title>Nit dialog fixture</title>
 <style>
   body { font-family: sans-serif; margin: 0; padding: 20px; }
+  /* Tall enough that the document really is withholding content when locked —
+     which is what tells a modal scroll-lock apart from an app shell that clips
+     its overflow permanently. */
+  .filler { height: 2000px; background: #fafafa; }
+
+  /* A hand-rolled modal: no <dialog>, no role, no aria-modal. Only a modal-ish
+     class name AND an overlay position — the suspected tier needs both. */
   .drawer { display: none; position: fixed; inset: 20% 25%; background: #fff; border: 2px solid #333; padding: 20px; }
   body.is-open .drawer { display: block; }
   body.is-open { overflow: hidden; }
-  /* Top-right on purpose: the bottom-left corner is where nit docks its own
-     chip, and a click there would land on the overlay instead of the bar. */
+
+  /* Fixed, but not a dialog and not a modal-ish name: proves the fixed tier
+     does not fire on every sticky bar while the page is not scroll-locked.
+     Top-right on purpose — the bottom-left corner is nit's own chip dock, and
+     a click there would land on the overlay instead of the bar. */
   .sticky-bar { position: fixed; top: 0; right: 0; background: #eee; padding: 6px; }
+
+  /* The Angular Material shell shape: a modal-ish class on a statically
+     positioned box that wraps the whole page. Must never be taken for a dialog. */
+  .mat-drawer-content { position: relative; }
 </style>
 </head>
 <body>
-  <h1 id="page-title">Dialog fixture</h1>
-  <p id="plain">Always on the plain page</p>
-  <!-- The opener: the click the trail records, and the click nit verify replays. -->
-  <button id="open-drawer" type="button">Open checkout</button>
+  <div class="mat-drawer-content">
+    <h1 id="page-title">Dialog fixture</h1>
+    <p id="plain">Always on the plain page</p>
+    <!-- The opener: the click the trail records, and the click nit verify replays. -->
+    <button id="open-drawer" type="button">Open checkout</button>
+    <div class="filler"></div>
+  </div>
 
-  <!-- A hand-rolled modal: no <dialog>, no role, no aria-modal — only a
-       modal-ish class name. This is the 'suspected' tier, the case that used to
-       have no way of being confirmed. -->
   <div class="drawer" id="drawer">
     <h2>Checkout</h2>
     <button id="drawer-tab-payment" type="button">Payment</button>
-    <span id="drawer-total">Total: 12,00</span>
+    <button id="drawer-danger" type="button">Remove saved card</button>
+    <!-- Deliberately much wider than the recorded rect the fallback would crop,
+         so an anchored after-shot is distinguishable from a blank one by size
+         alone rather than by trusting a log line. -->
+    <span id="drawer-total" style="display:block;width:640px;height:120px">Total: 12,00</span>
   </div>
 
-  <!-- Fixed, but not a dialog: proves the fixed-position tier does not fire on
-       every sticky bar while the page is *not* scroll-locked. -->
   <div class="sticky-bar"><span id="sticky-note">Cookies?</span></div>
 
+  <!-- A link off the review origin, its target supplied as ?away=<url> so a test
+       can point it at a second server. Nothing in the fixture clicks it; it
+       exists so a test can hand nit a crafted `reopen` step that tries to, and
+       prove the replay refuses to leave the origin. -->
+  <a id="leave-origin" href="#">Elsewhere</a>
+
   <script>
+    var away = new URLSearchParams(location.search).get('away');
+    if (away) document.getElementById('leave-origin').href = away;
     document.getElementById('open-drawer').addEventListener('click', () => {
       document.body.classList.add('is-open');
     });

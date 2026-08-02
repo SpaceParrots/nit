@@ -6,7 +6,7 @@
 // verify-queue.ts; main.ts wires the two together in verify mode.
 import type { Annotation, PanelState } from '../types.js';
 import type { VerifyQueueResult } from './verify-queue.js';
-import { appendShot, span } from './list.js';
+import { appendShot, reopenButton, span } from './list.js';
 import { afterShotFor, wantedAfterModes } from '../util/after-shots.js';
 
 /**
@@ -191,25 +191,12 @@ function currentItem(
 function dialogRow(ann: Annotation, label: string | undefined, deps: VerifyDeps): HTMLElement {
   const row = document.createElement('div');
   row.className = 'vq-status vq-unplaced vq-dialog';
-  const steps = ann.context?.reopen ?? [];
-  const named = label ? `dialog “${label}”` : 'the dialog';
-  row.append(span('', steps.length
-    ? `${named} is closed — re-open it to capture the fix`
-    : `${named} is closed and nit has no recorded way in — please open it yourself`));
-
-  if (steps.length) {
-    const btn = document.createElement('button');
-    btn.className = 'btn nit-vq-reopen-dialog';
-    btn.textContent = '↗ Re-open';
-    // The recorded steps are page-authored text; a title attribute is set as a
-    // string, never parsed as markup.
-    btn.title = `clicks ${steps.map(s => s.text || s.selector).join(' → ')}`;
-    btn.addEventListener('click', () => {
-      try { void window.__nitReopen?.(ann.id); } catch { /* bridge gone */ }
-      deps.repaint();
-    });
-    row.append(btn);
-  }
+  const btn = reopenButton(ann, 'nit-vq-reopen-dialog', deps.repaint);
+  const named = label ? `Dialog “${label}”` : 'The dialog';
+  row.append(span('vq-dialog-text', btn
+    ? `${named} is closed. Re-open it to capture the fix.`
+    : `${named} is closed and nit has no recorded way in. Please open it yourself.`));
+  if (btn) row.append(btn);
   return row;
 }
 

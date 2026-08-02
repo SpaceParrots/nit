@@ -5,7 +5,8 @@ import path from 'node:path';
 import type { BrowserContext, Frame, Page } from 'playwright';
 import { captureElementBuffer, captureElementShot } from '../capture/screenshot.js';
 import { captureAfterShots } from './verify.js';
-import { attemptDialogReopens, reopenStepsOf, replayReopen } from './reopen.js';
+import { attemptDialogReopens, reopenStepsOf, replayReopen, runSerialized } from './reopen.js';
+import type { ReopenState } from './reopen.js';
 import { safeShotPath, sanitizeContext } from '../store/store.js';
 import { afterShotFor, primaryAfterMode } from '../util/after-shots.js';
 import { sanitizeHistory } from '../util/history.js';
@@ -264,13 +265,22 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
     if (!reopenStepsOf(ann).length) return { ok: false, error: `no recorded re-open steps for ${ann.id}` };
     const page = session.sitePage;
     if (!page) return { ok: false, error: 'no site page' };
-    // Site page only, by construction: the steps are page selectors, and the
-    // panel window has none of the elements they name. Marking the dialog as
-    // nit-opened lets verify close it again once the after-shot is banked —
-    // the reviewer pressing this button gets the same tidy-up as the automatic
-    // attempt.
-    const { ok, steps } = await replayReopen(session, page, ann);
-    if (ok) (session._reopenOpened ??= new Map<string, Promise<void>>()).set(ann.id, Promise.resolve());
+    // The button shares the automatic attempt's bookkeeping, or the two would
+    // replay the same opener at once and toggle the dialog straight back shut —
+    // as would an impatient double-click, since a replay takes seconds.
+    const state = session._reopen ??= new Map<string, ReopenState>();
+    const key = `${ann.id}:${session.viewportMode}`;
+    if (state.get(key) === 'pending') return { ok: false, error: `already re-opening ${ann.id}` };
+    state.set(key, 'pending');
+    // Recorded before the await, like the automatic path: the after-shot can be
+    // banked while this is still settling, and closeReopened must find the
+    // in-flight attempt to wait on rather than press Escape into the middle of it.
+    const opened = session._reopenOpened ??= new Map<string, Promise<void>>();
+    const attempt = runSerialized(session, () => replayReopen(session, page, ann));
+    opened.set(ann.id, attempt.then(() => {}, () => {}));
+    const { ok, steps } = await attempt.catch(() => ({ ok: false, steps: 0 }));
+    if (!ok) opened.delete(ann.id); // nothing was opened, so nothing to close later
+    state.set(key, 'done');
     return ok ? { ok: true, steps } : { ok: false, error: `re-open stopped after ${steps} step(s)` };
   }));
 

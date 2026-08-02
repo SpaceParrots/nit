@@ -135,6 +135,35 @@ test('capture context', async t => {
     assert.equal(ann.context.reopen[0].text, 'Open checkout');
   });
 
+  await t.test('a modal-ish class on the page shell never offers the row', async () => {
+    // #plain lives inside .mat-drawer-content — the class matches the modal-ish
+    // pattern, but it is statically positioned and wraps the page. Before the
+    // corroboration rule this put a checkbox on every annotation in a Material app.
+    await pick(page, '#plain');
+    assert.equal(await dialogBox().count(), 0);
+    await page.locator('#nit-root .nit-cancel').click();
+  });
+
+  await t.test('ordinary clicks inside the dialog are not recorded as re-open steps', async () => {
+    await page.locator('#open-drawer').click();
+    // A destructive in-dialog click, made after the opener. It changed nothing
+    // about which surfaces are open, so it must not end up in a sequence nit
+    // replays unattended.
+    await page.locator('#drawer-danger').click();
+    const ta = await pick(page, '#drawer-total');
+    await dialogBox().check();
+    await fillAndSave(page, ta, 'Total still misaligned');
+    const data = await waitFor(() => {
+      const d = readFile();
+      return d && d.annotations.length === 4 ? d : null;
+    }, { message: 'fourth annotation saved', timeout: 15000 });
+    const ann = data.annotations[3];
+    assert.deepEqual(ann.context.reopen.map(s => s.selector), ['#open-drawer']);
+    assert.equal(ann.context.reopen.some(s => s.selector === '#drawer-danger'), false,
+      'the destructive click is in `history` for the agent to read, but never in `reopen`');
+    assert.ok(ann.history.some(s => s.selector === '#drawer-danger'), 'still recorded as context');
+  });
+
   await t.test('unticking the confirmation saves a plain-page annotation', async () => {
     await page.locator('#open-drawer').click();
     const ta = await pick(page, '#drawer-total');
@@ -142,8 +171,8 @@ test('capture context', async t => {
     await fillAndSave(page, ta, 'Not really a dialog');
     const data = await waitFor(() => {
       const d = readFile();
-      return d && d.annotations.length === 4 ? d : null;
+      return d && d.annotations.length === 5 ? d : null;
     }, { message: 'unticked annotation saved', timeout: 15000 });
-    assert.ok(!('context' in data.annotations[3]), 'a corrected false positive leaves no context behind');
+    assert.ok(!('context' in data.annotations[4]), 'a corrected false positive leaves no context behind');
   });
 });

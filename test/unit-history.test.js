@@ -4,14 +4,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MAX_HISTORY, MAX_REOPEN_STEPS, sanitizeHistory, sanitizeSteps } from '../dist/util/history.js';
-import { appendStep, emptyTrail, selectReopenSteps } from '../dist/overlay/trail.js';
+import { appendStep, emptyTrail, markOpened, selectReopenSteps } from '../dist/overlay/trail.js';
 
 const step = (n, at = `2026-07-22T10:00:0${n}Z`) => ({
   selector: `#el-${n}`, tag: 'button', component: 'app-thing', text: `Click ${n}`, at,
 });
 
-/** A trail step recorded inside (`surface`) or outside (null) a dialog. */
-const on = (n, surface = null) => ({ ...step(n), surface });
+/**
+ * A trail step recorded inside (`surface`) or outside (null) a dialog.
+ * `opened` is the observed fact that this click made a surface appear.
+ */
+const on = (n, surface = null, opened = false) => ({ ...step(n), surface, opened });
+/** A click that demonstrably opened something. */
+const opens = (n, surface = null) => on(n, surface, true);
 
 test('trail: appendStep keeps order and never mutates its input', () => {
   const t0 = emptyTrail('/products');
@@ -42,35 +47,67 @@ test('trail: a pathname change resets the trail; query/hash changes do not', () 
   assert.deepEqual(t.steps.map(s => s.selector), ['#el-3'], 'trail restarted on the new page');
 });
 
-test('reopen: the last click made outside a dialog is the opener, with everything after it', () => {
-  const steps = [on(1), on(2), on(3), on(4, '#drawer'), on(5, '#drawer')];
+test('reopen: the opener is the last plain-page click that actually opened something', () => {
+  const steps = [on(1), opens(2), on(3, '#drawer')];
   assert.deepEqual(
     selectReopenSteps(steps).map(s => s.selector),
-    ['#el-3', '#el-4', '#el-5'],
-    'the opener plus the clicks made inside the dialog it opened',
+    ['#el-2'],
+    'the click that opened the drawer, not the one that merely preceded it',
   );
 });
 
-test('reopen: the surface marker never leaves the overlay', () => {
-  const [opener] = selectReopenSteps([on(1), on(2, '#drawer')]);
+test('reopen: a plain-page click that opened nothing is never the opener', () => {
+  // The shape that used to break this: a NON-modal drawer stays open while the
+  // reviewer clicks a row on the page behind it. Position says "outside a
+  // dialog", but only the earlier click actually opened anything.
+  const steps = [opens(1), on(2, '#drawer'), on(3)];
+  assert.deepEqual(
+    selectReopenSteps(steps).map(s => s.selector),
+    ['#el-1'],
+    'anchors on the real opener and drops the unrelated page click entirely',
+  );
+});
+
+test('reopen: ordinary interactions inside the dialog are not replayed', () => {
+  // "Remove avatar" must never be replayed unattended just because it followed
+  // the opener; only clicks that opened a further surface stay in the chain.
+  const steps = [opens(1), on(2, '#dlg'), opens(3, '#dlg'), on(4, '#dlg')];
+  assert.deepEqual(selectReopenSteps(steps).map(s => s.selector), ['#el-1', '#el-3']);
+});
+
+test('reopen: the surface and causality markers never leave the overlay', () => {
+  const [opener] = selectReopenSteps([opens(1), on(2, '#drawer')]);
   assert.deepEqual(Object.keys(opener).sort(), ['at', 'component', 'selector', 'tag', 'text']);
 });
 
-test('reopen: a dialog opened before the trail window yields nothing to replay', () => {
-  assert.deepEqual(selectReopenSteps([on(1, '#drawer'), on(2, '#drawer')]), []);
+test('reopen: nothing to replay when no recorded click opened a surface', () => {
+  assert.deepEqual(selectReopenSteps([on(1, '#drawer'), on(2, '#drawer')]), [], 'opened before the trail window');
+  assert.deepEqual(selectReopenSteps([on(1), on(2)]), [], 'a hover-opened dialog has no opening click');
   assert.deepEqual(selectReopenSteps([]), []);
 });
 
-test('reopen: the cap counts forward from the opener, never dropping it', () => {
-  const steps = [on(1), on(2), on(3, '#a'), on(4, '#a'), on(5, '#a'), on(6, '#a')];
-  const out = selectReopenSteps(steps);
-  assert.equal(out.length, MAX_REOPEN_STEPS);
-  assert.equal(out[0].selector, '#el-2', 'the opener survives the cap — the sequence is useless without it');
+test('reopen: a chain longer than the cap is dropped, not truncated', () => {
+  const steps = [opens(1), opens(2, '#a'), opens(3, '#b'), opens(4, '#c')];
+  assert.deepEqual(
+    selectReopenSteps(steps), [],
+    'a truncated sequence would still report success while leaving the dialog half-restored',
+  );
+  assert.equal(selectReopenSteps(steps.slice(0, MAX_REOPEN_STEPS)).length, MAX_REOPEN_STEPS, 'a chain that fits is kept');
 });
 
-test('reopen: a dialog opened from another dialog replays the whole chain', () => {
-  const steps = [on(1), on(2, '#outer'), on(3, '#inner')];
-  assert.deepEqual(selectReopenSteps(steps).map(s => s.selector), ['#el-1', '#el-2', '#el-3']);
+test('reopen: a dialog opened from a menu replays the whole opening chain', () => {
+  const steps = [opens(1), opens(2, '#menu')];
+  assert.deepEqual(selectReopenSteps(steps).map(s => s.selector), ['#el-1', '#el-2']);
+});
+
+test('trail: markOpened is immutable and only ever promotes a step it holds', () => {
+  const s1 = on(1);
+  const t0 = appendStep(emptyTrail('/'), s1, '/');
+  const t1 = markOpened(t0, s1);
+  assert.equal(t1.steps[0].opened, true);
+  assert.equal(t0.steps[0].opened, false, 'the earlier trail is untouched');
+  assert.equal(markOpened(t1, s1), t1, 'already opened — same trail back, no churn');
+  assert.equal(markOpened(t0, on(9)), t0, 'a step this trail never held changes nothing');
 });
 
 test('history: sanitizeSteps caps at whatever the caller asks for', () => {

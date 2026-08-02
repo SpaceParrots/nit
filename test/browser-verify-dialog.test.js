@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { startFixtureServer } from './helpers/server.js';
 import { startTestSession, waitFor, tmpDir } from './helpers/session.js';
+import { pngSize, SHOT_PADDING, MIN_SHOT_W, MIN_SHOT_H } from '../dist/capture/screenshot.js';
 
 const PNG_1PX = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -81,18 +82,34 @@ test('nit verify — dialogs are re-opened before the after-shot', async t => {
 
   await t.test('the recorded opener is clicked, and the shot is of the open drawer', async () => {
     await waitFor(() => annOf('a1').screenshotAfter ?? null,
-      { message: 'a1 after-shot recorded', timeout: 20000 });
-    // The element could only be re-anchored because the drawer was re-opened:
-    // a fallback shot would have said so in the log instead.
-    assert.ok(
-      S.logs.some(l => l.startsWith('o after-shot a1') && !l.includes('not re-anchored')),
-      `a1 was captured from the re-anchored element, not from the recorded region — logs:\n${S.logs.join('\n')}`,
-    );
-    // Waited for, not asserted outright: the drawer opens mid-replay, so the
-    // overlay can report the element placed — and the shot can be banked — while
-    // replayReopen is still settling and has not logged its outcome yet.
-    await waitFor(() => S.logs.some(l => l.includes('re-opened a1')) || null,
-      { message: 'the re-open is logged', timeout: 10000 });
+      { message: 'a1 after-shot recorded', timeout: 25000 });
+
+    // Assert on the artifact, not on a log line: a log saying "anchored" proves
+    // nothing about what was actually cropped. The after-shot must match the
+    // live #drawer-total box under the same clip rules capture shots use, which
+    // is only possible if the drawer was genuinely re-opened.
+    // Measure the live element, then put the page back exactly as it was —
+    // directly, not via Escape, so the next subtest starts from a known state.
+    const dims = await page.evaluate(() => {
+      const body = document.body;
+      const was = body.classList.contains('is-open');
+      body.classList.add('is-open');
+      const r = document.querySelector('#drawer-total').getBoundingClientRect();
+      const out = {
+        w: Math.round(r.width), h: Math.round(r.height),
+        pageW: document.documentElement.scrollWidth, pageH: document.documentElement.scrollHeight,
+      };
+      if (!was) body.classList.remove('is-open');
+      return out;
+    });
+    const size = pngSize(fs.readFileSync(path.join(dir, annOf('a1').screenshotAfter)));
+    const expectW = Math.min(dims.pageW, Math.max(dims.w + SHOT_PADDING * 2, MIN_SHOT_W));
+    const expectH = Math.min(dims.pageH, Math.max(dims.h + SHOT_PADDING * 2, MIN_SHOT_H));
+    assert.ok(Math.abs(size.width - expectW) <= 2, `after-shot width ${size.width} ≈ ${expectW}`);
+    assert.ok(Math.abs(size.height - expectH) <= 2, `after-shot height ${size.height} ≈ ${expectH}`);
+    // The recorded rect is 160×20 and would have been clipped to the context
+    // minimum, so these dimensions are only reachable from the real element.
+    assert.ok(size.width > MIN_SHOT_W, `${size.width}px is wider than a recorded-region fallback`);
   });
 
   await t.test('nit closes the dialog it opened once the evidence is banked', async () => {

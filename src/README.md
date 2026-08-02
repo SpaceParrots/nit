@@ -63,7 +63,8 @@ src/
 │  ├─ panel-bundle.ts # esbuild-bundles src/panel into the panel popup's script (cached)
 │  ├─ verify.ts       # `nit verify` after-shot capture for `fixed` annotations
 │  └─ reopen.ts       # replays an annotation's `context.reopen` clicks to bring its
-│                     # dialog back on screen — the one place nit clicks a page itself
+│                     # dialog back on screen — the one place nit clicks a page
+│                     # itself, so it is origin-guarded, capped and serialized
 │
 ├─ overlay/     # injected page UI, vanilla DOM in an open Shadow DOM
 │  ├─ main.ts     # entrypoint: boot guard, state, wiring, route watcher, resync
@@ -71,9 +72,10 @@ src/
 │  ├─ state.ts    # OverlayState / OverlayActions / part interfaces (types only)
 │  ├─ picker.ts   # Alt-toggled element picking (capture-phase listeners)
 │  ├─ popover.ts  # the annotation form (comment, type, viewport scope, dialog confirm)
-│  ├─ trail.ts    # click-history recorder: the last 10 page clicks on this pathname and
-│  │              # the dialog surface each happened on, snapshotted into the save
-│  │              # payload as `history` + `context.reopen` (pure appendStep /
+│  ├─ trail.ts    # click-history recorder: the last 10 page clicks on this pathname,
+│  │              # the dialog surface each happened on, and whether each was
+│  │              # observed to OPEN one — snapshotted into the save payload as
+│  │              # `history` + `context.reopen` (pure appendStep / markOpened /
 │  │              # selectReopenSteps + a DOM shell)
 │  ├─ pins.ts     # numbered pins for re-anchored annotations
 │  ├─ chip.ts     # bottom-left status chip

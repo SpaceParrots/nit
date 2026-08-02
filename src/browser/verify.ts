@@ -14,7 +14,7 @@
 import path from 'node:path';
 import type { Page } from 'playwright';
 import { captureElementShot } from '../capture/screenshot.js';
-import { closeReopened, reopenInFlight } from './reopen.js';
+import { closeAllReopened, closeReopened, reopenInFlight } from './reopen.js';
 import { primaryAfterMode, wantedAfterModes } from '../util/after-shots.js';
 import { errorMessage } from '../util/error.js';
 import type { NitSession, SessionUiState } from './session.js';
@@ -69,6 +69,8 @@ export async function captureAfterShots(session: NitSession, page: Page, uiState
   const mode = session.viewportMode;
   const now = Date.now();
 
+  /** true while any annotation is still owed a re-open — see the sweep at the end */
+  let awaitingReopen = false;
   const pending: PendingShot[] = [];
   for (const p of uiState.placed ?? []) {
     if (!p.id || !p.rect) continue;
@@ -89,10 +91,13 @@ export async function captureAfterShots(session: NitSession, page: Page, uiState
     // The grace clock must not even start at a viewport the annotation doesn't
     // want — time spent on desktop must not count toward a mobile-only fallback.
     if (!wantedAfterModes(ann).includes(mode)) continue;
-    // Nor while nit is still clicking its way back into the annotation's dialog:
-    // the whole point of that attempt is to have something other than a blank
-    // page to shoot, and the grace period would otherwise beat it to the punch.
-    if (reopenInFlight(session, ann, mode)) continue;
+    // Nor while nit still owes this annotation a way back into its dialog: the
+    // whole point of that attempt is to have something other than a blank page
+    // to shoot, and the grace period would otherwise beat it to the punch.
+    if (reopenInFlight(session, ann, mode)) {
+      awaitingReopen = true;
+      continue;
+    }
     const key = `${ann.id}:${mode}`;
     if (captured.has(key)) continue;
     // Grace period: a gap since the last report means the user was on another
@@ -104,7 +109,14 @@ export async function captureAfterShots(session: NitSession, page: Page, uiState
     if (now - first < FALLBACK_GRACE_MS) continue;
     pending.push({ ann, rect: ann.target.rect, kind: 'fallback' });
   }
-  if (!pending.length) return;
+  if (!pending.length) {
+    // A replay that opened a dialog whose element then never anchored banks no
+    // shot of its own, so nothing above would ever close it — and it would sit
+    // in front of every other annotation's after-shot on this route. Once
+    // nothing is left to capture or wait for, sweep the surfaces nit opened.
+    if (!awaitingReopen) await closeAllReopened(session, page);
+    return;
+  }
   // Claim the keys before the async capture so an overlapping `ui` event can't
   // schedule the same shot twice.
   for (const p of pending) captured.set(`${p.ann.id}:${mode}`, p.kind === 'fallback' ? 'fallback' : 'anchored');

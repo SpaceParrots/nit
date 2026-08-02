@@ -45,6 +45,33 @@ function use(): ListDeps {
 }
 
 /**
+ * The "click your way back into this dialog" button, shared by the verify
+ * card and the "couldn't place" rows so the two can never drift apart.
+ * Returns `null` when the annotation records no way back in — the caller then
+ * says so in words instead of offering a button that cannot work.
+ * @param ann the annotation whose dialog is closed
+ * @param cls a placement-specific class on top of the shared `btn`
+ * @param onDone called after the request is sent, to repaint the caller's view
+ */
+export function reopenButton(ann: Annotation, cls: string, onDone: () => void): HTMLButtonElement | null {
+  const steps = ann.context?.reopen ?? [];
+  if (!steps.length) return null;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = `btn ${cls}`;
+  btn.textContent = '↗ Re-open';
+  // The recorded steps are page-authored text; a title attribute is assigned as
+  // a string, never parsed as markup.
+  btn.title = `clicks ${steps.map(s => s.text || s.selector).join(' → ')}`;
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    try { void window.__nitReopen?.(ann.id); } catch { /* bridge gone */ }
+    onDone();
+  });
+  return btn;
+}
+
+/**
  * Render one annotation row.
  * @param ann the annotation to render
  * @param num its pin number on the current page, or `undefined` when it has none
@@ -208,19 +235,10 @@ export function renderItem(
     // Strictly on reason 'dialog' — with the dialog already open the steps would
     // toggle it shut. Replay and verify only: in review mode the reviewer is
     // driving the page anyway, and opening it by hand costs them nothing.
-    const steps = ann.context?.reopen ?? [];
     const closed = (s.hidden || []).some(h => h.id === ann.id && h.reason === 'dialog');
-    if (unplaced && closed && steps.length && s.mode !== 'review') {
-      const btn = document.createElement('button');
-      btn.className = 'btn nit-reopen-dialog';
-      btn.textContent = '↗ Re-open';
-      btn.title = `clicks ${steps.map(st => st.text || st.selector).join(' → ')}`;
-      btn.addEventListener('click', e => {
-        e.stopPropagation();
-        try { void window.__nitReopen?.(ann.id); } catch { /* bridge gone */ }
-        d.view.lastKey = '';
-      });
-      n.append(btn);
+    if (unplaced && closed && s.mode !== 'review') {
+      const btn = reopenButton(ann, 'nit-reopen-dialog', () => { d.view.lastKey = ''; });
+      if (btn) n.append(btn);
     }
     it.append(n);
   }
