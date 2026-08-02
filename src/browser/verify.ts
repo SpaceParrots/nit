@@ -14,6 +14,7 @@
 import path from 'node:path';
 import type { Page } from 'playwright';
 import { captureElementShot } from '../capture/screenshot.js';
+import { closeReopened, reopenInFlight } from './reopen.js';
 import { primaryAfterMode, wantedAfterModes } from '../util/after-shots.js';
 import { errorMessage } from '../util/error.js';
 import type { NitSession, SessionUiState } from './session.js';
@@ -88,6 +89,10 @@ export async function captureAfterShots(session: NitSession, page: Page, uiState
     // The grace clock must not even start at a viewport the annotation doesn't
     // want — time spent on desktop must not count toward a mobile-only fallback.
     if (!wantedAfterModes(ann).includes(mode)) continue;
+    // Nor while nit is still clicking its way back into the annotation's dialog:
+    // the whole point of that attempt is to have something other than a blank
+    // page to shoot, and the grace period would otherwise beat it to the punch.
+    if (reopenInFlight(session, ann, mode)) continue;
     const key = `${ann.id}:${mode}`;
     if (captured.has(key)) continue;
     // Grace period: a gap since the last report means the user was on another
@@ -106,6 +111,8 @@ export async function captureAfterShots(session: NitSession, page: Page, uiState
 
   await page.evaluate(() => window.__nitOverlay?.setUiHidden(true)).catch(() => {});
   await new Promise(r => setTimeout(r, 80));
+  /** ids whose shot is banked — any dialog nit opened for them may now be closed */
+  const shot: string[] = [];
   try {
     for (const { ann, rect, kind } of pending) {
       const key = `${ann.id}:${mode}`;
@@ -120,6 +127,7 @@ export async function captureAfterShots(session: NitSession, page: Page, uiState
         // The schema promises screenshotAfter always mirrors the primary entry.
         if (isPrimary) ann.screenshotAfter = rel;
         unplacedSeen.delete(key);
+        shot.push(ann.id);
         if (kind === 'upgrade') {
           session.log(`o after-shot upgraded ${ann.id} [${mode}] (element re-anchored)`);
         } else {
@@ -134,4 +142,7 @@ export async function captureAfterShots(session: NitSession, page: Page, uiState
   } finally {
     await page.evaluate(() => window.__nitOverlay?.setUiHidden(false)).catch(() => {});
   }
+  // Evidence is banked, so a dialog nit opened for it has served its purpose:
+  // close it, or it would sit on top of the next queue item on the same route.
+  for (const id of shot) await closeReopened(session, page, id);
 }

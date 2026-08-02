@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { BrowserContext, Frame, Page } from 'playwright';
 import { captureElementBuffer, captureElementShot } from '../capture/screenshot.js';
 import { captureAfterShots } from './verify.js';
+import { attemptDialogReopens, reopenStepsOf, replayReopen } from './reopen.js';
 import { safeShotPath, sanitizeContext } from '../store/store.js';
 import { afterShotFor, primaryAfterMode } from '../util/after-shots.js';
 import { sanitizeHistory } from '../util/history.js';
@@ -69,6 +70,7 @@ interface RawSavePayload {
  *  - `__nitSetIssueRef(id, ref)`  attach/clear a tracker issue reference
  *  - `__nitSetComment(id, text)`  edit an annotation's comment (non-empty)
  *  - `__nitGoTo(id)`              navigate the site page to an annotation's route
+ *  - `__nitReopen(id)`            replay an annotation's recorded clicks to re-open its dialog
  *  - `__nitDelete(id)`            remove annotation + screenshot files
  *  - `__nitFinish()`              flush review and close the session
  *  - `__nitEvent(evt)`            overlay telemetry: clicks (debug), ui state, focus requests
@@ -256,6 +258,22 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
     return { ok: true, url };
   }));
 
+  await context.exposeBinding('__nitReopen', guard(async (source, id: unknown) => {
+    const ann = store.annotations.find(a => a.id === id);
+    if (!ann) return { ok: false, error: `no annotation ${String(id)}` };
+    if (!reopenStepsOf(ann).length) return { ok: false, error: `no recorded re-open steps for ${ann.id}` };
+    const page = session.sitePage;
+    if (!page) return { ok: false, error: 'no site page' };
+    // Site page only, by construction: the steps are page selectors, and the
+    // panel window has none of the elements they name. Marking the dialog as
+    // nit-opened lets verify close it again once the after-shot is banked —
+    // the reviewer pressing this button gets the same tidy-up as the automatic
+    // attempt.
+    const { ok, steps } = await replayReopen(session, page, ann);
+    if (ok) (session._reopenOpened ??= new Map<string, Promise<void>>()).set(ann.id, Promise.resolve());
+    return ok ? { ok: true, steps } : { ok: false, error: `re-open stopped after ${steps} step(s)` };
+  }));
+
   await context.exposeBinding('__nitStageShot', guard(async (source, rect: unknown) => {
     // Site page only: the picker calls this the moment an element is selected, so
     // transient state (an open dropdown) is captured before the popover steals it.
@@ -319,6 +337,12 @@ export async function wireBridge(context: BrowserContext, session: NitSession): 
         }
       }
       if (session.mode === 'verify') {
+        // Before the capture, not after: a fixed annotation sitting behind a
+        // closed dialog gets its one automatic re-open attempt here, and
+        // captureAfterShots holds its blank-page fallback back until that
+        // attempt has resolved.
+        await attemptDialogReopens(session, source.page, session.uiState)
+          .catch((e: unknown) => session.log(`! dialog re-open failed: ${errorMessage(e)}`));
         await captureAfterShots(session, source.page, session.uiState)
           .catch((e: unknown) => session.log(`! after-shot capture failed: ${errorMessage(e)}`));
       }

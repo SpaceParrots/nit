@@ -90,7 +90,12 @@ function currentItem(
   );
   wrap.append(head);
 
-  if ((s.unplaced || []).includes(ann.id)) {
+  const closedDialog = (s.hidden || []).find(h => h.id === ann.id && h.reason === 'dialog');
+  if (closedDialog) {
+    // A closed dialog is a different problem from a missing element, and it has
+    // a remedy — say which, instead of the generic "couldn't re-find it".
+    wrap.append(dialogRow(ann, closedDialog.label, deps));
+  } else if ((s.unplaced || []).includes(ann.id)) {
     wrap.append(statusLine('element couldn\'t be re-found — showing the originally recorded region', 'vq-unplaced'));
   }
 
@@ -174,6 +179,38 @@ function currentItem(
   actions.append(ok, re, skip);
   wrap.append(actions, noteRow);
   return wrap;
+}
+
+/**
+ * The closed-dialog row: what is in the way, and the button that clears it.
+ * nit re-opens the dialog by itself once per item and viewport, so by the time
+ * this is on screen the automatic attempt has usually already run — the button
+ * is the retry (and the only option for a dialog with no recorded opener, e.g.
+ * one opened before the click trail started).
+ */
+function dialogRow(ann: Annotation, label: string | undefined, deps: VerifyDeps): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'vq-status vq-unplaced vq-dialog';
+  const steps = ann.context?.reopen ?? [];
+  const named = label ? `dialog “${label}”` : 'the dialog';
+  row.append(span('', steps.length
+    ? `${named} is closed — re-open it to capture the fix`
+    : `${named} is closed and nit has no recorded way in — please open it yourself`));
+
+  if (steps.length) {
+    const btn = document.createElement('button');
+    btn.className = 'btn nit-vq-reopen-dialog';
+    btn.textContent = '↗ Re-open';
+    // The recorded steps are page-authored text; a title attribute is set as a
+    // string, never parsed as markup.
+    btn.title = `clicks ${steps.map(s => s.text || s.selector).join(' → ')}`;
+    btn.addEventListener('click', () => {
+      try { void window.__nitReopen?.(ann.id); } catch { /* bridge gone */ }
+      deps.repaint();
+    });
+    row.append(btn);
+  }
+  return row;
 }
 
 /** One muted status line of the card (empty, done, capturing, unplaced note). */

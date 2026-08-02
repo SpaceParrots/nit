@@ -203,6 +203,25 @@ export function renderItem(
     const n = document.createElement('div');
     n.className = 'nit-note';
     n.textContent = note;
+    // A row held back by a closed dialog is the one placement problem with a
+    // remedy: replay the clicks the reviewer originally made to get in there.
+    // Strictly on reason 'dialog' — with the dialog already open the steps would
+    // toggle it shut. Replay and verify only: in review mode the reviewer is
+    // driving the page anyway, and opening it by hand costs them nothing.
+    const steps = ann.context?.reopen ?? [];
+    const closed = (s.hidden || []).some(h => h.id === ann.id && h.reason === 'dialog');
+    if (unplaced && closed && steps.length && s.mode !== 'review') {
+      const btn = document.createElement('button');
+      btn.className = 'btn nit-reopen-dialog';
+      btn.textContent = '↗ Re-open';
+      btn.title = `clicks ${steps.map(st => st.text || st.selector).join(' → ')}`;
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        try { void window.__nitReopen?.(ann.id); } catch { /* bridge gone */ }
+        d.view.lastKey = '';
+      });
+      n.append(btn);
+    }
     it.append(n);
   }
   return it;

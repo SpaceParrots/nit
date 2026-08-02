@@ -96,6 +96,24 @@ export interface NitSession {
    * on return instead of capturing a still-blank page.
    */
   _afterUnplacedSeen?: Map<string, { first: number; last: number }>;
+  /**
+   * @internal verify mode: how far the automatic dialog re-open has got for a
+   * fixed annotation, keyed `${annotationId}:${viewportMode}` like
+   * `_afterCaptured` — a viewport switch re-lays-out the page and usually closes
+   * the dialog again, so each viewport gets its own attempt. `'pending'` holds
+   * the after-shot fallback back (capturing while a re-open is in flight would
+   * bank a blank page); `'done'` means the one attempt is spent, win or lose,
+   * and the normal grace clock may run.
+   */
+  _reopen?: Map<string, 'pending' | 'done'>;
+  /**
+   * @internal ids whose dialog nit itself re-opened, mapped to the attempt that
+   * opened it — so it can close it again (Escape) once the after-shot is banked
+   * and leave the page clean for the next queue item, without cutting a
+   * still-running multi-step replay short. A dialog the reviewer opened by hand
+   * is never in here, and so is never closed under them.
+   */
+  _reopenOpened?: Map<string, Promise<void>>;
 }
 
 /** Options for {@link startSession}. */

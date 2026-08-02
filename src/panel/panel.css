@@ -75,6 +75,7 @@ footer .btn { width: 100%; }
 .nit-item--closed { opacity: 0.55; }
 .nit-item--unplaced { border-style: dashed; }
 .nit-note { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.nit-note .nit-reopen-dialog { margin-left: 6px; padding: 1px 6px; font-size: 10px; vertical-align: middle; }
 .item-head { display: flex; align-items: flex-start; gap: 6px; }
 .num {
   flex: none; width: 18px; height: 18px; border-radius: 50%; background: #3a3a3e;
@@ -169,6 +170,8 @@ footer .btn { width: 100%; }
 .vq-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.2s ease; }
 .vq-status { font-size: 11px; color: var(--muted); }
 .vq-unplaced { color: var(--accent); }
+.vq-dialog { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.vq-dialog .nit-vq-reopen-dialog { padding: 2px 8px; font-size: 10px; flex: none; }
 .vq-item {
   background: #26262a; border: 1px solid var(--border); border-radius: 8px;
   padding: 8px; display: flex; flex-direction: column; gap: 6px; font-size: 12px;

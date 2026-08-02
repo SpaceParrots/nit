@@ -3,12 +3,15 @@
 // untrusted __nitSave payloads.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_HISTORY, sanitizeHistory } from '../dist/util/history.js';
-import { appendStep, emptyTrail } from '../dist/overlay/trail.js';
+import { MAX_HISTORY, MAX_REOPEN_STEPS, sanitizeHistory, sanitizeSteps } from '../dist/util/history.js';
+import { appendStep, emptyTrail, selectReopenSteps } from '../dist/overlay/trail.js';
 
 const step = (n, at = `2026-07-22T10:00:0${n}Z`) => ({
   selector: `#el-${n}`, tag: 'button', component: 'app-thing', text: `Click ${n}`, at,
 });
+
+/** A trail step recorded inside (`surface`) or outside (null) a dialog. */
+const on = (n, surface = null) => ({ ...step(n), surface });
 
 test('trail: appendStep keeps order and never mutates its input', () => {
   const t0 = emptyTrail('/products');
@@ -37,6 +40,44 @@ test('trail: a pathname change resets the trail; query/hash changes do not', () 
   t = appendStep(t, step(3), '/checkout');
   assert.equal(t.page, '/checkout');
   assert.deepEqual(t.steps.map(s => s.selector), ['#el-3'], 'trail restarted on the new page');
+});
+
+test('reopen: the last click made outside a dialog is the opener, with everything after it', () => {
+  const steps = [on(1), on(2), on(3), on(4, '#drawer'), on(5, '#drawer')];
+  assert.deepEqual(
+    selectReopenSteps(steps).map(s => s.selector),
+    ['#el-3', '#el-4', '#el-5'],
+    'the opener plus the clicks made inside the dialog it opened',
+  );
+});
+
+test('reopen: the surface marker never leaves the overlay', () => {
+  const [opener] = selectReopenSteps([on(1), on(2, '#drawer')]);
+  assert.deepEqual(Object.keys(opener).sort(), ['at', 'component', 'selector', 'tag', 'text']);
+});
+
+test('reopen: a dialog opened before the trail window yields nothing to replay', () => {
+  assert.deepEqual(selectReopenSteps([on(1, '#drawer'), on(2, '#drawer')]), []);
+  assert.deepEqual(selectReopenSteps([]), []);
+});
+
+test('reopen: the cap counts forward from the opener, never dropping it', () => {
+  const steps = [on(1), on(2), on(3, '#a'), on(4, '#a'), on(5, '#a'), on(6, '#a')];
+  const out = selectReopenSteps(steps);
+  assert.equal(out.length, MAX_REOPEN_STEPS);
+  assert.equal(out[0].selector, '#el-2', 'the opener survives the cap — the sequence is useless without it');
+});
+
+test('reopen: a dialog opened from another dialog replays the whole chain', () => {
+  const steps = [on(1), on(2, '#outer'), on(3, '#inner')];
+  assert.deepEqual(selectReopenSteps(steps).map(s => s.selector), ['#el-1', '#el-2', '#el-3']);
+});
+
+test('history: sanitizeSteps caps at whatever the caller asks for', () => {
+  const many = Array.from({ length: 8 }, (_, i) => ({ ...step(0), selector: `#el-${i}` }));
+  assert.equal(sanitizeSteps(many, MAX_REOPEN_STEPS).length, MAX_REOPEN_STEPS);
+  assert.equal(sanitizeSteps(many, MAX_HISTORY).length, 8);
+  assert.equal(sanitizeSteps(many, 0), undefined, 'a zero cap leaves nothing, which reads as absent');
 });
 
 test('history: sanitizeHistory accepts a clean payload and preserves order', () => {

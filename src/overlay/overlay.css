@@ -124,6 +124,12 @@ button, input, textarea, select { font: inherit; }
   cursor: pointer;
 }
 .nit-seg-btn--active { background: var(--nit-accent); color: var(--nit-accent-fg); border-color: var(--nit-accent); font-weight: 600; }
+/* Dialog confirmation — rendered only when the picked element looks like it
+   lives on an overlay surface, so it must not push the popover around when it
+   is absent. Indented to the control column so it lines up with the segments. */
+.nit-check { display: flex; align-items: center; gap: 8px; padding-left: 72px; cursor: pointer; }
+.nit-check input { accent-color: var(--nit-accent); margin: 0; flex: none; }
+.nit-check-label { font-size: 11px; color: var(--nit-muted); }
 .nit-btnrow { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* ---- buttons ---- */

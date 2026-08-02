@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nit dialog fixture</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 20px; }
+  .drawer { display: none; position: fixed; inset: 20% 25%; background: #fff; border: 2px solid #333; padding: 20px; }
+  body.is-open .drawer { display: block; }
+  body.is-open { overflow: hidden; }
+  /* Top-right on purpose: the bottom-left corner is where nit docks its own
+     chip, and a click there would land on the overlay instead of the bar. */
+  .sticky-bar { position: fixed; top: 0; right: 0; background: #eee; padding: 6px; }
+</style>
+</head>
+<body>
+  <h1 id="page-title">Dialog fixture</h1>
+  <p id="plain">Always on the plain page</p>
+  <!-- The opener: the click the trail records, and the click nit verify replays. -->
+  <button id="open-drawer" type="button">Open checkout</button>
+
+  <!-- A hand-rolled modal: no <dialog>, no role, no aria-modal — only a
+       modal-ish class name. This is the 'suspected' tier, the case that used to
+       have no way of being confirmed. -->
+  <div class="drawer" id="drawer">
+    <h2>Checkout</h2>
+    <button id="drawer-tab-payment" type="button">Payment</button>
+    <span id="drawer-total">Total: 12,00</span>
+  </div>
+
+  <!-- Fixed, but not a dialog: proves the fixed-position tier does not fire on
+       every sticky bar while the page is *not* scroll-locked. -->
+  <div class="sticky-bar"><span id="sticky-note">Cookies?</span></div>
+
+  <script>
+    document.getElementById('open-drawer').addEventListener('click', () => {
+      document.body.classList.add('is-open');
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') document.body.classList.remove('is-open');
+    });
+  </script>
+</body>
+</html>

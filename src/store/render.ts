@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Pure annotations → review.md renderer (SPEC §5) + the /fix-annotations contract file.
 import { isActionable } from './stats.js';
+import { sanitizeSteps } from '../util/history.js';
 import type { Annotation, ClickStep, ReviewData } from '../types.js';
 
 /**
@@ -51,6 +52,7 @@ export function renderReviewMd(data: ReviewData): string {
     if (issueFragment) extra.push(`issue: ${issueFragment}`);
     if (a.updatedAt) extra.push(`updated ${a.updatedAt.slice(0, 10)}${a.updatedBy ? ` by ${a.updatedBy}` : ''}`);
     if (extra.length) lines.push(`- ${extra.join(' · ')}`);
+    lines.push(...dialogMd(a.context));
     lines.push(...historyMd(a.history));
   }
   lines.push('');
@@ -132,23 +134,47 @@ function briefField(s: unknown): string {
  * discipline `issueRef` rendering applies.
  */
 function historyMd(history: Annotation['history']): string[] {
-  if (!Array.isArray(history)) return [];
-  const steps = history
-    .filter((s): s is ClickStep => Boolean(
-      s && typeof s === 'object'
-      && typeof s.selector === 'string' && typeof s.text === 'string'
-      && typeof s.component === 'string' && typeof s.tag === 'string' && typeof s.at === 'string',
-    ))
-    .slice(0, 10);
+  const steps = validSteps(history, 10);
   if (!steps.length) return [];
-  const lines = ['', 'Steps on this page before this annotation (oldest first):', ''];
-  steps.forEach((s, i) => {
+  return ['', 'Steps on this page before this annotation (oldest first):', '', ...stepList(steps)];
+}
+
+/**
+ * Render the dialog an annotation lives on, and the clicks that re-open it. The
+ * element is not on the plain page, so an agent looking for it needs to know
+ * that before it goes hunting — and a human reproducing the report needs the
+ * same clicks `nit verify` replays.
+ */
+function dialogMd(context: Annotation['context']): string[] {
+  if (!context || typeof context !== 'object' || context.kind !== 'dialog') return [];
+  const label = inline(context.label);
+  const lines = [`- inside dialog: ${label ? `“${label}”` : '(unnamed)'}`];
+  const steps = validSteps(context.reopen, 3);
+  if (!steps.length) return lines;
+  return [...lines, '', 'To re-open that dialog (oldest first):', '', ...stepList(steps)];
+}
+
+/**
+ * The valid click steps of an untrusted list, capped. The file may be
+ * hand-edited, so every entry is re-checked here even though the bridge already
+ * sanitized what it stored — through the same validator, so "what counts as a
+ * step" is defined in exactly one place.
+ */
+function validSteps(v: unknown, cap: number): ClickStep[] {
+  return sanitizeSteps(v, cap) ?? [];
+}
+
+/**
+ * A numbered click list. Fields are whitespace-collapsed and backticks stripped
+ * from code spans — the same discipline `issueRef` rendering applies.
+ */
+function stepList(steps: readonly ClickStep[]): string[] {
+  return steps.map((s, i) => {
     const selector = inline(s.selector).replace(/`/g, '');
     const text = inline(s.text);
     const component = inline(s.component);
-    lines.push(`${i + 1}. click \`${selector}\`${text ? ` — "${text}"` : ''}${component ? ` (${component})` : ''}`);
+    return `${i + 1}. click \`${selector}\`${text ? ` — "${text}"` : ''}${component ? ` (${component})` : ''}`;
   });
-  return lines;
 }
 
 /**
@@ -247,4 +273,9 @@ them itself whenever a change goes through the tools.
 Reproduction: when an annotation carries \`history\` (the reviewer's last clicks on that page,
 oldest first), the described state may only exist after replaying those clicks — open the route,
 perform the steps, then look at the target element.
+
+Dialogs: \`context.kind: "dialog"\` means the element is not on the plain page at all — it lives in
+the modal/drawer named by \`context.label\`, behind the selector in \`context.selector\`. Replay
+\`context.reopen\` (the clicks that open it, oldest first) before looking for the element; the source
+you need is the dialog's component, not the page's.
 `;

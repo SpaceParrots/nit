@@ -79,6 +79,15 @@ It is an *index*, not the source of truth: a subfolder holding an `annotations.j
   "updatedAt": "2026-07-22T09:01:00.000Z",
   "updatedBy": "agent",
   "issueRef": "FAI-1234",
+  "context": {
+    "kind": "dialog",
+    "selector": "#checkout-dialog",
+    "label": "Checkout",
+    "reopen": [
+      { "selector": "button.cart", "tag": "button", "component": "app-nav",
+        "text": "Open checkout", "at": "2026-07-21T02:27:44.000Z" }
+    ]
+  },
   "history": [
     { "selector": "button.menu", "tag": "button", "component": "app-nav",
       "text": "Menu", "at": "2026-07-21T02:27:41.000Z" }
@@ -97,7 +106,8 @@ It is an *index*, not the source of truth: a subfolder holding an `annotations.j
 | `viewport` | The exact viewport the annotation was made in. |
 | `route` | The page it was made on, as pathname plus query and hash. |
 | `target` | The layered element reference, see below. |
-| `context` | Optional, additive. Where the element lived at capture time; absent on plain pages. For dialogs: `{ "kind": "dialog", "selector": "#checkout-dialog", "label": "Checkout" }` — `selector` re-finds the dialog container, `label` comes from `aria-label` → `aria-labelledby` → the dialog's first heading (trimmed to 60 characters). Replay uses it to tell "the dialog is closed" apart from "the element is gone" and shows such annotations under the "x hidden" pill instead of dropping them silently. |
+| `context` | Optional, additive. Where the element lived at capture time; absent on plain pages. For dialogs: `{ "kind": "dialog", "selector": "#checkout-dialog", "label": "Checkout", "reopen": [ … ] }` — `selector` re-finds the dialog container, `label` comes from `aria-label` → `aria-labelledby` → the dialog's first heading (trimmed to 60 characters). Replay uses it to tell "the dialog is closed" apart from "the element is gone" and shows such annotations under the "x hidden" pill instead of dropping them silently. |
+| `context.reopen` | Optional. Up to 3 clicks that open that dialog, oldest first, in the same shape as `history`: the last click the reviewer made outside any dialog, plus whatever they clicked inside it afterwards. `nit verify` replays them so a fix inside a modal can be screenshotted; the panel's **Re-open** button replays the same steps on demand. **These are the only selectors nit ever clicks by itself** — they are re-validated and re-capped every time the file is loaded, so keep the list short and honest if you hand-edit it. |
 | `screenshot` | Path of the context screenshot, relative to the review folder. |
 | `screenshotAfter` | The primary "after" screenshot captured by `nit verify`, when one exists — taken at the same viewport as the before-shot (or at the scope viewport for scoped annotations). Always mirrors the primary `screenshotsAfter` entry. |
 | `screenshotsAfter` | All `nit verify` after-shots, keyed by viewport (`desktop` / `mobile`). General-scoped annotations get one per viewport (the fix must hold on both); scoped ones only ever their own. Additive to the schema — older consumers can keep reading `screenshotAfter`. |
