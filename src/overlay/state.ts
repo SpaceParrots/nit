@@ -61,6 +61,8 @@ export interface OverlayActions {
   focusAnnotation: (id: string) => void;
   /** snapshot of the click trail on this pathname (review mode; empty otherwise) */
   historySnapshot: () => ClickStep[];
+  /** the trail's clicks that re-open the dialog being annotated (review mode; empty otherwise) */
+  reopenSnapshot: () => ClickStep[];
 }
 
 /** The hover/selection highlight box. */

@@ -6,6 +6,7 @@
 ### Features
 
 * **cli:** fill in a missing base, url, scope or zip by asking ([#24](https://github.com/SpaceParrots/nit/issues/24)) ([ed22c83](https://github.com/SpaceParrots/nit/commit/ed22c83acdb3cfb542bce45930379db7976ebddd))
+* **verify:** re-open dialogs before capturing after-shots ([#26](https://github.com/SpaceParrots/nit/issues/26)) ([8d0116c](https://github.com/SpaceParrots/nit/commit/8d0116c832ee1aa7ecb0fa0e8107e6ee879d2c5b))
 
 
 ### Bug Fixes

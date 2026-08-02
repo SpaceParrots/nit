@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createStore } from '../dist/store/store.js';
+import { MAX_REOPEN_STEPS } from '../dist/util/history.js';
 import { tmpDir } from './helpers/tmp.js';
 
 test('store: fresh dir initializes review meta', () => {
@@ -274,6 +275,40 @@ test('store: loading leaves a valid dialog context untouched', () => {
   }));
   const store = createStore(dir, { url: 'https://x.test' });
   assert.deepEqual(store.annotations[0].context, { kind: 'dialog', selector: '#dlg', label: 'Checkout' });
+});
+
+test('store: loading caps context.reopen — the only selectors nit ever clicks', () => {
+  const dir = tmpDir('nit-store-');
+  const file = path.join(dir, 'annotations.json');
+  fs.mkdirSync(dir, { recursive: true });
+  const step = n => ({
+    selector: `#el-${n}`, tag: 'button', component: 'app-thing', text: `Click ${n}`, at: '2026-07-22T10:00:00Z',
+  });
+  fs.writeFileSync(file, JSON.stringify({
+    review: { id: 'r', url: 'https://x.test', createdAt: new Date().toISOString(), authors: [] },
+    annotations: [
+      {
+        id: 'a1',
+        comment: 'crafted',
+        status: 'open',
+        context: {
+          kind: 'dialog',
+          selector: '#dlg',
+          // 20 steps, some malformed — a hand-edited or agent-written file must
+          // not be able to turn verify into a click farm
+          reopen: [...Array.from({ length: 20 }, (_, i) => step(i)), null, 'text', { selector: '#x' }],
+        },
+      },
+      { id: 'a2', comment: 'nothing valid', status: 'open', context: { kind: 'dialog', reopen: [null, 7] } },
+      { id: 'a3', comment: 'not a list', status: 'open', context: { kind: 'dialog', reopen: '#everything' } },
+    ],
+  }));
+  const store = createStore(dir, { url: 'https://x.test' });
+  const [a1, a2, a3] = store.annotations;
+  assert.equal(a1.context.reopen.length, MAX_REOPEN_STEPS);
+  assert.deepEqual(a1.context.reopen.map(s => s.selector), ['#el-0', '#el-1', '#el-2']);
+  assert.ok(!('reopen' in a2.context), 'nothing survivable reads as absent, not as []');
+  assert.ok(!('reopen' in a3.context), 'a non-array is dropped, not coerced');
 });
 
 test('store: flush adopts an external updatedAt/updatedBy with the status it belongs to', () => {

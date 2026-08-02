@@ -61,19 +61,25 @@ src/
 │  │                  # every payload (pages can forge calls) and guards by frame/page
 │  ├─ panel.ts        # opens the panel as a popup window and loads its bundled UI
 │  ├─ panel-bundle.ts # esbuild-bundles src/panel into the panel popup's script (cached)
-│  └─ verify.ts       # `nit verify` after-shot capture for `fixed` annotations
+│  ├─ verify.ts       # `nit verify` after-shot capture for `fixed` annotations
+│  └─ reopen.ts       # replays an annotation's `context.reopen` clicks to bring its
+│                     # dialog back on screen — the one place nit clicks a page
+│                     # itself, so it is origin-guarded, capped and serialized
 │
 ├─ overlay/     # injected page UI, vanilla DOM in an open Shadow DOM
 │  ├─ main.ts     # entrypoint: boot guard, state, wiring, route watcher, resync
 │  ├─ hidden-pill.ts # the "N hidden here" pill for pins whose element is not visible
 │  ├─ state.ts    # OverlayState / OverlayActions / part interfaces (types only)
 │  ├─ picker.ts   # Alt-toggled element picking (capture-phase listeners)
-│  ├─ popover.ts  # the annotation form (comment, type, viewport scope)
+│  ├─ popover.ts  # the annotation form (comment, type, viewport scope, dialog confirm)
 │  ├─ trail.ts    # click-history recorder: the last 10 page clicks on this pathname,
-│  │              # snapshotted into the save payload (pure appendStep + a DOM shell)
+│  │              # the dialog surface each happened on, and whether each was
+│  │              # observed to OPEN one — snapshotted into the save payload as
+│  │              # `history` + `context.reopen` (pure appendStep / markOpened /
+│  │              # selectReopenSteps + a DOM shell)
 │  ├─ pins.ts     # numbered pins for re-anchored annotations
 │  ├─ chip.ts     # bottom-left status chip
-│  ├─ dom.ts      # tiny DOM helpers (div/span/button/segmented)
+│  ├─ dom.ts      # tiny DOM helpers (div/span/button/segmented/checkboxRow)
 │  └─ overlay.css # overlay styles, bundled as text into the IIFE
 │
 ├─ panel/       # panel window UI, vanilla DOM, bundled by esbuild and injected into
@@ -133,8 +139,10 @@ src/
 │
 └─ util/
    ├─ error.ts   # errorMessage(unknown), safe narrowing for catch blocks
-   ├─ history.ts # MAX_HISTORY + sanitizeHistory(), the click-trail caps shared by the
-   │             # overlay (bounds as it records) and the bridge (re-validates saves)
+   ├─ history.ts # MAX_HISTORY / MAX_REOPEN_STEPS + sanitizeSteps(), the click caps
+   │             # shared by the overlay (bounds as it records), the bridge
+   │             # (re-validates saves) and the store (re-validates loads — reopen
+   │             # steps are the only selectors nit ever clicks)
    ├─ route.ts   # currentRoute/routePath/routeKey, pure route helpers shared by the
    │             # overlay (captures routes) and the panel (groups and navigates by them)
    ├─ after-shots.ts # pure after-shot bookkeeping: which viewports a `fixed` annotation

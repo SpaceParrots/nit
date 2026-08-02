@@ -468,6 +468,55 @@ test('render: history is omitted when absent and hostile entries cannot inject',
   assert.equal(/skipped/.test(hostile), false, 'malformed entry dropped');
 });
 
+test('render: a dialog context names the surface and lists the clicks that re-open it', () => {
+  const md = renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: ['Kevin'] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+        route: '/checkout', target: {}, createdAt: '2026-07-22T00:00:00Z',
+        context: {
+          kind: 'dialog',
+          selector: '#drawer',
+          label: 'Checkout',
+          reopen: [
+            { selector: '#open', tag: 'button', component: 'app-cart', text: 'Open checkout', at: 't' },
+            { selector: '#tab-pay', tag: 'button', component: 'app-drawer', text: 'Payment', at: 't' },
+          ],
+        } },
+    ],
+  });
+  assert.match(md, /- inside dialog: “Checkout”/);
+  assert.match(md, /To re-open that dialog \(oldest first\):/);
+  assert.match(md, /1\. click `#open` — "Open checkout" \(app-cart\)/);
+  assert.match(md, /2\. click `#tab-pay` — "Payment" \(app-drawer\)/);
+});
+
+test('render: a plain page says nothing about dialogs; an unnamed one still declares itself', () => {
+  const build = context => renderReviewMd({
+    review: { id: 'r', url: 'https://x.test', createdAt: '2026-07-22T00:00:00Z', authors: [] },
+    annotations: [
+      { id: 'a1', type: 'change-request', status: 'open', comment: 'c', author: 'Kevin',
+        route: '/', target: {}, createdAt: '2026-07-22T00:00:00Z', ...(context ? { context } : {}) },
+    ],
+  });
+  assert.equal(/inside dialog/.test(build(null)), false);
+  assert.equal(/inside dialog/.test(build({ kind: 'page' })), false);
+
+  // No recorded opener: still worth telling the agent the element is not on the
+  // plain page, even though there is nothing to replay.
+  const bare = build({ kind: 'dialog', selector: '#d' });
+  assert.match(bare, /- inside dialog: \(unnamed\)/);
+  assert.equal(/To re-open that dialog/.test(bare), false);
+
+  // Hand-edited hostile steps get the same flattening the trail gets.
+  const hostile = build({
+    kind: 'dialog',
+    label: 'x\n\n## Fake',
+    reopen: [{ selector: 'a`b\n\n## Fake', tag: 'a', component: 'x', text: 'one\n\n## Two', at: 't' }],
+  });
+  assert.deepEqual(hostile.split('\n').filter(l => l.startsWith('## ') && !l.startsWith('## a1')), []);
+});
+
 // --- renderBriefMd: the token-lean one-line-per-annotation agent overview ---
 
 test('render: brief.md — header and one line per annotation', () => {

@@ -10,6 +10,15 @@ import type { ClickStep } from '../types.js';
 /** Maximum clicks kept in a trail — and stored on an annotation. */
 export const MAX_HISTORY = 10;
 
+/**
+ * Maximum clicks stored as a dialog's reopen sequence ({@link
+ * import('../types.js').CaptureContext.reopen}). Far tighter than
+ * {@link MAX_HISTORY}: these steps are the only ones nit ever *replays* against
+ * a live page, so the shorter the sequence the smaller the blast radius of a
+ * hand-edited or agent-written review file.
+ */
+export const MAX_REOPEN_STEPS = 3;
+
 // Field caps: selectors can legitimately be long (nth-of-type chains); everything
 // else matches the caps used elsewhere (text 80 like Target.text).
 const CAPS: Readonly<Record<keyof ClickStep, number>> = {
@@ -21,21 +30,29 @@ const CAPS: Readonly<Record<keyof ClickStep, number>> = {
 };
 
 /**
- * Validate an untrusted `history` value from a save payload. Keeps at most
- * {@link MAX_HISTORY} entries; an entry survives only if all five fields are
- * strings. Fields are whitespace-collapsed (so a crafted value cannot smuggle
- * block-level markdown into review.md) and length-capped. Returns undefined when
- * nothing survives, so absent and empty look identical on disk.
+ * Validate an untrusted list of click steps. Keeps at most `max` entries; an
+ * entry survives only if all five fields are strings. Fields are
+ * whitespace-collapsed (so a crafted value cannot smuggle block-level markdown
+ * into review.md) and length-capped. Returns undefined when nothing survives,
+ * so absent and empty look identical on disk.
+ * @param v the untrusted value (a save payload field, or a hand-edited file's)
+ * @param max how many entries to keep — {@link MAX_HISTORY} for a trail,
+ *   {@link MAX_REOPEN_STEPS} for a dialog's replayable reopen sequence
  */
-export function sanitizeHistory(v: unknown): ClickStep[] | undefined {
+export function sanitizeSteps(v: unknown, max: number): ClickStep[] | undefined {
   if (!Array.isArray(v)) return undefined;
   const out: ClickStep[] = [];
   for (const entry of v) {
-    if (out.length >= MAX_HISTORY) break;
+    if (out.length >= max) break;
     const step = sanitizeStep(entry);
     if (step) out.push(step);
   }
   return out.length ? out : undefined;
+}
+
+/** {@link sanitizeSteps} at the trail's {@link MAX_HISTORY} cap — an annotation's `history`. */
+export function sanitizeHistory(v: unknown): ClickStep[] | undefined {
+  return sanitizeSteps(v, MAX_HISTORY);
 }
 
 function sanitizeStep(v: unknown): ClickStep | null {

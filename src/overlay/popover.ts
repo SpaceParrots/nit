@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The annotation popover: comment text, type selector (default change-request),
-// viewport-scope toggle (default: general, toggleable to the current viewport).
-import { div, button, segmented, labelRow, describeElement } from './dom.js';
+// viewport-scope toggle (default: general, toggleable to the current viewport),
+// and — only when the picked element looks like it lives on a dialog surface —
+// one checkbox confirming that. Confirming is what lets `nit verify` re-open the
+// dialog later instead of screenshotting a blank page, so it is worth the row;
+// on a plain page nothing extra is rendered.
+import { div, button, segmented, labelRow, checkboxRow, describeElement } from './dom.js';
 import { detectDialog } from '../capture/context.js';
+import type { DialogContainer } from '../capture/context.js';
 import { buildSelector, resolveTarget } from '../capture/target.js';
 import { currentRoute } from '../util/route.js';
 import type { AnnotationType, Rect, SavePayload, ViewportScope } from '../types.js';
@@ -53,6 +58,14 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
     let type: AnnotationType = 'change-request';
     let scope: ViewportScope = 'general'; // default: applies to every viewport
 
+    // Detected here rather than in save(): the popover has to render the
+    // confirmation row, and the dialog may already be gone by save time.
+    const dialog = detectDialog(currentEl);
+    // Semantics or a known framework class are trustworthy enough to pre-check;
+    // a modal-ish class name or a fixed box on a scroll-locked page is a guess,
+    // so the reviewer opts in.
+    let inDialog = dialog?.confidence === 'confident';
+
     const head = div('nit-pop-head', describeElement(currentEl));
     const ta = document.createElement('textarea');
     ta.className = 'nit-pop-comment';
@@ -88,7 +101,6 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
       if (saving || !currentEl) return;
       saving = true;
       const elementToSave = currentEl;
-      const dialog = detectDialog(elementToSave);
       const pickRect = openRect;
       close(); // close first — nothing below may keep the popover on screen
       try {
@@ -102,15 +114,27 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
         if ((targetRef.rect.w <= 0 || targetRef.rect.h <= 0) && pickRect && pickRect.w > 0 && pickRect.h > 0) {
           targetRef.rect = pickRect;
         }
+        // The reopen steps are only worth recording for a surface we will
+        // actually try to re-open, and they are the only thing nit ever replays
+        // against a live page — so they ride on the reviewer's confirmation.
+        const reopen = dialog && inDialog ? actions.reopenSnapshot() : [];
         const payload: SavePayload = {
           comment,
           type,
           viewportScope: scope,
           target: targetRef,
           route: currentRoute(location),
-          // absent on plain pages — keeps the file identical to before for them
-          context: dialog
-            ? { kind: 'dialog', selector: buildSelector(dialog.container), label: dialog.label ?? undefined }
+          // absent on plain pages (and when the reviewer unticked a false
+          // positive) — keeps the file identical to before for them
+          context: dialog && inDialog
+            ? {
+              kind: 'dialog',
+              selector: buildSelector(dialog.container),
+              label: dialog.label ?? undefined,
+              // absent (not []) when the trail holds no click from outside the
+              // dialog — nothing honest to replay
+              reopen: reopen.length ? reopen : undefined,
+            }
             : undefined,
           // absent (not []) when nothing was clicked — keeps the file identical to before
           history: history.length ? history : undefined,
@@ -132,7 +156,17 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
     const buttons = div('nit-btnrow');
     buttons.append(cancelBtn, saveBtn);
 
-    el.append(head, ta, labelRow('Type', typeRow), labelRow('Applies to', scopeRow), buttons);
+    el.append(head, ta, labelRow('Type', typeRow), labelRow('Applies to', scopeRow));
+    if (dialog) el.append(checkboxRow(dialogLabel(dialog), inDialog, v => { inDialog = v; }));
+    el.append(buttons);
+  }
+
+  /** Wording for the confirmation row: an assertion when we are sure, a question when we are not. */
+  function dialogLabel(dialog: DialogContainer): string {
+    const named = dialog.label ? `“${dialog.label}”` : null;
+    return dialog.confidence === 'confident'
+      ? `In dialog ${named ?? '(unnamed)'}`
+      : `Inside a dialog / modal${named ? ` ${named}` : ''}?`;
   }
 
   /** Element bounds in absolute page coordinates (what the capture clip expects). */

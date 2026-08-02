@@ -61,6 +61,25 @@ export function labelRow(label: string, control: HTMLElement): HTMLDivElement {
 }
 
 /**
+ * A full-width checkbox row: box and label share one `<label>`, so clicking the
+ * text toggles too. Returns the row; read the live value through `onChange`.
+ * @param label the text beside the box (untrusted page text ends up here, so it
+ *   is set as a text node, never as markup)
+ * @param checked the initial state
+ * @param onChange called with the new state on every toggle
+ */
+export function checkboxRow(label: string, checked: boolean, onChange: (v: boolean) => void): HTMLLabelElement {
+  const row = document.createElement('label');
+  row.className = 'nit-check';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = checked;
+  box.addEventListener('change', () => onChange(box.checked));
+  row.append(box, span('nit-check-label', label));
+  return row;
+}
+
+/**
  * Short human label for an element — `component-tag › span` — used in the
  * hover-highlight chip and the popover header.
  */
