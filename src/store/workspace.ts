@@ -211,48 +211,69 @@ function hasReviewUrl(v: unknown): v is { review: { url: string } } {
 }
 
 /**
- * Find the base a `--base` argument (or an MCP `base` parameter) names.
+ * Every base a name could mean, without deciding whether that is good enough.
  *
- * Matching runs most-specific first — exact slug, exact url, same origin, then a
- * unique case-insensitive slug prefix — so an exact name always beats a prefix
- * of a longer one. One function serves the CLI and the MCP layer alike, so the
- * two can never drift apart.
+ * Matching runs most-specific first — exact slug, exact url, same origin, then
+ * case-insensitive slug prefix — so an exact name always beats a prefix of a
+ * longer one, and the first tier that matches at all wins. More than one result
+ * means the name only narrows to a set: callers that must land on one base
+ * (see {@link resolveBase}) treat that as ambiguous, callers that are guessing
+ * (`nit verify <base>` with no `--base`) can back off instead.
+ * @param ws the workspace to search
+ * @param nameOrUrl a slug, a full url, or a slug prefix
+ * @returns the matches, empty when the name fits no base
+ */
+export function matchBases(ws: Workspace, nameOrUrl: string): BaseRef[] {
+  const query = nameOrUrl.trim().toLowerCase();
+  if (!query) return [];
+
+  const bySlug = ws.bases.find(b => b.slug.toLowerCase() === query);
+  if (bySlug) return [bySlug];
+
+  const byUrl = ws.bases.find(b => b.url.toLowerCase() === query);
+  if (byUrl) return [byUrl];
+
+  // Two bases can share an origin and differ only by path (e.g. /admin vs
+  // /public), so this tier can legitimately return several.
+  const origin = safeOrigin(query);
+  if (origin) {
+    const byOrigin = ws.bases.filter(b => safeOrigin(b.url) === origin);
+    if (byOrigin.length) return byOrigin;
+  }
+
+  return ws.bases.filter(b => b.slug.toLowerCase().startsWith(query));
+}
+
+/**
+ * Find the one base a `--base` argument (or an MCP `base` parameter) names.
+ * One function serves the CLI and the MCP layer alike, so the two can never
+ * drift apart.
  * @param ws the workspace to search
  * @param nameOrUrl a slug, a full url, or an unambiguous slug prefix
  * @returns the matching base
- * @throws when nothing matches, or when a same-origin match or a slug prefix
- *   matches several bases; the message always names the workspace's actual
- *   bases (or, for an ambiguous match, the candidates it matches)
+ * @throws when nothing matches, or when the name matches several bases; the
+ *   message always names the workspace's actual bases (or, for an ambiguous
+ *   match, the candidates it matches)
  */
 export function resolveBase(ws: Workspace, nameOrUrl: string): BaseRef {
-  const query = nameOrUrl.trim().toLowerCase();
   const known = describeBases(ws);
-  if (!query) throw new Error(`no base given — known bases: ${known}`);
+  if (!nameOrUrl.trim()) throw new Error(`no base given — known bases: ${known}`);
 
-  const bySlug = ws.bases.find(b => b.slug.toLowerCase() === query);
-  if (bySlug) return bySlug;
-
-  const byUrl = ws.bases.find(b => b.url.toLowerCase() === query);
-  if (byUrl) return byUrl;
-
-  const origin = safeOrigin(query);
-  if (origin) {
-    // .filter + length check, not .find: two bases can share an origin and
-    // differ only by path (e.g. /admin vs /public), and silently returning
-    // the first one would send the caller to the wrong base.
-    const byOrigin = ws.bases.filter(b => safeOrigin(b.url) === origin);
-    if (byOrigin.length === 1) return byOrigin[0];
-    if (byOrigin.length > 1) {
-      throw new Error(`base "${nameOrUrl}" is ambiguous — it matches ${byOrigin.map(b => b.slug).join(', ')}`);
-    }
-  }
-
-  const prefixed = ws.bases.filter(b => b.slug.toLowerCase().startsWith(query));
-  if (prefixed.length === 1) return prefixed[0];
-  if (prefixed.length > 1) {
-    throw new Error(`base "${nameOrUrl}" is ambiguous — it matches ${prefixed.map(b => b.slug).join(', ')}`);
-  }
+  const matches = matchBases(ws, nameOrUrl);
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) throw new Error(ambiguousBaseMessage(nameOrUrl, matches));
   throw new Error(`no base "${nameOrUrl}" in ${ws.dir} — known bases: ${known}`);
+}
+
+/**
+ * How a name that narrows to several bases but decides none is reported. One
+ * function so `resolveBase` and callers that recover from the ambiguity
+ * themselves (the `nit verify <base>` shorthand) phrase it identically.
+ * @param nameOrUrl what the caller asked for
+ * @param matches the bases it matched
+ */
+export function ambiguousBaseMessage(nameOrUrl: string, matches: BaseRef[]): string {
+  return `base "${nameOrUrl}" is ambiguous — it matches ${matches.map(b => b.slug).join(', ')}`;
 }
 
 /**

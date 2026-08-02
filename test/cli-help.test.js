@@ -35,7 +35,7 @@ test('cli: top-level help lists all commands with summaries and the loop', () =>
 test('cli: per-command help is detailed', () => {
   const review = run('review', '--help');
   assert.equal(review.code, 0);
-  assert.ok(review.out.includes('<url>'));
+  assert.ok(review.out.includes('[url]'), 'the url is optional — nit offers the known ones');
   assert.ok(review.out.includes('--author'));
   assert.ok(review.out.includes('Alt'));
   assert.ok(review.out.includes('--mobile'));
@@ -48,8 +48,8 @@ test('cli: per-command help is detailed', () => {
 
 test('cli: aliases resolve to their commands', () => {
   for (const [alias, marker] of [
-    ['r', '<url>'],
-    ['annotate', '<url>'],
+    ['r', '[url]'],
+    ['annotate', '[url]'],
     ['v', '[source]'],
     ['replay', '[source]'],
     ['check', 'after'],
@@ -75,10 +75,27 @@ test('cli: unknown command suggests the nearest one', () => {
 });
 
 test('cli: missing required argument fails with guidance', () => {
-  const { code, out } = run('review');
-  assert.notEqual(code, 0);
-  assert.ok(out.includes('missing required argument'));
-  assert.ok(out.includes('--help'));
+  // commander still owns the ones nit cannot offer a choice for
+  const merge = run('merge');
+  assert.notEqual(merge.code, 0);
+  assert.ok(merge.out.includes('missing required argument'));
+  assert.ok(merge.out.includes('--help'));
+
+  // review and import ask instead — but only on a terminal, and this is a pipe
+  for (const [cmd, needs] of [['review', 'needs a url'], ['import', 'needs a zip']]) {
+    const { code, out } = run(cmd);
+    assert.notEqual(code, 0, `${cmd} with no argument fails`);
+    assert.ok(out.includes(needs), `${cmd} says what is missing`);
+    assert.ok(out.includes(`nit ${cmd} `), `${cmd} shows a worked example`);
+  }
+});
+
+test('cli: --no-input turns the prompts off where they exist', () => {
+  for (const cmd of ['review', 'view', 'verify', 'status', 'list', 'clear', 'export', 'import']) {
+    const { code, out } = run(cmd, '--help');
+    assert.equal(code, 0, `${cmd} --help exits 0`);
+    assert.ok(out.includes('--no-input'), `${cmd} offers --no-input`);
+  }
 });
 
 test('cli: view/verify help shows worked examples and the nit-review default', () => {

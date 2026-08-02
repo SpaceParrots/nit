@@ -8,6 +8,7 @@ import path from 'node:path';
 import * as p from '@clack/prompts';
 import { runMcpInstall } from './mcp-install.js';
 import type { McpInstallResult } from './mcp-install.js';
+import { canAsk } from './prompt.js';
 import { readUserConfig, writeUserConfig } from '../util/user-config.js';
 
 export const DEFAULT_REVIEW_DIR = 'nit-review';
@@ -189,9 +190,13 @@ function summarize(result: SetupResult, projectDir: string): string[] {
  * reviews should live in this project — and let the reviewer pick another
  * directory if not. Returns the directory to use.
  */
-export async function confirmReviewDir(out: string, { explicit, projectDir = process.cwd() }: { explicit: boolean; projectDir?: string }): Promise<string> {
+export async function confirmReviewDir(
+  out: string,
+  { explicit, projectDir = process.cwd(), interactive = canAsk() }:
+  { explicit: boolean; projectDir?: string; interactive?: boolean },
+): Promise<string> {
   if (explicit || fs.existsSync(path.resolve(projectDir, out))) return out;
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return out;
+  if (!interactive) return out;
 
   const ok = await p.confirm({
     message: `First review in this project — store it in ${path.resolve(projectDir, out)}?`,

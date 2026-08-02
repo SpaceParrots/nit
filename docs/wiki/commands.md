@@ -13,6 +13,18 @@ A review folder can cover more than one site — local, staging, production. Eac
 
 Wherever a command needs to know *which* environment you mean, it takes `--base <name>`, and the name can be the slug (`staging`), the full url (`https://staging.example.com`), or an unambiguous prefix (`stag`). `nit list` shows what is on offer.
 
+## When nit asks
+
+A command that cannot work out what you meant asks, rather than only telling you what was wrong: which base of a multi-base review, which url to review, which export to unpack, what a `nit clear` should cover. Every row shows what is inside the thing you would be choosing — urls, counts, what is fixed or already ruled — so the choice is made on the numbers rather than on the name. Escape cancels; nothing has happened yet at that point.
+
+The questions only ever appear when a person is there to answer them: a terminal on **both** stdin and stdout, no `--no-input`, and no `--json`. Pipes, scripts, CI and agents shelling out to nit are never prompted — they get the same error, naming the flag to pass, that nit has always printed.
+
+| Flag | What it does |
+| --- | --- |
+| `--no-input` | Never ask for a missing argument — fail with the flag to pass instead |
+
+`--no-input` is accepted by `review`, `view`, `verify`, `status`, `list`, `clear`, `export` and `import`. `nit setup` and `nit doctor` are wizards by definition and keep their own `--yes`; `nit mcp` never asks, because its stdin is the protocol.
+
 ## Shared browser flags
 
 `review`, `view` and `verify` all launch a browser and accept these flags:
@@ -31,9 +43,21 @@ One-time project setup. An interactive wizard chooses the review directory, offe
 | --- | --- |
 | `-y, --yes` | Accept all defaults without prompting |
 
-## nit review \<url\> (aliases: r, annotate)
+## nit review [url] (aliases: r, annotate)
 
 Opens the site in a real Chromium with the annotation overlay and the panel window. Alt-click elements, describe changes, finish the review from the panel.
+
+With no url, nit offers the sites this workspace already covers — most recently reviewed first — plus a free text entry. Picking a known url is also how a second round lands in the base folder it belongs to instead of a near-duplicate:
+
+```
+$ nit review
+
+◆  Which site do you want to review?
+│  ● https://staging.example.com  7 annotations · 3 actionable
+│  ○ http://localhost:4200        2 annotations
+│  ○ another url…
+└
+```
 
 | Flag | What it does |
 | --- | --- |
@@ -52,7 +76,7 @@ nit review https://staging.example.com --base staging       # -> nit-review/stag
 
 Replays a feedback file. Pins are re-anchored on their routes so you can walk through a teammate's review.
 
-`source` is a review directory or a feedback file — with no argument, nit looks for `./nit-review`. A missing, empty, or unreadable review fails fast with the next step (start a review, point at a folder, or check `nit status`) instead of opening a browser on nothing.
+`source` is a review directory, a feedback file, or the name of a base — with no argument, nit looks for `./nit-review`. A missing, empty, or unreadable review fails fast with the next step (start a review, point at a folder, or check `nit status`) instead of opening a browser on nothing.
 
 | Flag | What it does |
 | --- | --- |
@@ -61,13 +85,34 @@ Replays a feedback file. Pins are re-anchored on their routes so you can walk th
 
 Use `--url` whenever you do not fully trust the file, for example one you received from outside your team. It pins the session to an origin you chose yourself.
 
-A browser opens exactly one site, so a review covering several base URLs needs `--base` — without it nit lists the bases and stops rather than guessing an environment. A review with a single base is opened straight away.
+A browser opens exactly one site, so a review covering several base URLs needs one of them named — without it nit lists the bases and stops rather than guessing an environment. A review with a single base is opened straight away.
+
+A base is named either with `--base`, or as the `source` itself: when what you typed is no path here, nit reads it as a base of `./nit-review` — a slug, a full url, or an unambiguous prefix, exactly what `--base` accepts. A real directory of that name always wins, so the shorthand can never redirect you somewhere else.
+
+```bash
+nit view staging                       # = nit view --base staging
+nit view localhost-4200                # the other base of ./nit-review
+nit view review-merged --base staging  # a base of some other folder needs --base
+```
+
+If nothing you passed lands on one base — several bases and no pick, a `--base` that matches nothing or several, a name that is neither a path nor a base — nit asks in the terminal instead of stopping. Each row shows the base's url and what is waiting inside it, and the cursor starts on the first base that has work for the command you ran:
+
+```
+$ nit verify
+
+◆  nit-review holds 2 base URLs — which one?
+│  ● localhost-4200 (http://localhost:4200 · 3 fixed · 1 actionable)
+│  ○ staging (https://staging.example.com · 0 fixed · 2 actionable)
+└
+```
+
+Escape cancels without opening anything. The picker needs a terminal on both stdin and stdout: piped, scripted and CI runs are never prompted — they fail with the same message and next steps as before, so `--base` stays the way to be explicit.
 
 ## nit verify [source] (alias: check)
 
 Walks you through every annotation marked `fixed` in a guided queue: the panel shows one item at a time with its before and after screenshots, the site page visits each item's route automatically, and you rule each one Verified, Reopen (with an optional note, stored as `statusReason`) or Skip. After-shots are captured for you — of the re-found element, or of the originally recorded region when the element is gone. General-scoped items get one after-shot per viewport (desktop and mobile), and the session switches the viewport automatically to capture the missing one; scoped items are only ever shot in their own viewport. When the session ends, a one-line summary prints what was verified, reopened and still fixed.
 
-`source` works like in `nit view`: a directory or a file, defaulting to `./nit-review`. When there is nothing to rule yet, nit says so and suggests the step that is actually missing — hand the actionable items to your agent (`nit mcp`), or capture a review first.
+`source` works like in `nit view`: a directory, a file, or a base name of `./nit-review` (`nit verify localhost-4200`), defaulting to `./nit-review`. When there is nothing to rule yet, nit says so and suggests the step that is actually missing — hand the actionable items to your agent (`nit mcp`), or capture a review first.
 
 | Flag | What it does |
 | --- | --- |
@@ -159,7 +204,24 @@ nit list --base staging --status verified   # what is already ruled on staging
 
 Removes annotations once they have served their purpose — typically the ones already ruled `verified` after a fix round. Screenshots of removed annotations are deleted with them; the base folder and its review metadata always survive, so the next review of that url keeps its review id.
 
-A scope is always required: `--base <name>` for one environment, `--all` for every one. Bare `nit clear` lists the bases and refuses rather than guessing. Without `--status` the whole scope is emptied, and that prompts unless you pass `--yes`.
+A scope is always required: `--base <name>` for one environment, `--all` for every one — it is never guessed. On a terminal, bare `nit clear` asks for one instead of refusing: which base (or every base), then what should go, with both answers counting what they would remove before you commit to them. The confirmation still follows.
+
+```
+$ nit clear
+
+◆  Clear which base of nit-review?
+│  ● localhost-4200  http://localhost:4200        1 verified · 2 total
+│  ○ staging         https://staging.example.com  2 verified · 3 total
+│  ○ every base  (5 annotations)
+└
+◆  What should go?
+│  ● only what is already ruled  (2 verified annotations)
+│  ○ everything  (3 annotations)
+└
+◆  Clear 2 verified annotations from base staging? This cannot be undone.
+```
+
+Without a terminal — or with `--yes`, which means "no questions" — the missing scope is still an error that lists the bases, so scripts and CI cannot drift into clearing the wrong thing.
 
 | Flag | What it does |
 | --- | --- |
@@ -190,9 +252,11 @@ A review covering several base URLs packs all of them, each under its own folder
 | `-b, --base <name>` | Pack only this base, as a single-review zip |
 | `-o, --out <file>` | Output zip path |
 
-## nit import \<zip\> (alias: unpack)
+## nit import [zip] (alias: unpack)
 
-Unpacks a teammate's review zip next to your own review. Both shapes are recognised — a single review and a whole multi-base workspace — and an existing non-empty target is refused rather than overwritten.
+Unpacks a teammate's review zip next to your own review. Both shapes are recognised — a single review and a whole multi-base workspace — and an existing non-empty target is never overwritten.
+
+With no argument, nit offers the zips in the current directory, its own `.nit.zip` exports first and newest first. When the target folder is already in use it offers a free name beside it (`review` → `review-2`); declining stops the import, and overwriting is not on the menu.
 
 | Flag | What it does |
 | --- | --- |

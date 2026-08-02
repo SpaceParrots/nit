@@ -5,6 +5,27 @@
  * can use them.
  */
 
+/**
+ * A url the way a human types it on the command line: `example.com` and
+ * `localhost:4200` are urls to everyone but the URL parser, so a missing scheme
+ * is filled in. https, because the sites that need a scheme spelled out are the
+ * local ones (`http://localhost:3000`), and nobody should have to type the
+ * secure one.
+ * @param url what the user typed
+ */
+export function normalizeUrl(url: string): string {
+  return /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`;
+}
+
+/** Whether {@link normalizeUrl} makes something the URL parser accepts. */
+export function isUrlish(url: string): boolean {
+  try {
+    return Boolean(new URL(normalizeUrl(url.trim())).hostname);
+  } catch {
+    return false;
+  }
+}
+
 /** The parts of `window.location` a route is built from. */
 export interface RouteLocation {
   pathname: string;

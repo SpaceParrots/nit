@@ -22,7 +22,7 @@ test('docs: the command reference has a section per new command', () => {
   const commands = read('docs/wiki/commands.md');
   assert.match(commands, /^## nit list/m);
   assert.match(commands, /^## nit clear/m);
-  for (const flag of ['--base', '--all', '--verified', '--dry-run', '--json', '--actionable']) {
+  for (const flag of ['--base', '--all', '--verified', '--dry-run', '--json', '--actionable', '--no-input']) {
     assert.ok(commands.includes(flag), `commands.md documents ${flag}`);
   }
   assert.ok(commands.includes('-v, --version'), 'commands.md documents -v');
