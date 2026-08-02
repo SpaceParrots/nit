@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.0](https://github.com/SpaceParrots/nit/compare/v1.3.0...v1.4.0) (2026-08-02)
+
+
+### Features
+
+* **cli:** fill in a missing base, url, scope or zip by asking ([#24](https://github.com/SpaceParrots/nit/issues/24)) ([ed22c83](https://github.com/SpaceParrots/nit/commit/ed22c83acdb3cfb542bce45930379db7976ebddd))
+
+
+### Bug Fixes
+
+* **panel:** fit the panel window on small screens ([#22](https://github.com/SpaceParrots/nit/issues/22)) ([#23](https://github.com/SpaceParrots/nit/issues/23)) ([a474003](https://github.com/SpaceParrots/nit/commit/a474003ef9f4dd9c0e2d5a0ddfddbc59e3d1840a))
+
 ## [1.3.0](https://github.com/SpaceParrots/nit/compare/v1.2.0...v1.3.0) (2026-07-27)
 
 
