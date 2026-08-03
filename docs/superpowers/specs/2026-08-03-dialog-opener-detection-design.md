@@ -151,8 +151,8 @@ vendor-prefixed one, and the storefront's own modal already uses bare `data-back
 
 **`data-dialog`** on the surface → confident tier unconditionally. The popover
 pre-checks its box and the watcher accepts the element regardless of position or
-class heuristics. An optional value is an identity key, never a label: the label
-chain stays `aria-label` → `aria-labelledby` → first heading.
+class heuristics. The label chain is unaffected: it still stays `aria-label` →
+`aria-labelledby` → first heading.
 
 **`data-dialog-trigger`** on the opener → the click is recorded as an opener
 **immediately, with no observation at all**, matched via `closest()` so an icon

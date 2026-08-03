@@ -141,8 +141,8 @@ offered to you as a checkbox to confirm.
 
 What it cannot always see is the moment a dialog *opens* — which is what lets
 `nit verify` click its way back in later. A surface that is detectable only by
-its position (fixed or absolute on a scroll-locked page, with no dialog role and
-no modal-ish class name, mounted somewhere other than directly under `<body>`)
+its position (fixed on a scroll-locked page, with no dialog role and no
+modal-ish class name, mounted somewhere other than directly under `<body>`)
 gets a checkbox but no recorded way back in.
 
 Two optional attributes close that gap:
