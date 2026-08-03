@@ -57,14 +57,35 @@ export const OPEN_WINDOW_MS = 1500;
  */
 const WATCHED_ATTRS = ['class', 'style', 'hidden', 'open', 'role', 'aria-modal', 'popover', DATA_DIALOG];
 
-/** Watches for dialog surfaces appearing; one instance per page. */
+/**
+ * Watches for dialog surfaces appearing; one instance per page.
+ *
+ * At most one watch is ever live: a click a second before the opener is
+ * common, but a dialog is almost always done appearing well before the
+ * reviewer's *next* click, so the newest click is always the right one to
+ * credit. That used to be enforced only among currently-registered listeners
+ * (the newest of whichever were still pending) — a click whose own watch
+ * never fired (nothing opened for it) stayed live for the rest of the window
+ * and could then be wrongly credited with a *later*, unrelated click's
+ * opening. Making `watch()` itself supersede is the fix: a new click always
+ * displaces whatever the previous click left pending, whether or not the new
+ * click registers a watch of its own — see `cancel()`.
+ */
 export interface SurfaceWatcher {
   /**
    * Call `onOpen` with the first surface to become visible within
-   * {@link OPEN_WINDOW_MS}, at most once. Silent when nothing opens, which is
+   * {@link OPEN_WINDOW_MS}. Replaces any still-pending watch from an earlier
+   * click, so at most one is ever live. Silent when nothing opens, which is
    * the normal case for almost every click.
    */
   watch(onOpen: (surface: Element) => void): void;
+  /**
+   * Drop any pending watch without crediting it. For a click whose opener is
+   * already settled by other means (a declared `data-dialog-trigger`) — an
+   * earlier click's still-pending watch must not go on to claim the surface
+   * this click is about to open.
+   */
+  cancel(): void;
 }
 
 /**
@@ -74,26 +95,29 @@ export interface SurfaceWatcher {
  */
 export function installSurfaceWatcher(doc: Document): SurfaceWatcher {
   const visible = new Set<Element>(openSurfaces(doc));
-  const listeners = new Set<(surface: Element) => void>();
+  // At most one entry: `watch()` and `cancel()` both replace it outright, and
+  // the timeout below deletes it by identity, so a stale timer from a
+  // just-superseded entry can never clear a newer one out from under it.
+  let pending: { onOpen: (surface: Element) => void; timer: ReturnType<typeof setTimeout> } | null = null;
+
+  const clear = (): void => {
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pending = null;
+  };
 
   const observer = new MutationObserver(records => {
     // With nobody watching, only the pruning half runs. Skipping the whole batch
     // would let the set go stale, and a stale entry swallows the next opening of
     // that same element (see refreshVisible).
-    const opened = refreshVisible(listeners.size ? candidatesOf(records, doc) : [], visible);
-    if (!opened.length) return;
-    // Credit only the newest live listener, not all of them. Two clicks can
-    // both be waiting when one dialog opens — a click a second before the
-    // opener is common, while a dialog is almost always done appearing well
-    // before the reviewer's *next* click — so the newest `watch()` call is
-    // almost always the real opener and the rest would be misattributed if
-    // notified. `Set` iterates in insertion order, so the last entry is the
-    // newest; the older ones are cleared unfired rather than left to match a
-    // later, unrelated opening.
-    const registered = [...listeners];
-    const newest = registered[registered.length - 1];
-    listeners.clear();
-    newest(opened[0]);
+    const opened = refreshVisible(pending ? candidatesOf(records, doc) : [], visible);
+    if (!opened.length || !pending) return;
+    // Only one watch can ever be live (see the interface doc), so crediting it
+    // needs no picking-the-newest-among-several step any more — that
+    // invariant now holds by construction, not by comparison at fire time.
+    const onOpen = pending.onOpen;
+    clear();
+    onOpen(opened[0]);
   });
   observer.observe(doc.documentElement, {
     childList: true,
@@ -104,9 +128,14 @@ export function installSurfaceWatcher(doc: Document): SurfaceWatcher {
 
   return {
     watch(onOpen) {
-      listeners.add(onOpen);
-      setTimeout(() => listeners.delete(onOpen), OPEN_WINDOW_MS);
+      clear(); // supersede: this click displaces whatever the previous click left pending
+      const entry = { onOpen, timer: null as unknown as ReturnType<typeof setTimeout> };
+      entry.timer = setTimeout(() => {
+        if (pending === entry) pending = null;
+      }, OPEN_WINDOW_MS);
+      pending = entry;
     },
+    cancel: clear,
   };
 }
 

@@ -174,8 +174,11 @@ export function installTrail(state: OverlayState, host: HTMLElement): TrailApi {
     trail = appendStep(trail, step, location.pathname);
     // A declared trigger needs no observation at all — which is the point of the
     // attribute. It exists for the surfaces our heuristics cannot see, so making
-    // it depend on them would defeat it.
+    // it depend on them would defeat it. Cancel first: the author declared this
+    // click the opener, so nothing still pending from an earlier click may go
+    // on to claim the surface this click is about to open.
     if (t.closest(`[${DATA_DIALOG_TRIGGER}]`)) {
+      surfaces.cancel();
       trail = openChain(trail, step, null, true);
       return;
     }
