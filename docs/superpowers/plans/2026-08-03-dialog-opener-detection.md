@@ -479,10 +479,14 @@ export function installSurfaceWatcher(doc: Document): SurfaceWatcher {
     // that same element (see refreshVisible).
     const opened = refreshVisible(listeners.size ? candidatesOf(records, doc) : [], visible);
     if (!opened.length) return;
-    for (const listener of [...listeners]) {
-      listeners.delete(listener);
-      listener(opened[0]);
-    }
+    // CORRECTED during execution (human ruling): credit only the most recently
+    // registered listener and clear the rest. Notifying all of them attributes
+    // one dialog to clicks that did not open it. Newest wins because a dialog
+    // normally appears before the reviewer clicks again, while a click a second
+    // *before* the opener is common.
+    const newest = [...listeners].pop();
+    listeners.clear();
+    newest?.(opened[0]);
   });
   observer.observe(doc.documentElement, {
     childList: true,
