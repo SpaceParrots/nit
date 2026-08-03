@@ -82,10 +82,18 @@ export function installSurfaceWatcher(doc: Document): SurfaceWatcher {
     // that same element (see refreshVisible).
     const opened = refreshVisible(listeners.size ? candidatesOf(records, doc) : [], visible);
     if (!opened.length) return;
-    for (const listener of [...listeners]) {
-      listeners.delete(listener);
-      listener(opened[0]);
-    }
+    // Credit only the newest live listener, not all of them. Two clicks can
+    // both be waiting when one dialog opens — a click a second before the
+    // opener is common, while a dialog is almost always done appearing well
+    // before the reviewer's *next* click — so the newest `watch()` call is
+    // almost always the real opener and the rest would be misattributed if
+    // notified. `Set` iterates in insertion order, so the last entry is the
+    // newest; the older ones are cleared unfired rather than left to match a
+    // later, unrelated opening.
+    const registered = [...listeners];
+    const newest = registered[registered.length - 1];
+    listeners.clear();
+    newest(opened[0]);
   });
   observer.observe(doc.documentElement, {
     childList: true,
