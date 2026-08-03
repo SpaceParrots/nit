@@ -14,6 +14,18 @@
 
 const MAX_LABEL = 60;
 
+/**
+ * Attributes an app can add so nit needs no heuristics at all. Deliberately
+ * unprefixed: a generic name is far likelier to be adopted in real markup than a
+ * vendor-prefixed one, and the cost of a collision is one unticked checkbox.
+ *
+ * `data-dialog` marks the surface; `data-dialog-trigger` marks the control that
+ * opens it (read by the overlay's trail, see overlay/trail.ts). A shared value
+ * pairs the two, which disambiguates a page with several dialogs.
+ */
+export const DATA_DIALOG = 'data-dialog';
+export const DATA_DIALOG_TRIGGER = 'data-dialog-trigger';
+
 /** class names of common overlay containers (Angular CDK, Bootstrap) */
 const DIALOG_CLASSES = ['cdk-overlay-pane', 'modal', 'offcanvas'];
 
@@ -75,22 +87,67 @@ export interface DialogContainer {
  *   when nothing in the chain looks like a dialog
  */
 export function detectDialog(el: Element): DialogContainer | null {
-  // Evaluated lazily and once: it is the same answer for every ancestor, and on
-  // a plain page no ancestor ever asks for it.
-  let locked: boolean | null = null;
-  const scrollLocked = (): boolean => locked ??= isScrollLocked(el);
-
+  const scrollLocked = memoLock(el);
   let suspected: Element | null = null;
   for (let n: Element | null = el; n?.nodeType === 1; n = n.parentElement) {
-    if (isDialogContainer(n)) return { container: n, label: dialogLabel(n), confidence: 'confident' };
-    if (!suspected && isSuspectedContainer(n, scrollLocked)) suspected = n;
+    const kind = classify(n, scrollLocked);
+    if (kind === 'confident') return { container: n, label: dialogLabel(n), confidence: 'confident' };
+    if (kind === 'suspected' && !suspected) suspected = n;
   }
   return suspected ? { container: suspected, label: dialogLabel(suspected), confidence: 'suspected' } : null;
 }
 
 /** One query covering every container the confident tier recognises. */
 const CONFIDENT_SELECTOR = 'dialog,[role=dialog],[role=alertdialog],[aria-modal=true],[popover],'
-  + '.cdk-overlay-pane,.modal,.offcanvas';
+  + `[${DATA_DIALOG}],.cdk-overlay-pane,.modal,.offcanvas`;
+
+/**
+ * A deliberately over-wide CSS pre-filter for {@link isDialogSurface}. The
+ * surface watcher (overlay/surfaces.ts) runs on the page's whole mutation
+ * stream, and a framework like Angular rewrites `class` attributes constantly —
+ * so `getComputedStyle` must never run on that stream directly. This narrows it
+ * to a handful of elements with a pure selector match; the real word-boundary
+ * and position tests stay in {@link isDialogSurface}.
+ *
+ * Substring matches on purpose (`[class*="sheet"]` catches `action-sheet`,
+ * `bottom-sheet` and `sheet-open` alike): a hint that misses is a dialog nit
+ * never sees, while a hint that over-matches only costs one style read.
+ */
+export const SURFACE_HINT_SELECTOR = `${CONFIDENT_SELECTOR},`
+  + '[class*="modal"],[class*="dialog"],[class*="drawer"],[class*="sheet"],'
+  + '[class*="popup"],[class*="lightbox"],[class*="flyout"]';
+
+/**
+ * How this one element classifies as a dialog surface, or null when it is not
+ * one. The single definition of "dialog surface": {@link detectDialog} asks it
+ * per ancestor when the reviewer picks an element, and the surface watcher
+ * (overlay/surfaces.ts) asks it per mutation candidate to decide that a dialog
+ * has just opened.
+ *
+ * Those two used to be different tests, and the second was strictly weaker —
+ * it only ever looked at declared surfaces and `<body>`'s own children, so a
+ * custom modal nested in a component tree was detectable but never observably
+ * *opened*, and its annotations got no re-open steps. One exported predicate is
+ * what keeps them from drifting apart again.
+ */
+export function isDialogSurface(n: Element): DialogConfidence | null {
+  return classify(n, memoLock(n));
+}
+
+/** {@link isDialogSurface} with a scroll-lock check shared across a whole walk. */
+function classify(n: Element, scrollLocked: () => boolean): DialogConfidence | null {
+  if (isDialogContainer(n)) return 'confident';
+  return isSuspectedContainer(n, scrollLocked) ? 'suspected' : null;
+}
+
+/**
+ * A scroll-lock check evaluated lazily and at most once. It is the same answer
+ * for every element in a document, and on a plain page nothing ever asks for it.
+ */
+function memoLock(el: Element): () => boolean {
+  let locked: boolean | null = null;
+  return () => locked ??= isScrollLocked(el);
+}
 
 /**
  * The dialog surfaces currently on screen. Used to tell whether a click
@@ -114,16 +171,18 @@ export function openSurfaces(doc: Document): Element[] {
 
   const out: Element[] = [];
   for (const n of candidates) {
-    let locked: boolean | null = null;
-    const scrollLocked = (): boolean => locked ??= isScrollLocked(n);
-    if (!isDialogContainer(n) && !isSuspectedContainer(n, scrollLocked)) continue;
+    if (!classify(n, memoLock(n))) continue;
     if (isRendered(n)) out.push(n);
   }
   return out;
 }
 
-/** Whether the element occupies space — an animating-in dialog starts at zero. */
-function isRendered(n: Element): boolean {
+/**
+ * Whether the element occupies space — an animating-in dialog starts at zero.
+ * Shared with the surface watcher, which uses it as the "is it actually on
+ * screen now?" half of open/closed.
+ */
+export function isRendered(n: Element): boolean {
   try {
     const r = n.getBoundingClientRect();
     return r.width > 0 || r.height > 0;
@@ -133,6 +192,8 @@ function isRendered(n: Element): boolean {
 }
 
 function isDialogContainer(n: Element): boolean {
+  // An explicit declaration by the page author outranks everything below it.
+  if (n.getAttribute(DATA_DIALOG) !== null) return true;
   if (n.tagName === 'DIALOG') return true;
   const role = n.getAttribute('role');
   if (role === 'dialog' || role === 'alertdialog') return true;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectDialog } from '../dist/capture/context.js';
+import { detectDialog, isDialogSurface, isRendered, SURFACE_HINT_SELECTOR } from '../dist/capture/context.js';
 
 /** Minimal fake element: just the members detectDialog is allowed to touch. */
 function fakeEl({ tag = 'DIV', attrs = {}, classes = [], parent = null, heading = null, text = '' } = {}) {
@@ -244,4 +244,54 @@ test('detectDialog: elements that cannot be measured degrade to null, never thro
   const box = fakeEl({ tag: 'DIV' });
   box.ownerDocument = { defaultView: { getComputedStyle: () => { throw new Error('detached'); } } };
   assert.equal(detectDialog(fakeEl({ tag: 'SPAN', parent: box })), null);
+});
+
+test('isDialogSurface: role=dialog is confident', () => {
+  const el = fakeEl({ attrs: { role: 'dialog' } });
+  fakeDoc({ all: [el] });
+  assert.equal(isDialogSurface(el), 'confident');
+});
+
+test('isDialogSurface: data-dialog alone is confident, whatever it looks like', () => {
+  // Statically positioned, no modal-ish class: every heuristic tier says no.
+  const el = fakeEl({ attrs: { 'data-dialog': '' } });
+  el.styles = { position: 'static' };
+  fakeDoc({ all: [el] });
+  assert.equal(isDialogSurface(el), 'confident', 'the attribute outranks the heuristics');
+});
+
+test('isDialogSurface: a modal-ish class on an overlay-positioned box is suspected', () => {
+  const el = overlayEl({ cls: 'action-sheet', position: 'fixed' });
+  fakeDoc({ all: [el] });
+  assert.equal(isDialogSurface(el), 'suspected');
+});
+
+test('isDialogSurface: a sticky bar on an unlocked page is not a surface', () => {
+  const el = overlayEl({ cls: 'sticky-bar', position: 'fixed' });
+  fakeDoc({ all: [el], scrolls: false });
+  assert.equal(isDialogSurface(el), null);
+});
+
+test('detectDialog: a data-dialog ancestor is found and reported confident', () => {
+  const surface = fakeEl({ attrs: { 'data-dialog': 'feedback' }, heading: { textContent: 'Bewertung abgeben' } });
+  const inner = fakeEl({ parent: surface });
+  fakeDoc({ all: [surface, inner] });
+  const found = detectDialog(inner);
+  assert.equal(found.container, surface);
+  assert.equal(found.confidence, 'confident');
+  assert.equal(found.label, 'Bewertung abgeben', 'data-dialog value is an identity key, never the label');
+});
+
+test('isRendered: an element with no box is not rendered', () => {
+  const el = fakeEl();
+  el.getBoundingClientRect = () => ({ width: 0, height: 0 });
+  assert.equal(isRendered(el), false);
+  el.getBoundingClientRect = () => ({ width: 320, height: 200 });
+  assert.equal(isRendered(el), true);
+});
+
+test('SURFACE_HINT_SELECTOR covers every declared surface and the modal-ish class names', () => {
+  for (const part of ['[role=dialog]', '[data-dialog]', '[class*="sheet"]', '[class*="modal"]', '[class*="drawer"]']) {
+    assert.ok(SURFACE_HINT_SELECTOR.includes(part), `hint includes ${part}`);
+  }
 });
