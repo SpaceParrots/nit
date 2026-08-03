@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nit nested dialog fixture</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 20px; }
+  .filler { height: 2000px; background: #fafafa; }
+
+  /* The fainin storefront's mobile sheet, reproduced: permanently in the DOM,
+     nested inside two custom elements (so it is NOT a child of <body>), no
+     role, no aria-modal, and shown by flipping a class on itself rather than by
+     being mounted. Nothing the old before/after set diff could ever see. */
+  .action-sheet {
+    position: fixed; inset: auto 0 0 0; height: 60%; background: #fff;
+    border-top: 2px solid #333; padding: 20px; visibility: hidden; opacity: 0;
+  }
+  .action-sheet.open { visibility: visible; opacity: 1; }
+
+  /* Declared surface: statically positioned with a class no heuristic tier
+     recognises, so ONLY data-dialog can make it a surface. */
+  .plain-box { position: static; display: none; background: #fff; padding: 20px; }
+  .plain-box.open { display: block; }
+</style>
+</head>
+<body>
+  <app-root>
+    <app-page>
+      <h1 id="page-title">Nested dialog fixture</h1>
+      <button id="open-sheet" type="button">Feedback geben</button>
+      <button id="open-panel" type="button" data-dialog-trigger="panel">Open panel</button>
+      <div class="filler"></div>
+
+      <app-sheet>
+        <div class="action-sheet" id="sheet">
+          <h2>Zustand bei Rückgabe</h2>
+          <button class="next" type="button">Weiter</button>
+          <span id="sheet-total" style="display:block;width:640px;height:120px">Total: 12,00</span>
+        </div>
+      </app-sheet>
+
+      <app-panel>
+        <div class="plain-box" id="panel" data-dialog="panel">
+          <h2>Declared panel</h2>
+          <span id="panel-note" style="display:block;width:400px;height:80px">Nothing dialog-ish about me</span>
+        </div>
+      </app-panel>
+    </app-page>
+  </app-root>
+
+  <script>
+    var sheet = document.getElementById('sheet');
+    var panel = document.getElementById('panel');
+    document.getElementById('open-sheet').addEventListener('click', function () {
+      sheet.classList.add('open');
+    });
+    document.getElementById('open-panel').addEventListener('click', function () {
+      panel.classList.add('open');
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { sheet.classList.remove('open'); panel.classList.remove('open'); }
+    });
+  </script>
+</body>
+</html>

@@ -117,7 +117,7 @@ export function createPopover(root: ShadowRoot, state: OverlayState, actions: Ov
         // The reopen steps are only worth recording for a surface we will
         // actually try to re-open, and they are the only thing nit ever replays
         // against a live page — so they ride on the reviewer's confirmation.
-        const reopen = dialog && inDialog ? actions.reopenSnapshot() : [];
+        const reopen = dialog && inDialog ? actions.reopenSnapshot(dialog.container) : [];
         const payload: SavePayload = {
           comment,
           type,

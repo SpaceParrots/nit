@@ -106,7 +106,7 @@ async function init(): Promise<void> {
       try { void window.__nitEvent?.({ type: 'focus', id }); } catch { /* bridge gone */ }
     },
     historySnapshot: () => trail ? trail.snapshot() : [],
-    reopenSnapshot: () => trail ? trail.reopenSteps() : [],
+    reopenSnapshot: (surface: Element) => trail ? trail.reopenSteps(surface) : [],
   };
 
   const pins = createPins(root, state, actions);

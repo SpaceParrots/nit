@@ -7,7 +7,8 @@
 // halves are pure (unit-tested from Node), and installTrail is the thin DOM
 // shell around them.
 import { buildSelector, cleanText, nearestComponentTag } from '../capture/target.js';
-import { detectDialog } from '../capture/context.js';
+import { DATA_DIALOG_TRIGGER, detectDialog } from '../capture/context.js';
+import { installSurfaceWatcher } from './surfaces.js';
 import { MAX_HISTORY, MAX_REOPEN_STEPS } from '../util/history.js';
 import type { ClickStep } from '../types.js';
 import type { OverlayState } from './state.js';
@@ -145,21 +146,25 @@ function toClickStep(s: TrailStep): ClickStep {
 export interface TrailApi {
   /** the current steps, oldest first (already bounded) */
   snapshot(): ClickStep[];
-  /** the clicks that re-open the dialog being annotated — see {@link chainFor} */
-  reopenSteps(): ClickStep[];
+  /**
+   * The clicks that re-open the dialog being annotated — see {@link chainFor}.
+   * @param surface the dialog container the annotation was captured in
+   */
+  reopenSteps(surface: Element): ClickStep[];
 }
 
 /**
  * Install the trail recorder: a capture-phase click listener that describes each
  * page click with the same primitives annotations use, noting the dialog surface
- * (if any) it happened on. Skips picking clicks (they select, they don't
- * interact), clicks inside nit's own UI, and non-Element targets. Review mode
- * only — the caller decides.
+ * (if any) it happened on, and watching whether a surface opened as a result.
+ * Skips picking clicks (they select, they don't interact), clicks inside nit's
+ * own UI, and non-Element targets. Review mode only — the caller decides.
  * @param state shared overlay state (read for `picking`)
  * @param host nit's overlay host element (clicks inside it are ignored)
  */
 export function installTrail(state: OverlayState, host: HTMLElement): TrailApi {
   let trail = emptyTrail(location.pathname);
+  const surfaces = installSurfaceWatcher(document);
 
   window.addEventListener('click', e => {
     if (state.picking || e.composedPath().includes(host)) return;
@@ -167,19 +172,25 @@ export function installTrail(state: OverlayState, host: HTMLElement): TrailApi {
     if (!(t instanceof Element)) return;
     const step = describeClick(t);
     trail = appendStep(trail, step, location.pathname);
+    // A declared trigger needs no observation at all — which is the point of the
+    // attribute. It exists for the surfaces our heuristics cannot see, so making
+    // it depend on them would defeat it.
+    if (t.closest(`[${DATA_DIALOG_TRIGGER}]`)) {
+      trail = openChain(trail, step, null, true);
+      return;
+    }
+    surfaces.watch(surface => { trail = openChain(trail, step, surface, false); });
   }, true);
 
   /** reset-on-navigate also applies when no click happened since the change */
-  const current = (): readonly TrailStep[] => {
+  const current = (): Trail => {
     if (trail.page !== location.pathname) trail = emptyTrail(location.pathname);
-    return trail.steps;
+    return trail;
   };
 
   return {
-    snapshot: () => current().map(toClickStep),
-    // No opener chain is recorded yet — that's wired in Task 5 — so there is
-    // never anything honest to offer here in the meantime.
-    reopenSteps: () => [],
+    snapshot: () => current().steps.map(toClickStep),
+    reopenSteps: (surface: Element) => chainFor(current().chain, surface),
   };
 }
 
