@@ -5,7 +5,7 @@
 // modal evicted the click that opened it, and the annotation saved no way back in.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyTrail, appendStep, openChain, chainFor } from '../dist/overlay/trail.js';
+import { emptyTrail, appendStep, openChain, observeOpen, chainFor } from '../dist/overlay/trail.js';
 import { MAX_REOPEN_STEPS } from '../dist/util/history.js';
 
 /** A recorded click. `surface` is the dialog it happened *inside*, null on the page. */
@@ -70,9 +70,53 @@ test('chainFor: the observed surface may be an ancestor or a descendant of the p
 });
 
 test('chainFor: a declared trigger is trusted without any observed surface', () => {
+  // The blind path the attribute exists for: nothing observed, so there is
+  // nothing to check it against and the author's word is all there is.
   let trail = emptyTrail('/account');
   trail = openChain(trail, step('#open-panel'), null, true);
   assert.deepEqual(chainFor(trail.chain, el()).map(s => s.selector), ['#open-panel']);
+});
+
+test('chainFor: a declared trigger seen opening another dialog is not offered for this one', () => {
+  // `data-dialog-trigger` says the click opens *a* dialog, not *the* one being
+  // annotated. Click a declared trigger, close what it opened, reach a
+  // different dialog some other way — blind trust would replay the wrong opener
+  // and report success on the wrong surface.
+  const declaredSurface = el();
+  const annotated = el();
+  const trigger = step('#open-panel');
+  let trail = emptyTrail('/account');
+  trail = openChain(trail, trigger, null, true);
+  trail = observeOpen(trail, trigger, declaredSurface, '/account');
+
+  assert.equal(trail.chain.length, 1, 'verification updates the declared entry, it never adds one');
+  assert.equal(trail.chain[0].declared, true, 'still the author\'s declaration');
+  assert.deepEqual(chainFor(trail.chain, annotated), [], 'observed opening something else — not offered');
+  assert.deepEqual(chainFor(trail.chain, declaredSurface).map(s => s.selector), ['#open-panel']);
+});
+
+test('observeOpen: a watch that fires after the page changed does not repopulate the chain', () => {
+  // The callback runs up to a window after the click. If the click navigated,
+  // appendStep has already dropped the chain — clicks recorded on another page
+  // cannot be replayed on this one — and the late callback must not put one back.
+  const opener = step('#open-modal');
+  let trail = emptyTrail('/account');
+  trail = appendStep(trail, opener, '/account');
+  trail = appendStep(trail, step('#link'), '/product');
+
+  const after = observeOpen(trail, opener, el(), '/account');
+  assert.equal(after, trail, 'the trail is handed back untouched');
+  assert.deepEqual(after.chain, []);
+});
+
+test('observeOpen: an ordinary observed opening extends the chain as usual', () => {
+  const dialog = el();
+  const opener = step('#open');
+  let trail = emptyTrail('/account');
+  trail = appendStep(trail, opener, '/account');
+  trail = observeOpen(trail, opener, dialog, '/account');
+  assert.deepEqual(chainFor(trail.chain, dialog).map(s => s.selector), ['#open']);
+  assert.equal(trail.chain[0].declared, false);
 });
 
 test('chainFor: an unobserved, undeclared opener is never replayed', () => {

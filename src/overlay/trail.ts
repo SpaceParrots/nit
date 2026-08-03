@@ -33,7 +33,11 @@ export interface TrailStep extends ClickStep {
  */
 export interface ChainStep {
   step: TrailStep;
-  /** the surface seen to appear, or null when the opener was declared rather than observed */
+  /**
+   * The surface seen to appear, or null when nothing was observed — which is
+   * the normal state of a declared opener whose dialog the watcher cannot see,
+   * and the whole reason the attribute exists.
+   */
   surface: Element | null;
   /** the click carried `data-dialog-trigger` — the author's word, taken over our heuristics */
   declared: boolean;
@@ -91,6 +95,16 @@ export function appendStep(trail: Trail, step: TrailStep, pathname: string): Tra
  * chainFor} needs to be able to *see* that the chain overran the cap so it can
  * decline it, and a chain silently trimmed to the cap would instead be replayed
  * with its first click missing.
+ *
+ * A surface *closing* does not invalidate the chain — only a click on the plain
+ * page replaces it and only a pathname change drops it. So a stale prefix can
+ * be extended: close the dialog, then open another one from inside a surface
+ * that is still up, and the older opener stays in front of the new one. That is
+ * deliberate (the same behaviour the design's event table lists), and
+ * {@link chainFor}'s check on the last opening is what keeps a stale chain from
+ * being offered for a dialog it does not lead to.
+ * @param trail the current trail
+ * @param step the click being recorded as an opener
  * @param surface the surface observed to appear, or null for a declared opener
  * @param declared whether the click carried `data-dialog-trigger`
  */
@@ -101,15 +115,53 @@ export function openChain(trail: Trail, step: TrailStep, surface: Element | null
 }
 
 /**
+ * Fold an observed opening into the trail — the whole body of the surface
+ * watcher's callback, kept pure so it can be tested without a page.
+ *
+ * Two things it must get right, both of which cost a wrongly replayed click:
+ *
+ * - **The page may have moved on.** The callback runs up to a window after the
+ *   click, and a click that navigated an SPA has already had the chain dropped
+ *   by {@link appendStep}, on the grounds that clicks recorded on another page
+ *   cannot be replayed on this one. Repopulating it here would put back exactly
+ *   such a step — route-driven modals being the common way to hit it.
+ * - **A declared opener that *was* observed gets verified.** `data-dialog-trigger`
+ *   asserts "this click opens *a* dialog", not "*the* dialog you are
+ *   annotating", so when the watcher does see a surface, that observation is
+ *   recorded on the entry the click already created and {@link chainFor} holds
+ *   it to the usual relation check. Blind trust is kept only for the case the
+ *   attribute exists for: nothing observed at all.
+ * @param trail the current trail
+ * @param step the click the watch was registered for
+ * @param surface the surface observed to appear
+ * @param pathname `location.pathname` as it was at click time
+ */
+export function observeOpen(trail: Trail, step: TrailStep, surface: Element, pathname: string): Trail {
+  if (trail.page !== pathname) return trail;
+  const last = trail.chain[trail.chain.length - 1];
+  if (last?.step === step && last.declared) {
+    return { ...trail, chain: [...trail.chain.slice(0, -1), { ...last, surface }] };
+  }
+  return openChain(trail, step, surface, false);
+}
+
+/**
  * The clicks that re-open `surface`, oldest first — or `[]` when the chain does
  * not lead there.
  *
  * The chain is only offered when its last opening is about the surface being
  * annotated: the same page can hold several dialogs, and replaying the opener of
- * a different one would open the wrong thing and still report success. A
- * declared opener skips that check — an author who wrote `data-dialog-trigger`
- * on the button knows something our heuristics do not, which is the entire
- * reason the attribute exists.
+ * a different one would open the wrong thing and still report success.
+ *
+ * A declared opener is trusted **only when nothing was observed**.
+ * `data-dialog-trigger` asserts that the click opens *a* dialog, not that it
+ * opens *the* one being annotated — click a declared trigger, close what it
+ * opened, then reach a different dialog by a route the watcher cannot see, and
+ * blind trust would hand back the wrong opener for verify to replay and call a
+ * success. So when the watcher did see a surface for that click (recorded by
+ * {@link observeOpen}), the same relation check applies to it; the attribute
+ * keeps its blind path exactly where it was meant to have one — the surfaces
+ * our heuristics cannot see at all.
  *
  * Returns `[]` rather than a partial sequence when the chain is longer than
  * {@link MAX_REOPEN_STEPS}: a truncated re-open would leave the dialog
@@ -121,7 +173,8 @@ export function openChain(trail: Trail, step: TrailStep, surface: Element | null
 export function chainFor(chain: readonly ChainStep[], surface: Element): ClickStep[] {
   const last = chain[chain.length - 1];
   if (!last) return [];
-  if (!last.declared && !relates(last.surface, surface)) return [];
+  const leadsHere = last.surface ? relates(last.surface, surface) : last.declared;
+  if (!leadsHere) return [];
   if (chain.length > MAX_REOPEN_STEPS) return [];
   return chain.map(c => toClickStep(c.step));
 }
@@ -171,18 +224,28 @@ export function installTrail(state: OverlayState, host: HTMLElement): TrailApi {
     const t = e.composedPath()[0];
     if (!(t instanceof Element)) return;
     const step = describeClick(t);
-    trail = appendStep(trail, step, location.pathname);
-    // A declared trigger needs no observation at all — which is the point of the
-    // attribute. It exists for the surfaces our heuristics cannot see, so making
-    // it depend on them would defeat it. Cancel first: the author declared this
-    // click the opener, so nothing still pending from an earlier click may go
-    // on to claim the surface this click is about to open.
+    // Read once: the click may navigate, and everything below has to agree on
+    // which page it was made on — including the watch callback, which runs a
+    // window later and must not write a chain onto a page the trail has since
+    // been reset for (see observeOpen).
+    const page = location.pathname;
+    trail = appendStep(trail, step, page);
+    // A declared trigger is recorded as the opener immediately, with no
+    // observation required — the attribute exists for surfaces the heuristics
+    // cannot see, so making it *depend* on them would defeat it. Cancel first:
+    // the author declared this click the opener, so nothing still pending from
+    // an earlier click may go on to claim the surface it is about to open. The
+    // watch registered below would supersede that too, but tying the drop to
+    // the moment the declaration is written keeps the two independent.
     if (t.closest(`[${DATA_DIALOG_TRIGGER}]`)) {
       surfaces.cancel();
       trail = openChain(trail, step, null, true);
-      return;
     }
-    surfaces.watch(surface => { trail = openChain(trail, step, surface, false); });
+    // Registered either way. For a declared trigger this only *verifies*: if a
+    // surface does show up, observeOpen records it on the entry above so the
+    // chain can be checked against the dialog actually being annotated instead
+    // of being trusted on the attribute's word alone.
+    surfaces.watch(surface => { trail = observeOpen(trail, step, surface, page); });
   }, true);
 
   /** reset-on-navigate also applies when no click happened since the change */
