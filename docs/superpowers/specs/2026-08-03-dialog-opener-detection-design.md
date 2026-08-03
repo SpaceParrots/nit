@@ -115,6 +115,22 @@ The two fixed probes at 150/600 ms become one settle window of ~1500 ms per clic
 event-driven watch costs nothing while idle, so the window can be generous — which
 also covers modals that mount past 600 ms behind a lazy chunk or a data fetch.
 
+Two scans survive that, both bounded and both only for a click that is actually
+being watched:
+
+- **At `watch()` time**, `openSurfaces()` reconciles the visible set before the watch
+  is registered, and its result is discarded. Between clicks the set only ever
+  shrinks, so a dialog that opened with nothing pending (a fetch, a timer, a hover)
+  would otherwise still be missing from it — and the next click's first mutation
+  naming it would report it as just opened and credit an unrelated click.
+- **Late in the window**, one `openSurfaces()` pass runs if the watch is still
+  pending, and credits a newly visible surface exactly as a mutation would. Not
+  every opening mutates anything the observer can see: `showPopover()` changes no
+  attribute, and a CSS-only `:target`/`:checked` modal changes nothing at all. The
+  old probes caught those by polling; this buys that back at one scan per pending
+  click instead of two per click ever. It is cancelled the moment the watch is
+  credited or superseded.
+
 ### C. The opener chain gets its own storage
 
 `Trail` grows a `chain: TrailStep[]` beside the evictable `steps`:
@@ -157,9 +173,18 @@ class heuristics. The label chain is unaffected: it still stays `aria-label` →
 **`data-dialog-trigger`** on the opener → the click is recorded as an opener
 **immediately, with no observation at all**, matched via `closest()` so an icon
 inside the button works. This independence is the whole point: the attribute exists
-to work where the heuristics fail, so it must not depend on them. A chain entry
-marked declared is accepted by `reopenSteps` without the surface-relation check —
-the author's explicit declaration outranks our guess.
+to work where the heuristics fail, so it must not depend on them.
+
+It is nonetheless **verified when it can be**. A watch is still registered for a
+declared click; if a surface does appear, it is recorded on the chain entry the
+click already created, and `reopenSteps` applies its ordinary surface-relation
+check to it. Only an entry with *no* observed surface is trusted blindly. The
+attribute asserts "this click opens *a* dialog", not "*the* dialog you are
+annotating" — click a declared trigger, close what it opened, reach a different
+dialog by a route the watcher cannot see, and blind trust would hand verify the
+wrong opener to replay and then report success on the wrong surface, which this
+design ranks as worse than an honest failure. The blind path survives exactly
+where it was meant to: the surfaces nothing can observe.
 
 A matching value pairing trigger to surface — to disambiguate a page → menu →
 dialog chain on a page with several dialogs — was considered here and dropped
@@ -192,6 +217,15 @@ general mutation stream. Those annotations still get a checkbox and still get no
 
 That is precisely the case `data-dialog` closes, and the wiki will say so rather than
 implying the heuristic is total.
+
+`data-dialog` closing it depends on one thing being right: "on screen" must mean
+*painted*, not merely *measurable*. A permanently-mounted sheet hidden with
+`visibility: hidden` still measures its full size, so a rendered test built on the
+box alone read it as open from install — and since declaring it puts it in the seed
+scan, following this advice used to *remove* the way back into it. `isRendered`
+therefore rejects computed `visibility: hidden` as well as a zero box. `opacity: 0`
+is deliberately not rejected: a dialog fading in is genuinely opening, and must
+still be credited to the click that opened it.
 
 ## Out of scope
 

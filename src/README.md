@@ -75,13 +75,21 @@ src/
 │  ├─ surfaces.ts # MutationObserver watch for dialog surfaces becoming visible: at
 │  │              # most one pending watch is ever live, so a later click always
 │  │              # supersedes whatever an earlier one left unresolved; cancel()
-│  │              # drops the pending watch outright for a declared trigger, which
-│  │              # needs no observation at all
+│  │              # drops the pending watch outright when a click settles its own
+│  │              # opener (a declared trigger). Two bounded openSurfaces() scans
+│  │              # back the observer up, both only while a click is being watched:
+│  │              # one at watch() time (so a dialog that opened with nothing
+│  │              # pending is not credited to the next click) and one late in the
+│  │              # window (for openings that mutate nothing — showPopover(),
+│  │              # :target/:checked modals)
 │  ├─ trail.ts    # click-history recorder: the last 10 page clicks on this pathname,
 │  │              # plus a separate opener CHAIN (page → menu → dialog) that ordinary
 │  │              # clicks cannot evict — snapshotted into the save payload as
 │  │              # `history` + `context.reopen` (pure appendStep / openChain /
-│  │              # chainFor + a DOM shell)
+│  │              # observeOpen / chainFor + a DOM shell). observeOpen is the watch
+│  │              # callback's whole body: it drops an opening whose page has since
+│  │              # changed, and records the observed surface on a declared entry so
+│  │              # chainFor can check it rather than trust the attribute blindly
 │  ├─ pins.ts     # numbered pins for re-anchored annotations
 │  ├─ chip.ts     # bottom-left status chip
 │  ├─ dom.ts      # tiny DOM helpers (div/span/button/segmented/checkboxRow)
