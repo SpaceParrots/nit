@@ -72,9 +72,7 @@ src/
 │  ├─ state.ts    # OverlayState / OverlayActions / part interfaces (types only)
 │  ├─ picker.ts   # Alt-toggled element picking (capture-phase listeners)
 │  ├─ popover.ts  # the annotation form (comment, type, viewport scope, dialog confirm)
-│  ├─ surfaces.ts # surface visibility reconciliation for the click trail: detects when
-│  │              # dialog surfaces become visible so clicks can be marked as openers.
-│  │              # Runs on every mutation (wired by a MutationObserver in main.ts)
+│  ├─ surfaces.ts # reconciles visible dialog surfaces to detect when they open
 │  ├─ trail.ts    # click-history recorder: the last 10 page clicks on this pathname,
 │  │              # the dialog surface each happened on, and whether each was
 │  │              # observed to OPEN one — snapshotted into the save payload as
