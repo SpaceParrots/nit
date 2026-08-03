@@ -132,6 +132,42 @@ The target is a layered reference to the element, ordered roughly from most to l
 
 Replay (`nit view`, `nit verify`) re-anchors in that order: selector, then xpath, then text — preferring a visible match over a hidden one, so a responsive layout's hidden twin never steals a pin from what's actually rendered. If nothing matches, the annotation surfaces in a "couldn't place" list instead of breaking the session. See [how-it-works.md](how-it-works.md#replay-and-anchoring) for the full placed/approximate/hidden classification, including how a `context` dialog is detected as closed rather than gone.
 
+## Helping nit find your dialogs
+
+nit detects dialogs on its own: anything with `role="dialog"`, `aria-modal`, a
+`<dialog>` element, the HTML popover API, or a known framework class is
+recognised outright, and a modal-ish class name on an overlay-positioned box is
+offered to you as a checkbox to confirm.
+
+What it cannot always see is the moment a dialog *opens* — which is what lets
+`nit verify` click its way back in later. A surface that is detectable only by
+its position (fixed or absolute on a scroll-locked page, with no dialog role and
+no modal-ish class name, mounted somewhere other than directly under `<body>`)
+gets a checkbox but no recorded way back in.
+
+Two optional attributes close that gap:
+
+```html
+<button data-dialog-trigger="feedback">Give feedback</button>
+…
+<div class="action-sheet" data-dialog="feedback">…</div>
+```
+
+- **`data-dialog`** on the dialog itself. nit treats it as a dialog with no
+  guesswork, so the confirmation box arrives already ticked.
+- **`data-dialog-trigger`** on the control that opens it. The click is recorded
+  as the way back in without nit having to observe anything — put it on the
+  button, not on an icon inside it (a click on a child still counts).
+
+The value is optional on both — nit doesn't read it to pair a trigger with its
+dialog, it credits whichever `data-dialog-trigger` click most recently opened
+something as the way back into whatever you go on to annotate. Give the pair a
+matching value anyway if it helps whoever reads your markup next; bare
+`data-dialog` and `data-dialog-trigger` work just as well.
+
+The names are deliberately generic rather than nit-specific: they describe your
+markup, not our tool, and nothing else in nit depends on them.
+
 ## The status lifecycle
 
 ```

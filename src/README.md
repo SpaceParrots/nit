@@ -72,12 +72,16 @@ src/
 │  ├─ state.ts    # OverlayState / OverlayActions / part interfaces (types only)
 │  ├─ picker.ts   # Alt-toggled element picking (capture-phase listeners)
 │  ├─ popover.ts  # the annotation form (comment, type, viewport scope, dialog confirm)
-│  ├─ surfaces.ts # reconciles visible dialog surfaces to detect when they open
+│  ├─ surfaces.ts # MutationObserver watch for dialog surfaces becoming visible: at
+│  │              # most one pending watch is ever live, so a later click always
+│  │              # supersedes whatever an earlier one left unresolved; cancel()
+│  │              # drops the pending watch outright for a declared trigger, which
+│  │              # needs no observation at all
 │  ├─ trail.ts    # click-history recorder: the last 10 page clicks on this pathname,
-│  │              # the dialog surface each happened on, and whether each was
-│  │              # observed to OPEN one — snapshotted into the save payload as
-│  │              # `history` + `context.reopen` (pure appendStep / markOpened /
-│  │              # selectReopenSteps + a DOM shell)
+│  │              # plus a separate opener CHAIN (page → menu → dialog) that ordinary
+│  │              # clicks cannot evict — snapshotted into the save payload as
+│  │              # `history` + `context.reopen` (pure appendStep / openChain /
+│  │              # chainFor + a DOM shell)
 │  ├─ pins.ts     # numbered pins for re-anchored annotations
 │  ├─ chip.ts     # bottom-left status chip
 │  ├─ dom.ts      # tiny DOM helpers (div/span/button/segmented/checkboxRow)
@@ -98,6 +102,14 @@ src/
 │
 ├─ capture/     # how an annotation gets its element reference and screenshot
 │  ├─ target.ts     # (browser) element to layered Target reference, pure
+│  ├─ context.ts    # (browser) dialog-surface detection: confident (semantics, a
+│  │                # known framework class, `data-dialog`) vs suspected (a modal-ish
+│  │                # class name, or a fixed/absolute box on a scroll-locked page).
+│  │                # Exports the shared `isDialogSurface` predicate — the one
+│  │                # definition of "dialog surface" that both this module's
+│  │                # ancestor walk and the surface watcher (overlay/surfaces.ts)
+│  │                # test against — plus the `data-dialog`/`data-dialog-trigger`
+│  │                # attribute names
 │  └─ screenshot.ts # (node) CDP element-clip screenshots with context padding
 │
 ├─ anchor/      # replay: Target to live element (selector, then xpath, then text), pure
