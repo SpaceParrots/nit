@@ -96,7 +96,7 @@ test('detectDialog: a data-dialog ancestor is found and reported confident', () 
   const found = detectDialog(inner);
   assert.equal(found.container, surface);
   assert.equal(found.confidence, 'confident');
-  assert.equal(found.label, 'Bewertung abgeben', 'data-dialog value is an identity key, never the label');
+  assert.equal(found.label, 'Bewertung abgeben', 'the data-dialog value is never used as the label');
 });
 
 test('isRendered: an element with no box is not rendered', () => {
@@ -134,7 +134,8 @@ Add the attribute constants above `DIALOG_CLASSES`:
  *
  * `data-dialog` marks the surface; `data-dialog-trigger` marks the control that
  * opens it (read by the overlay's trail, see overlay/trail.ts). A shared value
- * pairs the two, which disambiguates a page with several dialogs.
+ * pairs the two. NOTE (corrected during execution): value pairing was dropped —
+ * nit checks only for the attribute's presence and never reads its value.
  */
 export const DATA_DIALOG = 'data-dialog';
 export const DATA_DIALOG_TRIGGER = 'data-dialog-trigger';
@@ -1199,7 +1200,8 @@ offered to you as a checkbox to confirm.
 
 What it cannot always see is the moment a dialog *opens* — which is what lets
 `nit verify` click its way back in later. A surface that is detectable only by
-its position (fixed or absolute on a scroll-locked page, with no dialog role and
+its position (fixed on a scroll-locked page — `absolute` does not qualify without a
+modal-ish class, see isSuspectedContainer — with no dialog role and
 no modal-ish class name, mounted somewhere other than directly under `<body>`)
 gets a checkbox but no recorded way back in.
 
