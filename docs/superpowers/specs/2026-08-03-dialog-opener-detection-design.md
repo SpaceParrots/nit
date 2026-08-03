@@ -161,16 +161,11 @@ to work where the heuristics fail, so it must not depend on them. A chain entry
 marked declared is accepted by `reopenSteps` without the surface-relation check —
 the author's explicit declaration outranks our guess.
 
-A matching value pairs trigger to surface, disambiguating a page → menu → dialog
-chain on a page with several dialogs:
-
-```html
-<button data-dialog-trigger="feedback">Feedback geben</button>
-<div class="action-sheet" data-dialog="feedback">…</div>
-```
-
-Unpaired is the common case and works: bare `data-dialog` / `data-dialog-trigger`
-with no value.
+A matching value pairing trigger to surface — to disambiguate a page → menu →
+dialog chain on a page with several dialogs — was considered here and dropped
+during implementation: presence alone already covers every case the heuristics
+leave open, so no code path reads either attribute's value. Bare `data-dialog` /
+`data-dialog-trigger` with no value is the whole contract.
 
 **Collision trade-off.** An app already using `data-dialog` for something unrelated
 gets a false confident detection. Accepted: the attribute only decides whether the

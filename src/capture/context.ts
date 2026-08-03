@@ -20,8 +20,10 @@ const MAX_LABEL = 60;
  * vendor-prefixed one, and the cost of a collision is one unticked checkbox.
  *
  * `data-dialog` marks the surface; `data-dialog-trigger` marks the control that
- * opens it (read by the overlay's trail, see overlay/trail.ts). A shared value
- * pairs the two, which disambiguates a page with several dialogs.
+ * opens it (read by the overlay's trail, see overlay/trail.ts). Presence is the
+ * whole contract — nit never reads either attribute's value. Give one anyway if
+ * it helps whoever reads your markup next; nit does not use it to pair a
+ * trigger with its dialog.
  */
 export const DATA_DIALOG = 'data-dialog';
 export const DATA_DIALOG_TRIGGER = 'data-dialog-trigger';

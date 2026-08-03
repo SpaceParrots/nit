@@ -148,9 +148,9 @@ gets a checkbox but no recorded way back in.
 Two optional attributes close that gap:
 
 ```html
-<button data-dialog-trigger="feedback">Give feedback</button>
+<button data-dialog-trigger>Give feedback</button>
 …
-<div class="action-sheet" data-dialog="feedback">…</div>
+<div class="action-sheet" data-dialog>…</div>
 ```
 
 - **`data-dialog`** on the dialog itself. nit treats it as a dialog with no
@@ -159,11 +159,9 @@ Two optional attributes close that gap:
   as the way back in without nit having to observe anything — put it on the
   button, not on an icon inside it (a click on a child still counts).
 
-The value is optional on both — nit doesn't read it to pair a trigger with its
-dialog, it credits whichever `data-dialog-trigger` click most recently opened
-something as the way back into whatever you go on to annotate. Give the pair a
-matching value anyway if it helps whoever reads your markup next; bare
-`data-dialog` and `data-dialog-trigger` work just as well.
+Presence is the whole contract — nit never reads either attribute's value. Add
+one anyway if it helps whoever reads your markup next; it doesn't change
+anything nit does.
 
 The names are deliberately generic rather than nit-specific: they describe your
 markup, not our tool, and nothing else in nit depends on them.
