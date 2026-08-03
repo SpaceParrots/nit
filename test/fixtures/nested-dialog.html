@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nit nested dialog fixture</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 20px; }
+  .filler { height: 2000px; background: #fafafa; }
+
+  /* The fainin storefront's mobile sheet, reproduced: permanently in the DOM,
+     nested inside two custom elements (so it is NOT a child of <body>), no
+     role, no aria-modal, and shown by flipping a class on itself rather than by
+     being mounted. Nothing the old before/after set diff could ever see. */
+  .action-sheet {
+    position: fixed; inset: auto 0 0 0; height: 60%; background: #fff;
+    border-top: 2px solid #333; padding: 20px; visibility: hidden; opacity: 0;
+  }
+  .action-sheet.open { visibility: visible; opacity: 1; }
+
+  /* Declared surface: statically positioned with a class no heuristic tier
+     recognises, so ONLY data-dialog can make it a surface. */
+  .plain-box { position: static; display: none; background: #fff; padding: 20px; }
+  .plain-box.open { display: block; }
+
+  /* A declared surface that is permanently mounted AND hidden with
+     `visibility` rather than `display`, so it measures its full size the whole
+     time. `data-dialog` puts it in the overlay's seed scan of what is already
+     open, so a rendered test based on the box alone marked it open from the
+     moment nit installed and never reported its real opening — declaring the
+     dialog took the way back into it away. */
+  .info-tray {
+    position: fixed; inset: 0 0 auto 0; height: 200px; background: #fff;
+    border-bottom: 2px solid #333; padding: 20px; visibility: hidden;
+  }
+  .info-tray.open { visibility: visible; }
+</style>
+</head>
+<body>
+  <app-root>
+    <app-page>
+      <h1 id="page-title">Nested dialog fixture</h1>
+      <button id="open-sheet" type="button">Feedback geben</button>
+      <!-- Values deliberately mismatched: nit never pairs a trigger with a
+           surface by value, presence is the whole contract. -->
+      <button id="open-panel" type="button" data-dialog-trigger="not-the-panel">Open panel</button>
+      <button id="open-tray" type="button">Open tray</button>
+      <div class="filler"></div>
+
+      <app-sheet>
+        <div class="action-sheet" id="sheet">
+          <h2>Zustand bei Rückgabe</h2>
+          <button class="next" type="button">Weiter</button>
+          <span id="sheet-total" style="display:block;width:640px;height:120px">Total: 12,00</span>
+        </div>
+      </app-sheet>
+
+      <app-panel>
+        <div class="plain-box" id="panel" data-dialog="panel">
+          <h2>Declared panel</h2>
+          <span id="panel-note" style="display:block;width:400px;height:80px">Nothing dialog-ish about me</span>
+        </div>
+      </app-panel>
+
+      <app-tray>
+        <div class="info-tray" id="tray" data-dialog>
+          <h2>Info tray</h2>
+          <span id="tray-note" style="display:block;width:400px;height:80px">Hidden by visibility, not by display</span>
+        </div>
+      </app-tray>
+    </app-page>
+  </app-root>
+
+  <script>
+    var sheet = document.getElementById('sheet');
+    var panel = document.getElementById('panel');
+    var tray = document.getElementById('tray');
+    document.getElementById('open-sheet').addEventListener('click', function () {
+      sheet.classList.add('open');
+    });
+    document.getElementById('open-panel').addEventListener('click', function () {
+      panel.classList.add('open');
+    });
+    document.getElementById('open-tray').addEventListener('click', function () {
+      tray.classList.add('open');
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      sheet.classList.remove('open');
+      panel.classList.remove('open');
+      tray.classList.remove('open');
+    });
+  </script>
+</body>
+</html>

@@ -107,7 +107,7 @@ It is an *index*, not the source of truth: a subfolder holding an `annotations.j
 | `route` | The page it was made on, as pathname plus query and hash. |
 | `target` | The layered element reference, see below. |
 | `context` | Optional, additive. Where the element lived at capture time; absent on plain pages. For dialogs: `{ "kind": "dialog", "selector": "#checkout-dialog", "label": "Checkout", "reopen": [ … ] }` — `selector` re-finds the dialog container, `label` comes from `aria-label` → `aria-labelledby` → the dialog's first heading (trimmed to 60 characters). Replay uses it to tell "the dialog is closed" apart from "the element is gone" and shows such annotations under the "x hidden" pill instead of dropping them silently. |
-| `context.reopen` | Optional. Up to 3 clicks that open that dialog, oldest first, in the same shape as `history`. Only clicks the overlay *watched* open a surface are recorded — the last such click made on the plain page, plus any later ones that opened a further surface (page → menu → dialog). Ordinary interactions inside the dialog are not included, and a chain that needs more than 3 clicks is dropped rather than truncated. `nit verify` replays them so a fix inside a modal can be screenshotted; the **Re-open** button in the panel replays the same steps on demand, in `nit view` too. **These are the only selectors nit ever clicks by itself** — they are re-validated and re-capped every time the file is loaded, and a replay that navigates the page off the review origin is abandoned. Keep the list short and honest if you hand-edit it. |
+| `context.reopen` | Optional. Up to 3 clicks that open that dialog, oldest first, in the same shape as `history`. A click is only recorded when nit has a reason to believe it opened something: the overlay *watched* a surface appear after it, or your markup declared the control with `data-dialog-trigger`. Recorded are the last such click made on the plain page, plus any later ones that opened a further surface (page → menu → dialog). Ordinary interactions inside the dialog are not included, and a chain that needs more than 3 clicks is dropped rather than truncated. `nit verify` replays them so a fix inside a modal can be screenshotted; the **Re-open** button in the panel replays the same steps on demand, in `nit view` too. **These are the only selectors nit ever clicks by itself** — they are re-validated and re-capped every time the file is loaded, and a replay that navigates the page off the review origin is abandoned. Keep the list short and honest if you hand-edit it. |
 | `screenshot` | Path of the context screenshot, relative to the review folder. |
 | `screenshotAfter` | The primary "after" screenshot captured by `nit verify`, when one exists — taken at the same viewport as the before-shot (or at the scope viewport for scoped annotations). Always mirrors the primary `screenshotsAfter` entry. |
 | `screenshotsAfter` | All `nit verify` after-shots, keyed by viewport (`desktop` / `mobile`). General-scoped annotations get one per viewport (the fix must hold on both); scoped ones only ever their own. Additive to the schema — older consumers can keep reading `screenshotAfter`. |
@@ -131,6 +131,43 @@ The target is a layered reference to the element, ordered roughly from most to l
 | `rect` | The element's page coordinates at capture time. |
 
 Replay (`nit view`, `nit verify`) re-anchors in that order: selector, then xpath, then text — preferring a visible match over a hidden one, so a responsive layout's hidden twin never steals a pin from what's actually rendered. If nothing matches, the annotation surfaces in a "couldn't place" list instead of breaking the session. See [how-it-works.md](how-it-works.md#replay-and-anchoring) for the full placed/approximate/hidden classification, including how a `context` dialog is detected as closed rather than gone.
+
+## Helping nit find your dialogs
+
+nit detects dialogs on its own: anything with `role="dialog"`, `aria-modal`, a
+`<dialog>` element, the HTML popover API, or a known framework class is
+recognised outright, and a modal-ish class name on an overlay-positioned box is
+offered to you as a checkbox to confirm.
+
+What it cannot always see is the moment a dialog *opens* — which is what lets
+`nit verify` click its way back in later. A surface that is detectable only by
+its position (fixed on a scroll-locked page, with no dialog role and no
+modal-ish class name, mounted somewhere other than directly under `<body>`)
+gets a checkbox but no recorded way back in.
+
+Two optional attributes close that gap:
+
+```html
+<button data-dialog-trigger>Give feedback</button>
+…
+<div class="action-sheet" data-dialog>…</div>
+```
+
+- **`data-dialog`** on the dialog itself. nit treats it as a dialog with no
+  guesswork, so the confirmation box arrives already ticked.
+- **`data-dialog-trigger`** on the control that opens it. The click is recorded
+  as the way back in without nit having to observe anything — put it on the
+  button, not on an icon inside it (a click on a child still counts). If nit
+  *does* see a dialog appear after that click, it checks that it is the one you
+  went on to annotate: the attribute says the click opens *a* dialog, not which,
+  so an observation that contradicts it wins.
+
+Presence is the whole contract — nit never reads either attribute's value. Add
+one anyway if it helps whoever reads your markup next; it doesn't change
+anything nit does.
+
+The names are deliberately generic rather than nit-specific: they describe your
+markup, not our tool, and nothing else in nit depends on them.
 
 ## The status lifecycle
 

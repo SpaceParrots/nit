@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Tiny DOM helpers for the overlay UI (vanilla, Shadow DOM scoped).
 
+/**
+ * The id of nit's own overlay host. Named once and shared because more than the
+ * overlay cares about it: the surface watcher has to recognise the host to keep
+ * it out of the dialog candidates it scans, and it is what the browser-side
+ * tests wait for to know the overlay booted.
+ */
+export const OVERLAY_HOST_ID = 'nit-root';
+
 /** Create a `<div>` with an optional class and text content. */
 export function div(cls?: string, text?: string): HTMLDivElement {
   const el = document.createElement('div');
