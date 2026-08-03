@@ -10,7 +10,7 @@
 // the site makes, so cost discipline is the whole design: a cheap CSS hint
 // narrows the mutation stream before the predicate's style reads ever run, and
 // the visible set holds a handful of elements at most.
-import { isDialogSurface, isRendered } from '../capture/context.js';
+import { DATA_DIALOG, SURFACE_HINT_SELECTOR, isDialogSurface, isRendered, openSurfaces } from '../capture/context.js';
 
 /**
  * Reconcile `visible` against the world and return the surfaces that have just
@@ -38,4 +38,97 @@ export function refreshVisible(candidates: Iterable<Element>, visible: Set<Eleme
     opened.push(el);
   }
   return opened;
+}
+
+/**
+ * How long after a click a surface may take to show up and still be attributed
+ * to it. Replaces the two fixed probes (150 ms / 600 ms) the trail used to run:
+ * an event-driven watch costs nothing while nothing happens, so the window can
+ * be generous enough for a modal that mounts behind a lazy chunk or a data
+ * fetch — the old 600 ms ceiling silently lost those.
+ */
+export const OPEN_WINDOW_MS = 1500;
+
+/**
+ * Attributes worth re-testing an element after. `class` and `style` carry the
+ * common show/hide (a framework animation writes inline styles; a utility-CSS
+ * app toggles a class), the rest are the declared ways an element becomes a
+ * dialog after it is already in the tree.
+ */
+const WATCHED_ATTRS = ['class', 'style', 'hidden', 'open', 'role', 'aria-modal', 'popover', DATA_DIALOG];
+
+/** Watches for dialog surfaces appearing; one instance per page. */
+export interface SurfaceWatcher {
+  /**
+   * Call `onOpen` with the first surface to become visible within
+   * {@link OPEN_WINDOW_MS}, at most once. Silent when nothing opens, which is
+   * the normal case for almost every click.
+   */
+  watch(onOpen: (surface: Element) => void): void;
+}
+
+/**
+ * Install the page's surface watcher: one MutationObserver, one small set of
+ * the surfaces currently on screen, seeded from what is already open at install.
+ * @param doc the document to watch
+ */
+export function installSurfaceWatcher(doc: Document): SurfaceWatcher {
+  const visible = new Set<Element>(openSurfaces(doc));
+  const listeners = new Set<(surface: Element) => void>();
+
+  const observer = new MutationObserver(records => {
+    // With nobody watching, only the pruning half runs. Skipping the whole batch
+    // would let the set go stale, and a stale entry swallows the next opening of
+    // that same element (see refreshVisible).
+    const opened = refreshVisible(listeners.size ? candidatesOf(records, doc) : [], visible);
+    if (!opened.length) return;
+    for (const listener of [...listeners]) {
+      listeners.delete(listener);
+      listener(opened[0]);
+    }
+  });
+  observer.observe(doc.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: WATCHED_ATTRS,
+  });
+
+  return {
+    watch(onOpen) {
+      listeners.add(onOpen);
+      setTimeout(() => listeners.delete(onOpen), OPEN_WINDOW_MS);
+    },
+  };
+}
+
+/**
+ * The elements in a mutation batch worth running the predicate on. Attribute
+ * records name their element directly; childList records can carry an entire
+ * routed page, so the added node is scanned with the CSS hint rather than walked.
+ */
+function candidatesOf(records: MutationRecord[], doc: Document): Set<Element> {
+  const out = new Set<Element>();
+  for (const record of records) {
+    if (record.type === 'attributes') {
+      addHinted(out, record.target, doc);
+      continue;
+    }
+    for (const node of record.addedNodes) addHinted(out, node, doc);
+  }
+  return out;
+}
+
+/**
+ * Add `node` and any hinted descendants to `out`. A direct child of `<body>` is
+ * always worth testing whatever it looks like: that is where portal-mounted
+ * modals land, and they are frequently a bare `<div>` with a generated class.
+ */
+function addHinted(out: Set<Element>, node: Node, doc: Document): void {
+  if (node.nodeType !== 1) return;
+  const el = node as Element;
+  try {
+    if (el.parentElement === doc.body || el.matches(SURFACE_HINT_SELECTOR)) out.add(el);
+    for (const n of el.querySelectorAll(SURFACE_HINT_SELECTOR)) out.add(n);
+  } catch { /* exotic or detached node — nothing to hint on */ }
 }
