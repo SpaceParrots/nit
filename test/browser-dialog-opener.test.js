@@ -82,4 +82,23 @@ test('nit review — the opener of a nested, class-toggled dialog is recorded', 
     assert.equal(b.context?.kind, 'dialog', 'data-dialog alone makes it a dialog surface');
     assert.deepEqual(b.context.reopen?.map(s => s.selector), ['#open-panel']);
   });
+
+  await t.test('a data-dialog surface hidden by visibility still records its opener', async () => {
+    // The trap this closes: `data-dialog` puts the tray in the seed scan of
+    // what is already open at install, and a permanently-mounted
+    // `visibility: hidden` box measures its full size — so a rendered test
+    // reading the box alone had it marked open before the reviewer touched
+    // anything, and its real opening was never reported. Taking the wiki's own
+    // advice removed the way back in.
+    await page.keyboard.press('Escape');
+    await page.locator('#open-tray').click();
+    await waitFor(
+      () => page.evaluate(() => document.getElementById('tray').classList.contains('open')),
+      { message: 'tray open' },
+    );
+
+    const c = await annotate('#tray-note', 'tray copy needs a period');
+    assert.equal(c.context?.kind, 'dialog');
+    assert.deepEqual(c.context.reopen?.map(s => s.selector), ['#open-tray']);
+  });
 });

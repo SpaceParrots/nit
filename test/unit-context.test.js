@@ -279,7 +279,7 @@ test('detectDialog: a data-dialog ancestor is found and reported confident', () 
   const found = detectDialog(inner);
   assert.equal(found.container, surface);
   assert.equal(found.confidence, 'confident');
-  assert.equal(found.label, 'Bewertung abgeben', 'data-dialog value is an identity key, never the label');
+  assert.equal(found.label, 'Bewertung abgeben', 'the data-dialog value is never used as the label');
 });
 
 test('isRendered: an element with no box is not rendered', () => {
@@ -288,6 +288,21 @@ test('isRendered: an element with no box is not rendered', () => {
   assert.equal(isRendered(el), false);
   el.getBoundingClientRect = () => ({ width: 320, height: 200 });
   assert.equal(isRendered(el), true);
+});
+
+test('isRendered: a full-size box hidden by visibility is not on screen', () => {
+  // The permanently-mounted sheet: it measures its full size the whole time, so
+  // the box alone read it as open from install and its real opening was never
+  // reported. `opacity` stays out of this on purpose — a dialog fading in is
+  // genuinely opening and must still be credited to the click that opened it.
+  const el = fakeEl();
+  el.getBoundingClientRect = () => ({ width: 640, height: 400 });
+  el.styles = { visibility: 'hidden', opacity: '0' };
+  fakeDoc({ all: [el] });
+  assert.equal(isRendered(el), false, 'visibility: hidden is not on screen');
+
+  el.styles = { visibility: 'visible', opacity: '0' };
+  assert.equal(isRendered(el), true, 'mid-fade-in is still opening');
 });
 
 test('SURFACE_HINT_SELECTOR covers every declared surface and the modal-ish class names', () => {

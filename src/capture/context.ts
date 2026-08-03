@@ -180,14 +180,28 @@ export function openSurfaces(doc: Document): Element[] {
 }
 
 /**
- * Whether the element occupies space — an animating-in dialog starts at zero.
- * Shared with the surface watcher, which uses it as the "is it actually on
- * screen now?" half of open/closed.
+ * Whether the element occupies space *and* is actually painted — an
+ * animating-in dialog starts at zero size. Shared with the surface watcher,
+ * which uses it as the "is it on screen now?" half of open/closed.
+ *
+ * The box alone is not enough. A permanently-mounted sheet hidden with
+ * `visibility: hidden` still measures its full size, so it reads as open from
+ * the moment the overlay installs — and the watcher, which seeds its visible
+ * set from {@link openSurfaces}, would then never report its real opening. That
+ * hit `data-dialog` hardest: declaring a surface put it in the seed scan, so
+ * following our own advice *removed* the way back into it.
+ *
+ * `opacity: 0` is deliberately not rejected: a dialog fading in is genuinely
+ * opening and must still be credited to the click that opened it, and
+ * `visibility` alone covers the hidden-sheet pattern.
  */
 export function isRendered(n: Element): boolean {
   try {
     const r = n.getBoundingClientRect();
-    return r.width > 0 || r.height > 0;
+    if (r.width <= 0 && r.height <= 0) return false;
+    // No computed style at all (detached, or a faked element in the unit
+    // tests) means "nothing says it is hidden" — the box stands on its own.
+    return styleOf(n)?.visibility !== 'hidden';
   } catch {
     return false;
   }
