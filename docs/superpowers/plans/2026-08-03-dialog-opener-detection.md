@@ -36,7 +36,7 @@
 - `src/overlay/main.ts` — pass the surface through.
 - `src/overlay/popover.ts` — pass `dialog.container`.
 - `test/unit-context.test.js` — cover `isDialogSurface` and `data-dialog`.
-- `docs/wiki/annotations.md`, `src/README.md` — document the attributes.
+- `docs/wiki/annotations.md`, `src/README.md` — document the attributes. **Correction (during execution):** `test/docs.test.js:61` asserts `src/README.md` lists every module in `src/`, so a minimal, accurate module-tree entry for `surfaces.ts` must land with Task 2, which creates it. Task 6 still owns the final wording of both entries.
 
 ---
 
