@@ -6,6 +6,7 @@
 // separate nit panel window, which talks to this overlay through the Node bridge.
 import css from './overlay.css';
 import { anchorTargetDetailed, isElementRendered } from '../anchor/anchor.js';
+import { OVERLAY_HOST_ID } from './dom.js';
 import { installPicker } from './picker.js';
 import { installTrail } from './trail.js';
 import { createPopover } from './popover.js';
@@ -64,7 +65,7 @@ async function init(): Promise<void> {
   };
 
   const host = document.createElement('div');
-  host.id = 'nit-root';
+  host.id = OVERLAY_HOST_ID;
   host.style.cssText = 'all:initial; position:absolute; top:0; left:0; width:0; height:0; z-index:2147483646;';
   const root = host.attachShadow({ mode: 'open' });
   const style = document.createElement('style');
